@@ -371,6 +371,8 @@ namespace BinanceBotWpf.Services
             try
             {
                 var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 20);
+                // Фильтруем странные пары
+                newPairs = newPairs.Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("LD")).ToList ();
                 if (newPairs.Count > 0)
                 {
                     _activePairs = newPairs;

@@ -73,9 +73,18 @@ namespace BinanceBotWpf.Models
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order") { Content = content };
             var response = await SendWithRetryAsync (request);
+            string body = await response.Content.ReadAsStringAsync ();
+
             if (response.IsSuccessStatusCode)
-                return JObject.Parse (await response.Content.ReadAsStringAsync ());
-            return null;
+            {
+                return JObject.Parse (body);
+            }
+            else
+            {
+                // Просто выводим ошибку в консоль отладки (видно в окне "Вывод" Visual Studio)
+                System.Diagnostics.Debug.WriteLine ($"PlaceOrder ERROR for {symbol}: {response.StatusCode} - {body}");
+                return null;
+            }
         }
 
         /// <summary>
