@@ -1,0 +1,17 @@
+﻿# Переименуйте в config.txt локально и заполните своими значениями
+ApiKey=YOUR_API_KEY_HERE
+ApiSecret=YOUR_API_SECRET_HERE
+isTestnet=false
+
+# другие параметры
+minBalanceForZeroPercent=30
+targetBalanceForFullPercent=100
+maxTradePercent=0.25
+absoluteMaxPercent=0.30
+
+minBalanceForRisk=50
+maxBalanceForRisk=300
+minRiskPercent=0.10
+maxRiskPercent=0.30
+
+minUsdcBalance=5.50

@@ -1,0 +1,17 @@
+﻿################################################################################
+# Данный GITIGNORE-файл был автоматически создан Microsoft(R) Visual Studio.
+################################################################################
+
+/.vs
+/DataDownloader/obj
+/DataDownloader/bin
+bin/
+obj/
+Logs/
+Data/
+Export/
+HistoricalData/
+Archives/
+config.txt
+*.user
+*.suo

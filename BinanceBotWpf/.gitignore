@@ -1,0 +1,19 @@
+# Игнорировать папки сборки
+bin/
+obj/
+Debug/
+Release/
+
+# Игнорировать конфиг с ключами
+config.txt
+
+# Игнорировать логи и данные
+Logs/
+Data/
+Export/
+HistoricalData/
+
+# Игнорировать файлы пользователя VS
+*.user
+*.suo
+.vs/

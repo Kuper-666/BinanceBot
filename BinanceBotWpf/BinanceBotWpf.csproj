@@ -1,0 +1,41 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <StartupUri>/Views/MainWindow.xaml</StartupUri>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="bot_icon.svg" />
+    <None Remove="Resources\binance_bot.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Binance.Net" Version="12.13.0" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="LiveChartsCore" Version="2.0.4" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.4" />
+    <PackageReference Include="Microsoft.ML" Version="5.0.0" />
+    <PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
+    <PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.4" />
+    <PackageReference Include="Telegram.Bot" Version="22.10.0.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="bot_icon.svg" />
+    <Resource Include="Resources\binance_bot.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Resource>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update=".gitignore">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
+</Project>

@@ -1,0 +1,49 @@
+<svg width="256" height="256" viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a1a2e;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#0f0f1e;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+      <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background circle -->
+  <circle cx="256" cy="256" r="256" fill="url(#bgGrad)"/>
+  
+  <!-- Outer ring -->
+  <circle cx="256" cy="256" r="240" fill="none" stroke="#f3ba2f" stroke-width="8" opacity="0.9"/>
+  
+  <!-- Left upward arrow (buy signal) -->
+  <g transform="translate(140, 180)">
+    <path d="M30 60 L30 10 M30 10 L10 30 M30 10 L50 30" stroke="#2ecc71" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  </g>
+  
+  <!-- Right downward arrow (sell signal) -->
+  <g transform="translate(340, 280)">
+    <path d="M30 10 L30 60 M30 60 L10 40 M30 60 L50 40" stroke="#e74c3c" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)"/>
+  </g>
+  
+  <!-- Center - Bitcoin symbol -->
+  <circle cx="256" cy="256" r="50" fill="none" stroke="#f3ba2f" stroke-width="5"/>
+  <text x="256" y="268" font-size="48" font-weight="bold" text-anchor="middle" fill="#f3ba2f" font-family="Arial">₿</text>
+  
+  <!-- Chart line -->
+  <g>
+    <polyline points="180,320 220,300 250,310 290,270 330,290 370,250" stroke="#f3ba2f" stroke-width="4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="180" cy="320" r="3" fill="#f3ba2f"/>
+    <circle cx="220" cy="300" r="3" fill="#f3ba2f"/>
+    <circle cx="250" cy="310" r="3" fill="#f3ba2f"/>
+    <circle cx="290" cy="270" r="3" fill="#f3ba2f"/>
+    <circle cx="330" cy="290" r="3" fill="#f3ba2f"/>
+    <circle cx="370" cy="250" r="3" fill="#f3ba2f"/>
+  </g>
+  
+  <!-- Bottom text -->
+  <text x="256" y="420" font-size="20" font-weight="bold" text-anchor="middle" fill="#f3ba2f" font-family="Arial">TRADING BOT</text>
+</svg>
