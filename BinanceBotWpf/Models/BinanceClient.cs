@@ -8,6 +8,7 @@ using Newtonsoft.Json.Linq;
 using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
+using System.IO;
 
 namespace BinanceBotWpf.Models
 {
@@ -18,6 +19,17 @@ namespace BinanceBotWpf.Models
         private readonly HttpClient _httpClient;
         private long _serverTimeOffset = 0;
         private readonly bool _useTestnet;
+        private JObject _exchangeInfo;
+        private readonly Dictionary<string, decimal> _stepSizeCache = new ();
+
+        // Событие для логирования (опционально)
+        public event Action<string> OnLogGenerated;
+
+        private void Log(string message)
+        {
+            OnLogGenerated?.Invoke (message);
+            Debug.WriteLine (message);
+        }
 
         public BinanceClient(string apiKey, string apiSecret, bool useTestnet = false)
         {
@@ -68,42 +80,65 @@ namespace BinanceBotWpf.Models
 
         public async Task<JObject> PlaceOrder(string symbol, string side, string type, decimal quantity)
         {
-            string query = $"symbol={symbol}&side={side}&type={type}&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
-            string signature = CreateSignature (query);
-            var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
-            var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order") { Content = content };
-            var response = await SendWithRetryAsync (request);
-            string body = await response.Content.ReadAsStringAsync ();
+            try
+            {
+                string query = $"symbol={symbol}&side={side}&type={type}&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
+                string signature = CreateSignature (query);
+                var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order") { Content = content };
+                var response = await SendWithRetryAsync (request);
+                string body = await response.Content.ReadAsStringAsync ();
 
-            if (response.IsSuccessStatusCode)
-            {
-                return JObject.Parse (body);
+                if (response.IsSuccessStatusCode)
+                {
+                    return JObject.Parse (body);
+                }
+                else
+                {
+                    Log ($"PlaceOrder ERROR for {symbol}: {response.StatusCode} - {body}");
+                    return null;
+                }
             }
-            else
+            catch (Exception ex)
             {
-                // Просто выводим ошибку в консоль отладки (видно в окне "Вывод" Visual Studio)
-                System.Diagnostics.Debug.WriteLine ($"PlaceOrder ERROR for {symbol}: {response.StatusCode} - {body}");
+                Log ($"PlaceOrder EXCEPTION: {ex.Message}");
                 return null;
             }
         }
 
-        /// <summary>
-        /// Выкуп из гибкого Earn-продукта на спотовый кошелёк с ожиданием фактического зачисления.
-        /// </summary>
-        public async Task<bool> RedeemFlexibleEarnWithWaitAsync(string asset, decimal amount, int maxWaitSeconds = 16)
+        // ========== ИСПРАВЛЕННЫЙ МЕТОД ВЫКУПА ==========
+        public async Task<bool> RedeemFlexibleEarnWithWaitAsync(string asset, decimal amount, int maxWaitSeconds = 60)
         {
             try
             {
-                // 1. Получаем productId для актива
+                if (amount <= 0)
+                {
+                    Log ($"❌ Некорректная сумма выкупа {asset}: {amount}");
+                    return false;
+                }
+
+                // 1. Получаем позицию в Earn
                 var earnPositions = await GetFlexibleEarnBalanceAsync ();
                 var targetPosition = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
                 if (targetPosition == null)
                 {
-                    Debug.WriteLine ($"❌ Нет Earn-позиции для {asset}");
+                    Log ($"❌ Нет Earn-позиции для {asset}");
                     return false;
                 }
+
+                decimal availableInEarn = decimal.Parse (targetPosition["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                if (availableInEarn < amount - 0.000001m)
+                {
+                    Log ($"⚠️ В Earn недостаточно {asset}: доступно {availableInEarn}, требуется {amount}");
+                    return false;
+                }
+
                 string productId = targetPosition["productId"]?.ToString ();
-                if (string.IsNullOrEmpty (productId)) return false;
+                if (string.IsNullOrEmpty (productId))
+                {
+                    Log ($"❌ Не найден productId для {asset}");
+                    return false;
+                }
 
                 // 2. Отправляем запрос на выкуп
                 long timestamp = GetTimestamp ();
@@ -113,40 +148,55 @@ namespace BinanceBotWpf.Models
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/simple-earn/flexible/redeem") { Content = content };
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
+
                 if (!response.IsSuccessStatusCode)
                 {
-                    Debug.WriteLine ($"❌ Ошибка выкупа: {json}");
+                    Log ($"❌ Ошибка выкупа {asset}: HTTP {response.StatusCode}, ответ: {json}");
                     return false;
                 }
 
-                // 3. Ожидаем фактического появления средств на споте
-                decimal targetAmount = amount;
-                int attempts = maxWaitSeconds / 2; // проверяем каждые 2 секунды
+                Log ($"✅ Запрос на выкуп {amount} {asset} отправлен. Ожидаем зачисления...");
+
+                // 3. Ожидаем фактического появления на споте (или уменьшения Earn)
+                int attempts = maxWaitSeconds / 3; // проверка каждые 3 секунды
                 for (int i = 0; i < attempts; i++)
                 {
-                    await Task.Delay (2000);
+                    await Task.Delay (3000);
+
                     decimal spotBalance = await GetAccountBalanceAsync (asset);
-                    if (spotBalance >= targetAmount - 0.00001m) // небольшой допуск
+                    if (spotBalance >= amount - 0.000001m)
                     {
-                        Debug.WriteLine ($"✅ Выкуп {amount} {asset} подтверждён. Баланс на споте: {spotBalance}");
+                        Log ($"✅ Выкуп {amount} {asset} подтверждён. Баланс на споте: {spotBalance}");
                         return true;
                     }
+
+                    // Альтернативная проверка: остаток в Earn уменьшился?
+                    var freshEarn = await GetFlexibleEarnBalanceAsync ();
+                    var freshPos = freshEarn?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+                    if (freshPos != null)
+                    {
+                        decimal remaining = decimal.Parse (freshPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                        if (availableInEarn - remaining >= amount - 0.000001m)
+                        {
+                            Log ($"✅ Выкуп {amount} {asset} подтверждён (Earn уменьшился с {availableInEarn} до {remaining})");
+                            return true;
+                        }
+                    }
                 }
-                Debug.WriteLine ($"⚠️ После выкупа баланс {asset} на споте ({await GetAccountBalanceAsync (asset)}) меньше требуемого {targetAmount}");
+
+                Log ($"⚠️ Таймаут {maxWaitSeconds} сек: выкуп {amount} {asset} не подтверждён. Спот баланс: {await GetAccountBalanceAsync (asset)}");
                 return false;
             }
             catch (Exception ex)
             {
-                Debug.WriteLine ($"❌ Исключение при выкупе: {ex.Message}");
+                Log ($"❌ Исключение при выкупе {asset}: {ex.Message}");
                 return false;
             }
         }
 
-        // Старый метод для совместимости (использует тот же механизм, но без ожидания)
         public async Task<bool> RedeemFlexibleEarnAsync(string asset, decimal amount)
         {
-            // Для обратной совместимости вызываем метод с ожиданием (по умолчанию 16 секунд)
-            return await RedeemFlexibleEarnWithWaitAsync (asset, amount, 16);
+            return await RedeemFlexibleEarnWithWaitAsync (asset, amount, 60);
         }
 
         private string CreateSignature(string query)
@@ -176,7 +226,11 @@ namespace BinanceBotWpf.Models
                 var data = JArray.Parse (json);
                 return data.Select (item => new BinanceKline
                 {
-                    Close = decimal.Parse (item[4].ToString (), CultureInfo.InvariantCulture)
+                    Open = decimal.Parse (item[0].ToString (), CultureInfo.InvariantCulture),
+                    High = decimal.Parse (item[2].ToString (), CultureInfo.InvariantCulture),
+                    Low = decimal.Parse (item[3].ToString (), CultureInfo.InvariantCulture),
+                    Close = decimal.Parse (item[4].ToString (), CultureInfo.InvariantCulture),
+                    Volume = decimal.Parse (item[5].ToString (), CultureInfo.InvariantCulture)
                 }).ToList ();
             }
             return new List<BinanceKline> ();
@@ -229,10 +283,14 @@ namespace BinanceBotWpf.Models
                         if (obj["list"] != null) return (JArray)obj["list"];
                     }
                 }
+                else
+                {
+                    Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
+                }
             }
             catch (Exception ex)
             {
-                Debug.WriteLine ($"DEBUG: Исключение при получении Earn: {ex.Message}");
+                Log ($"DEBUG: Исключение при получении Earn: {ex.Message}");
             }
             return new JArray ();
         }
@@ -269,16 +327,21 @@ namespace BinanceBotWpf.Models
 
         public async Task<decimal> GetStepSizeAsync(string symbol)
         {
-            // Упрощённая версия (кеш)
+            if (_stepSizeCache.TryGetValue (symbol, out var cached))
+                return cached;
+
             var exchangeInfo = await GetExchangeInfoAsync ();
             var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
             var lotSize = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "LOT_SIZE");
             if (lotSize != null && lotSize["stepSize"] != null)
-                return decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture);
+            {
+                decimal step = decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture);
+                _stepSizeCache[symbol] = step;
+                return step;
+            }
             return 0.00000001m;
         }
 
-        private JObject _exchangeInfo;
         private async Task<JObject> GetExchangeInfoAsync()
         {
             if (_exchangeInfo != null) return _exchangeInfo;
@@ -292,7 +355,6 @@ namespace BinanceBotWpf.Models
             return new JObject ();
         }
 
-        // Dust методы
         public async Task<JArray> GetDustAssetsAsync()
         {
             try
@@ -309,9 +371,9 @@ namespace BinanceBotWpf.Models
                     var result = JObject.Parse (json);
                     return result["details"] as JArray ?? new JArray ();
                 }
-                Debug.WriteLine ($"GetDustAssets error: {json}");
+                Log ($"GetDustAssets error: {json}");
             }
-            catch (Exception ex) { Debug.WriteLine ($"GetDustAssets exception: {ex.Message}"); }
+            catch (Exception ex) { Log ($"GetDustAssets exception: {ex.Message}"); }
             return new JArray ();
         }
 
@@ -330,12 +392,12 @@ namespace BinanceBotWpf.Models
                 string json = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
-                    Debug.WriteLine ($"Dust conversion success: {json}");
+                    Log ($"Dust conversion success: {json}");
                     return true;
                 }
-                Debug.WriteLine ($"Dust conversion error: {json}");
+                Log ($"Dust conversion error: {json}");
             }
-            catch (Exception ex) { Debug.WriteLine ($"ConvertDustToBnb exception: {ex.Message}"); }
+            catch (Exception ex) { Log ($"ConvertDustToBnb exception: {ex.Message}"); }
             return false;
         }
 
@@ -355,8 +417,9 @@ namespace BinanceBotWpf.Models
                     var result = JObject.Parse (json);
                     return result["rows"] as JArray ?? new JArray ();
                 }
+                Log ($"GetFlexibleProducts error: {json}");
             }
-            catch (Exception ex) { Debug.WriteLine ($"GetFlexibleProducts error: {ex.Message}"); }
+            catch (Exception ex) { Log ($"GetFlexibleProducts exception: {ex.Message}"); }
             return new JArray ();
         }
 
@@ -373,9 +436,9 @@ namespace BinanceBotWpf.Models
                 string json = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                     return true;
-                Debug.WriteLine ($"Subscribe error: {json}");
+                Log ($"Subscribe error: {json}");
             }
-            catch (Exception ex) { Debug.WriteLine ($"Subscribe exception: {ex.Message}"); }
+            catch (Exception ex) { Log ($"Subscribe exception: {ex.Message}"); }
             return false;
         }
     }

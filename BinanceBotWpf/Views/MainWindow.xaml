@@ -1,7 +1,7 @@
 ﻿<Window x:Class="BinanceBotWpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
+        xmlns:oxy="http://oxyplot.org/wpf"
         Title="Binance Trading Bot" 
         Height="650" Width="950" 
         Background="#121212">
@@ -111,12 +111,64 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
-                    <!-- Панель статистики (оставляем как есть) -->
                     <Border Grid.Row="0" Background="#252525" Margin="0,0,0,10" Padding="10" CornerRadius="5">
-                        <!-- содержимое панели статистики -->
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel Grid.Column="0">
+                                <TextBlock Text="Общий PnL" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0">
+                                    <Run Text="{Binding TotalPnL, StringFormat=F2}"/>
+                                    <Run Text=" USDC"/>
+                                </TextBlock>
+                            </StackPanel>
+                            <StackPanel Grid.Column="1">
+                                <TextBlock Text="Win Rate" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0">
+                                    <Run Text="{Binding WinRate, StringFormat=F1}"/>
+                                    <Run Text="%"/>
+                                </TextBlock>
+                            </StackPanel>
+                            <StackPanel Grid.Column="2">
+                                <TextBlock Text="Сделок" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="{Binding TotalTrades}" Foreground="#f39c12" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="3">
+                                <TextBlock Text="Выигрышей" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="{Binding WinningTrades}" Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="4">
+                                <TextBlock Text="Проигрышей" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="{Binding LosingTrades}" Foreground="#e74c3c" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="5">
+                                <TextBlock Text="Лучшая/Худшая" Foreground="#bdc3c7" FontSize="12"/>
+                                <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
+                                    <TextBlock Text="{Binding BestPnL, StringFormat=F2}" Foreground="#2ecc71" FontSize="14" FontWeight="Bold"/>
+                                    <TextBlock Text=" / " Foreground="#bdc3c7" FontSize="14"/>
+                                    <TextBlock Text="{Binding WorstPnL, StringFormat=F2}" Foreground="#e74c3c" FontSize="14" FontWeight="Bold"/>
+                                </StackPanel>
+                            </StackPanel>
+                            <StackPanel Grid.Column="6">
+                                <TextBlock Text="Макс. просадка" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="{Binding MaxDrawdownDisplay}" Foreground="#e74c3c" FontSize="14" FontWeight="Bold" Margin="0,5,0,0"/>
+                            </StackPanel>
+                            <StackPanel Grid.Column="7">
+                                <TextBlock Text="Ср. приб/убыток" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="{Binding AvgProfitLossDisplay}" Foreground="#f39c12" FontSize="12" FontWeight="Bold" Margin="0,5,0,0"/>
+                            </StackPanel>
+                        </Grid>
                     </Border>
 
-                    <!-- Таблица истории сделок -->
                     <DataGrid Grid.Row="1" ItemsSource="{Binding TradesHistory}" 
                               AutoGenerateColumns="False"
                               HeadersVisibility="Column"
@@ -146,12 +198,9 @@
                     </DataGrid>
                 </Grid>
             </TabItem>
+
             <TabItem Header="Баланс" Background="#1e1e1e" Foreground="White">
-                <lvc:CartesianChart Series="{Binding BalanceSeries}" 
-                                    XAxes="{Binding XAxes}" 
-                                    YAxes="{Binding YAxes}"
-                                    Background="#1e1e1e"
-                                    Foreground="White"/>
+                <oxy:PlotView Model="{Binding PlotModel}" Background="#1e1e1e"/>
             </TabItem>
         </TabControl>
 

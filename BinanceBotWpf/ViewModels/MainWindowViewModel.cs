@@ -7,11 +7,13 @@ using System.Windows.Input;
 using System.Threading.Tasks;
 using System.Windows;
 using System.IO;
+using System.Globalization;
 using OxyPlot;
 using OxyPlot.Series;
 using OxyPlot.Axes;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.Models;
+using System.Collections.Generic;
 
 namespace BinanceBotWpf.ViewModels
 {
@@ -71,6 +73,9 @@ namespace BinanceBotWpf.ViewModels
 
         // График баланса (OxyPlot)
         private PlotModel _plotModel;
+
+        private decimal _maxAllowedDrawdownPercent = 20m;
+        private bool _riskReduced = false;
         public PlotModel PlotModel
         {
             get => _plotModel;
@@ -84,19 +89,57 @@ namespace BinanceBotWpf.ViewModels
 
         public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
 
+        // Свойства для привязки
         public string SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
         public string WalletBalance { get => _walletBalance; set { _walletBalance = value; OnPropertyChanged (); } }
         public bool IsRunning { get => _isRunning; set { _isRunning = value; OnPropertyChanged (); } }
-        public int FastSma { get => _fastSma; set { _fastSma = value; OnPropertyChanged (); } }
-        public int SlowSma { get => _slowSma; set { _slowSma = value; OnPropertyChanged (); } }
-        public int RsiBuyThreshold { get => _rsiBuyThreshold; set { _rsiBuyThreshold = value; OnPropertyChanged (); } }
-        public int RsiSellThreshold { get => _rsiSellThreshold; set { _rsiSellThreshold = value; OnPropertyChanged (); } }
 
-        public decimal StopLossPercent { get => _stopLossPercent; set { _stopLossPercent = value; OnPropertyChanged (); } }
-        public decimal TakeProfitPercent { get => _takeProfitPercent; set { _takeProfitPercent = value; OnPropertyChanged (); } }
-        public decimal TrailingStopPercent { get => _trailingStopPercent; set { _trailingStopPercent = value; OnPropertyChanged (); } }
-        public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { _minBalanceForTrading = value; OnPropertyChanged (); } }
-        public decimal MaxRiskPercent { get => _maxRiskPercent; set { _maxRiskPercent = value; OnPropertyChanged (); } }
+        public int FastSma
+        {
+            get => _fastSma;
+            set { if (_fastSma != value) { _fastSma = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+        public int SlowSma
+        {
+            get => _slowSma;
+            set { if (_slowSma != value) { _slowSma = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+        public int RsiBuyThreshold
+        {
+            get => _rsiBuyThreshold;
+            set { if (_rsiBuyThreshold != value) { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+        public int RsiSellThreshold
+        {
+            get => _rsiSellThreshold;
+            set { if (_rsiSellThreshold != value) { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+
+        public decimal StopLossPercent
+        {
+            get => _stopLossPercent;
+            set { if (_stopLossPercent != value) { _stopLossPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+        public decimal TakeProfitPercent
+        {
+            get => _takeProfitPercent;
+            set { if (_takeProfitPercent != value) { _takeProfitPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+        public decimal TrailingStopPercent
+        {
+            get => _trailingStopPercent;
+            set { if (_trailingStopPercent != value) { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+        public decimal MinBalanceForTrading
+        {
+            get => _minBalanceForTrading;
+            set { if (_minBalanceForTrading != value) { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } }
+        }
+        public decimal MaxRiskPercent
+        {
+            get => _maxRiskPercent;
+            set { if (_maxRiskPercent != value) { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        }
 
         public ObservableCollection<TradeLog> TradesHistory { get => _tradesHistory; set { _tradesHistory = value; OnPropertyChanged (); } }
         public decimal TotalPnL { get => _totalPnL; set { _totalPnL = value; OnPropertyChanged (); } }
@@ -113,18 +156,85 @@ namespace BinanceBotWpf.ViewModels
         public int CurrentPositionsCount { get => _currentPositionsCount; set { _currentPositionsCount = value; OnPropertyChanged (); } }
         public int MaxPositions { get => _maxPositions; set { _maxPositions = value; OnPropertyChanged (); } }
 
+        // Сохранение настроек
+        private readonly string _settingsPath;
+        private readonly object _settingsLock = new object ();
+        private bool _isLoadingSettings = false;
+
         public MainWindowViewModel(TradingService tradingService)
         {
             _tradingService = tradingService;
+            _settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
+            LoadSettings (); // загружаем сохранённые параметры
+
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
 
-            // Инициализация графика
+            // Инициализация графика OxyPlot
             PlotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
             PlotModel.Axes.Add (new DateTimeAxis { Position = AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             PlotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             PlotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
+        }
+
+        private void LoadSettings()
+        {
+            try
+            {
+                string dir = Path.GetDirectoryName (_settingsPath);
+                if (!Directory.Exists (dir)) Directory.CreateDirectory (dir);
+                if (!File.Exists (_settingsPath)) return;
+
+                string json = File.ReadAllText (_settingsPath);
+                var settings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (json);
+                if (settings == null) return;
+
+                _isLoadingSettings = true;
+                if (settings.TryGetValue ("FastSma", out var fs)) FastSma = Convert.ToInt32 (fs);
+                if (settings.TryGetValue ("SlowSma", out var ss)) SlowSma = Convert.ToInt32 (ss);
+                if (settings.TryGetValue ("RsiBuyThreshold", out var rb)) RsiBuyThreshold = Convert.ToInt32 (rb);
+                if (settings.TryGetValue ("RsiSellThreshold", out var rs)) RsiSellThreshold = Convert.ToInt32 (rs);
+                if (settings.TryGetValue ("StopLossPercent", out var sl)) StopLossPercent = Convert.ToDecimal (sl, CultureInfo.InvariantCulture);
+                if (settings.TryGetValue ("TakeProfitPercent", out var tp)) TakeProfitPercent = Convert.ToDecimal (tp, CultureInfo.InvariantCulture);
+                if (settings.TryGetValue ("TrailingStopPercent", out var tr)) TrailingStopPercent = Convert.ToDecimal (tr, CultureInfo.InvariantCulture);
+                if (settings.TryGetValue ("MinBalanceForTrading", out var mb)) MinBalanceForTrading = Convert.ToDecimal (mb, CultureInfo.InvariantCulture);
+                if (settings.TryGetValue ("MaxRiskPercent", out var mr)) MaxRiskPercent = Convert.ToDecimal (mr, CultureInfo.InvariantCulture);
+                _isLoadingSettings = false;
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"LoadSettings error: {ex.Message}");
+                _isLoadingSettings = false;
+            }
+        }
+
+        private void SaveSettings()
+        {
+            if (_isLoadingSettings) return;
+            lock (_settingsLock)
+            {
+                try
+                {
+                    var settings = new Dictionary<string, object>
+                    {
+                        ["FastSma"] = FastSma,
+                        ["SlowSma"] = SlowSma,
+                        ["RsiBuyThreshold"] = RsiBuyThreshold,
+                        ["RsiSellThreshold"] = RsiSellThreshold,
+                        ["StopLossPercent"] = StopLossPercent,
+                        ["TakeProfitPercent"] = TakeProfitPercent,
+                        ["TrailingStopPercent"] = TrailingStopPercent,
+                        ["MinBalanceForTrading"] = MinBalanceForTrading,
+                        ["MaxRiskPercent"] = MaxRiskPercent
+                    };
+                    string dir = Path.GetDirectoryName (_settingsPath);
+                    if (!Directory.Exists (dir)) Directory.CreateDirectory (dir);
+                    string json = System.Text.Json.JsonSerializer.Serialize (settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                    File.WriteAllText (_settingsPath, json);
+                }
+                catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"SaveSettings error: {ex.Message}"); }
+            }
         }
 
         private async Task Start()
@@ -245,7 +355,7 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        public void UpdatePositionsStatus(int current, int max, System.Collections.Generic.List<string> symbols)
+        public void UpdatePositionsStatus(int current, int max, List<string> symbols)
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
@@ -266,5 +376,23 @@ namespace BinanceBotWpf.ViewModels
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) =>
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
+
+        public void UpdateDynamicRisk(decimal currentDrawdownPercent)
+        {
+            if (currentDrawdownPercent > _maxAllowedDrawdownPercent && !_riskReduced)
+            {
+                var newRisk = MaxRiskPercent / 2;
+                if (newRisk < 0.05m) newRisk = 0.05m;
+                MaxRiskPercent = newRisk;
+                _riskReduced = true;
+                AddLog ($"⚠️ Просадка {currentDrawdownPercent:F1}% > {_maxAllowedDrawdownPercent}% → риск уменьшен до {MaxRiskPercent * 100:F0}%");
+            }
+            else if (currentDrawdownPercent < _maxAllowedDrawdownPercent / 2 && _riskReduced)
+            {
+                MaxRiskPercent = 0.25m;
+                _riskReduced = false;
+                AddLog ($"✅ Просадка снизилась до {currentDrawdownPercent:F1}% → риск восстановлен до {MaxRiskPercent * 100:F0}%");
+            }
+        }
     }
 }

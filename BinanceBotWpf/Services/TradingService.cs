@@ -6,11 +6,14 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Diagnostics;
 using System.Collections.Concurrent;
+using System.Text;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
 using System.IO.Compression;
+using System.Globalization;
+using CsvHelper;
 
 namespace BinanceBotWpf.Services
 {
@@ -56,7 +59,6 @@ namespace BinanceBotWpf.Services
 
         private Dictionary<string, OpenPosition> _positions = new ();
         private List<string> _activePairs = new ();
-        private DateTime _lastPairsUpdate = DateTime.MinValue;
         private DateTime _lastBalanceLog = DateTime.MinValue;
         private decimal _lastLoggedBalance = -1;
         private DateTime _lastReportDate = DateTime.MinValue;
@@ -90,7 +92,6 @@ namespace BinanceBotWpf.Services
             _rebalancer = rebalancer ?? new BalanceRebalancer (new object (), 0.1m);
             _positionsFilePath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "open_positions.json");
             _modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
-
             _telegramBotToken = telegramBotToken;
             _telegramChatId = telegramChatId;
         }
@@ -100,12 +101,11 @@ namespace BinanceBotWpf.Services
             _wallet.OnLogGenerated += logger;
             _earn.OnLogGenerated += logger;
             _rebalancer.OnLogGenerated += logger;
+            _client.OnLogGenerated += logger;
 
-            // Сначала пробуем из переменных окружения
-            var tgToken = Environment.GetEnvironmentVariable ("TELEGRAM_BOT_TOKEN");
-            var tgChatId = Environment.GetEnvironmentVariable ("TELEGRAM_CHAT_ID");
+            string tgToken = _telegramBotToken;
+            string tgChatId = _telegramChatId;
 
-            // Если не нашли – читаем из config.txt
             if (string.IsNullOrEmpty (tgToken) || string.IsNullOrEmpty (tgChatId))
             {
                 string configPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "config.txt");
@@ -142,6 +142,7 @@ namespace BinanceBotWpf.Services
             if (_isRunning) return;
             _ui = vm;
             _isRunning = true;
+
             SetLogger (vm.AddLog);
 
             InitCsv ();
@@ -155,106 +156,26 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (PairsLoop);
             _ = Task.Run (EarnLoop);
             _ = Task.Run (DustLoop);
+            _ = Task.Run (AutoRetrainLoop);
+            _ = Task.Run (async () => { await Task.Delay (TimeSpan.FromMinutes (1)); await BackupDataAsync (); });
             await Task.Run (TradingLoop);
         }
 
-        private void LoadMlModel()
-        {
-            if (!File.Exists (_modelPath))
-            {
-                _ui?.AddLog ("⚠️ ML модель не найдена, фильтрация сделок отключена.");
-                return;
-            }
-            try
-            {
-                _mlContext = new MLContext ();
-                _mlModel = _mlContext.Model.Load (_modelPath, out _);
-                _mlModelLoaded = true;
-                _ui?.AddLog ("✅ ML модель загружена, будет использоваться для фильтрации сделок.");
-            }
-            catch (Exception ex)
-            {
-                _ui?.AddLog ($"❌ Ошибка загрузки ML модели: {ex.Message}");
-            }
-        }
-
-        private bool IsMlPredictionProfitable(decimal fastSma, decimal slowSma, decimal rsi, decimal volume, decimal volatility)
-        {
-            if (!_mlModelLoaded) return true;
-            try
-            {
-                var input = new ModelInput
-                {
-                    FastSma = (float)fastSma,
-                    SlowSma = (float)slowSma,
-                    Rsi = (float)rsi,
-                    Volume = (float)volume,
-                    Volatility = (float)volatility
-                };
-                var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
-                var result = predEngine.Predict (input);
-                return result.IsProfitable && result.Probability > 0.6f;
-            }
-            catch { return true; }
-        }
-
-        private void RotateLogs()
-        {
-            try
-            {
-                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
-                if (!Directory.Exists (logsDir)) return;
-                var cutoff = DateTime.Now.AddDays (-30);
-                foreach (var file in Directory.GetFiles (logsDir))
-                {
-                    var info = new FileInfo (file);
-                    if (info.CreationTime < cutoff || info.LastWriteTime < cutoff)
-                    {
-                        File.Delete (file);
-                        _ui?.AddLog ($"🗑️ Удалён старый лог: {Path.GetFileName (file)}");
-                    }
-                }
-            }
-            catch (Exception ex) { _ui?.AddLog ($"Ошибка ротации логов: {ex.Message}"); }
-        }
-
-        private void ArchiveLogs()
-        {
-            try
-            {
-                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
-                if (!Directory.Exists (logsDir)) return;
-                var files = Directory.GetFiles (logsDir);
-                if (files.Length == 0) return;
-
-                string archiveDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Archives");
-                if (!Directory.Exists (archiveDir)) Directory.CreateDirectory (archiveDir);
-
-                string zipName = $"logs_{DateTime.Now:yyyyMMdd_HHmmss}.zip";
-                string zipPath = Path.Combine (archiveDir, zipName);
-
-                ZipFile.CreateFromDirectory (logsDir, zipPath);
-                foreach (var file in files)
-                    File.Delete (file);
-
-                _ui?.AddLog ($"📦 Логи заархивированы: {zipPath}");
-            }
-            catch (Exception ex)
-            {
-                _ui?.AddLog ($"❌ Ошибка архивации логов: {ex.Message}");
-            }
-        }
-
+        // ==================== ИНИЦИАЛИЗАЦИЯ CSV ====================
         private void InitCsv()
         {
-            string dir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
-            if (!Directory.Exists (dir)) Directory.CreateDirectory (dir);
-            _tradesCsvPath = Path.Combine (dir, $"trades_{DateTime.Now:yyyyMMdd}.csv");
-            if (!File.Exists (_tradesCsvPath))
-                File.WriteAllText (_tradesCsvPath, "DateTime,Symbol,Action,Price,Quantity,PnL,PnLPercent,EntryPrice,ExitPrice,Reason,Duration\n");
-            _featuresCsvPath = Path.Combine (dir, "features.csv");
-            if (!File.Exists (_featuresCsvPath))
-                File.WriteAllText (_featuresCsvPath, "Timestamp,Symbol,Price,FastSma,SlowSma,Rsi,Volume,Volatility\n");
+            try
+            {
+                string dir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                if (!Directory.Exists (dir)) Directory.CreateDirectory (dir);
+                _tradesCsvPath = Path.Combine (dir, $"trades_{DateTime.Now:yyyyMMdd}.csv");
+                if (!File.Exists (_tradesCsvPath))
+                    File.WriteAllText (_tradesCsvPath, "DateTime,Symbol,Action,Price,Quantity,PnL,PnLPercent,EntryPrice,ExitPrice,Reason,Duration\n");
+                _featuresCsvPath = Path.Combine (dir, "features.csv");
+                if (!File.Exists (_featuresCsvPath))
+                    File.WriteAllText (_featuresCsvPath, "Timestamp,Symbol,Price,FastSma,SlowSma,Rsi,Volume,Volatility\n");
+            }
+            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка InitCsv: {ex.Message}"); }
         }
 
         private void LogTradeToCsv(TradeLog trade)
@@ -263,6 +184,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
+                    if (string.IsNullOrEmpty (_tradesCsvPath)) return;
                     string line = $"{trade.CloseTime:yyyy-MM-dd HH:mm:ss},{trade.Symbol},{trade.Action},{trade.ExitPrice:F4},{trade.Quantity:F6},{trade.PnL:F2},{trade.PnLPercent:F2},{trade.EntryPrice:F4},{trade.ExitPrice:F4},{trade.Reason},{trade.Duration}\n";
                     File.AppendAllText (_tradesCsvPath, line);
                 }
@@ -283,6 +205,77 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        // ==================== ЗАГРУЗКА МОДЕЛИ ====================
+        private void LoadMlModel()
+        {
+            if (!File.Exists (_modelPath))
+            {
+                _ui?.AddLog ("⚠️ ML модель не найдена, фильтрация сделок отключена.");
+                return;
+            }
+            try
+            {
+                _mlContext = new MLContext ();
+                _mlModel = _mlContext.Model.Load (_modelPath, out _);
+                _mlModelLoaded = true;
+                _ui?.AddLog ("✅ ML модель загружена");
+            }
+            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка загрузки ML: {ex.Message}"); }
+        }
+
+        private bool IsMlPredictionProfitable(decimal fastSma, decimal slowSma, decimal rsi, decimal volume, decimal volatility)
+        {
+            if (!_mlModelLoaded) return true;
+            try
+            {
+                var input = new ModelInput { FastSma = (float)fastSma, SlowSma = (float)slowSma, Rsi = (float)rsi, Volume = (float)volume, Volatility = (float)volatility };
+                var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
+                var result = predEngine.Predict (input);
+                return result.IsProfitable && result.Probability > 0.6f;
+            }
+            catch { return true; }
+        }
+
+        // ==================== РОТАЦИЯ ЛОГОВ ====================
+        private void RotateLogs()
+        {
+            try
+            {
+                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                if (!Directory.Exists (logsDir)) return;
+                var cutoff = DateTime.Now.AddDays (-30);
+                foreach (var file in Directory.GetFiles (logsDir))
+                {
+                    var info = new FileInfo (file);
+                    if (info.CreationTime < cutoff || info.LastWriteTime < cutoff)
+                        File.Delete (file);
+                }
+            }
+            catch (Exception ex) { _ui?.AddLog ($"Ошибка ротации логов: {ex.Message}"); }
+        }
+
+        private void ArchiveLogs()
+        {
+            try
+            {
+                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                if (!Directory.Exists (logsDir)) return;
+                var files = Directory.GetFiles (logsDir);
+                if (files.Length == 0) return;
+
+                string archiveDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Archives");
+                if (!Directory.Exists (archiveDir)) Directory.CreateDirectory (archiveDir);
+
+                string zipName = $"logs_{DateTime.Now:yyyyMMdd_HHmmss}.zip";
+                string zipPath = Path.Combine (archiveDir, zipName);
+                ZipFile.CreateFromDirectory (logsDir, zipPath);
+                foreach (var file in files) File.Delete (file);
+                _ui?.AddLog ($"📦 Логи заархивированы: {zipPath}");
+            }
+            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка архивации: {ex.Message}"); }
+        }
+
+        // ==================== ВОССТАНОВЛЕНИЕ ПОЗИЦИЙ ====================
         private async Task LoadSavedPositions()
         {
             if (!File.Exists (_positionsFilePath)) return;
@@ -291,8 +284,39 @@ namespace BinanceBotWpf.Services
                 string json = await File.ReadAllTextAsync (_positionsFilePath);
                 var saved = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, OpenPosition>> (json);
                 if (saved == null) return;
+
+                var toRemove = new List<string> ();
                 foreach (var kv in saved)
                 {
+                    string asset = kv.Key.Replace ("USDC", "");
+                    decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
+                    decimal earnBalance = 0;
+                    var earnPositions = await _client.GetFlexibleEarnBalanceAsync ();
+                    var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+                    if (earnPos != null)
+                        earnBalance = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                    decimal totalBalance = spotBalance + earnBalance;
+
+                    decimal required = kv.Value.Quantity;
+                    if (totalBalance < required - 0.000001m)
+                    {
+                        // Корректируем количество, если разница <1%
+                        decimal diff = required - totalBalance;
+                        if (diff / required < 0.01m && diff < 0.001m)
+                        {
+                            decimal stepSize = await _client.GetStepSizeAsync (kv.Key);
+                            decimal adjusted = Math.Floor (totalBalance / stepSize) * stepSize;
+                            if (adjusted > 0)
+                            {
+                                kv.Value.Quantity = adjusted;
+                                _ui?.AddLog ($"🔄 Позиция {kv.Key}: скорректирована с {required} до {adjusted} (доступно {totalBalance})");
+                            }
+                            else toRemove.Add (kv.Key);
+                        }
+                        else toRemove.Add (kv.Key);
+                        if (toRemove.Contains (kv.Key)) continue;
+                    }
+
                     decimal currentPrice = await GetCurrentPrice (kv.Key);
                     if (currentPrice > 0)
                     {
@@ -303,6 +327,8 @@ namespace BinanceBotWpf.Services
                         _ui?.AddLog ($"🔄 Восстановлена позиция {kv.Key} ({kv.Value.Quantity} по {kv.Value.EntryPrice:F4})");
                     }
                 }
+                foreach (var sym in toRemove) saved.Remove (sym);
+                if (toRemove.Count > 0) await SavePositions ();
                 _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
             }
             catch (Exception ex) { _ui?.AddLog ($"Ошибка загрузки позиций: {ex.Message}"); }
@@ -320,6 +346,65 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { Debug.WriteLine ($"Save positions error: {ex.Message}"); }
         }
 
+        // ==================== БЭКАП ДАННЫХ ====================
+        private async Task BackupDataAsync()
+        {
+            try
+            {
+                string backupDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Backups");
+                if (!Directory.Exists (backupDir)) Directory.CreateDirectory (backupDir);
+
+                string dateStamp = DateTime.Now.ToString ("yyyyMMdd_HHmmss");
+                string backupZip = Path.Combine (backupDir, $"backup_{dateStamp}.zip");
+
+                string tempDir = Path.Combine (Path.GetTempPath (), $"BinanceBotBackup_{dateStamp}");
+                Directory.CreateDirectory (tempDir);
+
+                string dataDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data");
+                if (Directory.Exists (dataDir)) CopyDirectory (dataDir, Path.Combine (tempDir, "Data"));
+
+                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                if (Directory.Exists (logsDir)) CopyDirectory (logsDir, Path.Combine (tempDir, "Logs"));
+
+                string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
+                if (File.Exists (modelPath)) File.Copy (modelPath, Path.Combine (tempDir, "trading_model.zip"));
+
+                string settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
+                if (File.Exists (settingsPath)) File.Copy (settingsPath, Path.Combine (tempDir, "strategy_settings.json"));
+
+                ZipFile.CreateFromDirectory (tempDir, backupZip);
+                Directory.Delete (tempDir, true);
+
+                // удаляем бэкапы старше 7 дней
+                foreach (var file in Directory.GetFiles (backupDir, "backup_*.zip"))
+                {
+                    if (File.GetCreationTime (file) < DateTime.Now.AddDays (-7))
+                        File.Delete (file);
+                }
+                _ui?.AddLog ($"💾 Создан бэкап: {Path.GetFileName (backupZip)}");
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка бэкапа: {ex.Message}");
+            }
+        }
+
+        private void CopyDirectory(string sourceDir, string destDir)
+        {
+            Directory.CreateDirectory (destDir);
+            foreach (var file in Directory.GetFiles (sourceDir))
+            {
+                string destFile = Path.Combine (destDir, Path.GetFileName (file));
+                File.Copy (file, destFile, true);
+            }
+            foreach (var subDir in Directory.GetDirectories (sourceDir))
+            {
+                string destSubDir = Path.Combine (destDir, Path.GetFileName (subDir));
+                CopyDirectory (subDir, destSubDir);
+            }
+        }
+
+        // ==================== ФОНОВЫЕ ЦИКЛЫ ====================
         private async Task BalanceLoop()
         {
             while (_isRunning)
@@ -330,7 +415,7 @@ namespace BinanceBotWpf.Services
                 decimal bal = _wallet.GetTotalBalance ("USDC");
                 if (Math.Abs (bal - _lastLoggedBalance) > 5 || DateTime.UtcNow.Minute == 0)
                 {
-                    _ui?.AddLog ($"💰 Баланс USDC: {bal:F2}");
+                    _ui?.AddLog ($"💰 Баланс USDC: {bal:F2} (спот + Earn)");
                     _lastLoggedBalance = bal;
                 }
                 _ui?.UpdateWalletDisplay (bal.ToString ("F2"));
@@ -346,6 +431,10 @@ namespace BinanceBotWpf.Services
                     RotateLogs ();
                     ArchiveLogs ();
                 }
+
+                // бэкап в 3 часа ночи
+                if (DateTime.UtcNow.Hour == 3 && DateTime.UtcNow.Minute < 2)
+                    await BackupDataAsync ();
             }
         }
 
@@ -371,7 +460,6 @@ namespace BinanceBotWpf.Services
             try
             {
                 var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 20);
-                // Фильтруем странные пары
                 newPairs = newPairs.Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("LD")).ToList ();
                 if (newPairs.Count > 0)
                 {
@@ -380,8 +468,7 @@ namespace BinanceBotWpf.Services
                     lock (_klinesCache)
                     {
                         var toRemove = _klinesCache.Keys.Except (_activePairs).ToList ();
-                        foreach (var key in toRemove)
-                            _klinesCache.Remove (key);
+                        foreach (var key in toRemove) _klinesCache.Remove (key);
                     }
                 }
             }
@@ -396,10 +483,7 @@ namespace BinanceBotWpf.Services
                     return cached.Klines;
             }
             var klines = await _client.GetKlinesAsync (symbol, interval, limit);
-            lock (_klinesCache)
-            {
-                _klinesCache[symbol] = (klines, DateTime.UtcNow + _cacheDuration);
-            }
+            lock (_klinesCache) { _klinesCache[symbol] = (klines, DateTime.UtcNow + _cacheDuration); }
             return klines;
         }
 
@@ -483,6 +567,7 @@ namespace BinanceBotWpf.Services
             return (decimal)Math.Sqrt ((double)( sumSq / period ));
         }
 
+        // ==================== ОСНОВНОЙ ТОРГОВЫЙ ЦИКЛ ====================
         private async Task TradingLoop()
         {
             while (_isRunning)
@@ -520,11 +605,8 @@ namespace BinanceBotWpf.Services
                             decimal volume = klines.Last ().Volume;
                             _ui.UpdateMarketTable (sym, price.ToString ("F4"), 0, 0);
                             signalResults.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume));
-
-                            // Отладочный лог
-                            _ui?.AddLog ($"🔍 Анализ {sym}: сигнал={signal.Action}, RSI={rsi:F1}, цена={price:F4}");
                         }
-                        catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка при анализе {sym}: {ex.Message}"); }
+                        catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка анализа {sym}: {ex.Message}"); }
                     }).ToArray ();
                     await Task.WhenAll (tasks);
 
@@ -533,21 +615,11 @@ namespace BinanceBotWpf.Services
                         if (!_isRunning) break;
                         bool hasPos = _positions.ContainsKey (res.Symbol);
 
-                        // BUY сигнал (RSI фильтр временно отключён)
-                        if (res.Action == TradeAction.Buy && !hasPos && _positions.Count < _maxConcurrentPositions) // && res.Rsi < _ui.RsiBuyThreshold)
+                        if (res.Action == TradeAction.Buy && !hasPos && _positions.Count < _maxConcurrentPositions)
                         {
-                            _ui?.AddLog ($"🔔 ПОПЫТКА ПОКУПКИ {res.Symbol}: hasPos={hasPos}, positionsCount={_positions.Count}, maxPos={_maxConcurrentPositions}");
-
-                            decimal spend = Math.Max (10m, balance * riskPercent);
+                            decimal spend = Math.Max (15m, balance * riskPercent);
                             if (spend > balance) spend = balance;
-
-                            _ui?.AddLog ($"🔍 Проверка BUY для {res.Symbol}: spend={spend:F2}, balance={balance:F2}, riskPercent={riskPercent:P1}");
-
-                            if (spend < 10)
-                            {
-                                _ui?.AddLog ($"⏸️ Сумма spend={spend:F2} меньше 10 USDC – покупка отклонена");
-                                continue;
-                            }
+                            if (spend < 10) continue;
 
                             var features = new Dictionary<string, decimal>
                             {
@@ -559,37 +631,22 @@ namespace BinanceBotWpf.Services
                             };
                             LogFeaturesToCsv (res.Symbol, res.Price, features);
 
-                            // ML проверка
-                            bool mlResult = IsMlPredictionProfitable (res.FastSma, res.SlowSma, res.Rsi, res.Volume, res.Volatility);
-                            _ui?.AddLog ($"🔍 ML проверка для {res.Symbol}: {mlResult}");
-                            if (!mlResult)
+                            if (!IsMlPredictionProfitable (res.FastSma, res.SlowSma, res.Rsi, res.Volume, res.Volatility))
                             {
-                                _ui?.AddLog ($"⏸️ ML модель предсказала убыток для {res.Symbol} – покупка отклонена");
+                                _ui?.AddLog ($"⏸️ ML модель отклонила покупку {res.Symbol}");
                                 continue;
                             }
 
-                            // Проверка баланса USDC
-                            _ui?.AddLog ($"🔍 Проверка Earn/USDC баланса для {res.Symbol}, нужно {spend:F2} USDC");
                             bool usdcReady = await _earn.EnsureLiquidBalanceAsync ("USDC", spend, _client);
-                            _ui?.AddLog ($"🔍 Результат проверки USDC: {usdcReady}");
-                            if (!usdcReady)
-                            {
-                                _ui?.AddLog ($"⏸️ Недостаточно USDC для покупки {res.Symbol}");
-                                continue;
-                            }
+                            if (!usdcReady) continue;
 
-                            decimal qty = Math.Round (spend / res.Price, 6);
-                            _ui?.AddLog ($"🔍 Расчёт qty={qty}, spend={spend:F2}, price={res.Price:F4}");
+                            decimal rawQty = spend / res.Price;
+                            decimal stepSize = await _client.GetStepSizeAsync (res.Symbol);
+                            decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
+                            qty = Math.Round (qty, 8);
+                            if (qty <= 0) continue;
 
-                            if (qty <= 0)
-                            {
-                                _ui?.AddLog ($"⏸️ qty={qty} <= 0 – покупка отклонена");
-                                continue;
-                            }
-
-                            _ui?.AddLog ($"🚀 Отправка ордера BUY {res.Symbol}: {qty} по {res.Price:F4}");
                             var order = await _client.PlaceOrder (res.Symbol, "BUY", "MARKET", qty);
-
                             if (order != null)
                             {
                                 var pos = new OpenPosition
@@ -623,11 +680,10 @@ namespace BinanceBotWpf.Services
                             }
                             else
                             {
-                                _ui?.AddLog ($"❌ Ошибка при отправке ордера BUY {res.Symbol}");
+                                _ui?.AddLog ($"❌ Ошибка ордера BUY {res.Symbol}");
                             }
                         }
-                        // SELL сигнал (RSI фильтр временно отключён)
-                        else if (res.Action == TradeAction.Sell && hasPos) // && res.Rsi > _ui.RsiSellThreshold)
+                        else if (res.Action == TradeAction.Sell && hasPos)
                         {
                             await ClosePosition (res.Symbol, res.Price, "SMA Sell");
                         }
@@ -636,7 +692,7 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    _ui?.AddLog ($"❌ Ошибка: {ex.Message}");
+                    _ui?.AddLog ($"❌ Ошибка TradingLoop: {ex.Message}");
                     _ = _telegram?.SendErrorNotification (ex.Message);
                     await Task.Delay (10000);
                 }
@@ -665,39 +721,126 @@ namespace BinanceBotWpf.Services
                 await ClosePosition (sym, await GetCurrentPrice (sym), "Protection");
         }
 
+        // ==================== ЗАКРЫТИЕ ПОЗИЦИИ ====================
         private async Task ClosePosition(string sym, decimal price, string reason)
         {
             if (!_positions.ContainsKey (sym)) return;
             var pos = _positions[sym];
             string asset = sym.Replace ("USDC", "");
-            await _earn.EnsureLiquidBalanceAsync (asset, pos.Quantity, _client);
-            var order = await _client.PlaceOrder (sym, "SELL", "MARKET", pos.Quantity);
-            if (order != null)
+
+            decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
+            decimal earnBalance = 0;
+            var earnPositions = await _client.GetFlexibleEarnBalanceAsync ();
+            var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+            if (earnPos != null)
+                earnBalance = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+            decimal totalBalance = spotBalance + earnBalance;
+
+            decimal qtyToSell = pos.Quantity;
+            decimal stepSize = await _client.GetStepSizeAsync (sym);
+
+            if (totalBalance < qtyToSell - 0.000001m)
             {
+                decimal diff = qtyToSell - totalBalance;
+                if (diff / qtyToSell < 0.02m)
+                {
+                    qtyToSell = Math.Floor (totalBalance / stepSize) * stepSize;
+                    if (qtyToSell <= 0)
+                    {
+                        _ui?.AddLog ($"⚠️ Недостаточно {asset} для закрытия {sym}. Удаляю позицию.");
+                        _positions.Remove (sym);
+                        await SavePositions ();
+                        _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
+                        return;
+                    }
+                    _ui?.AddLog ($"⚠️ Корректировка продажи {sym}: доступно {totalBalance}, продаю {qtyToSell} вместо {pos.Quantity}");
+                }
+                else
+                {
+                    _ui?.AddLog ($"⚠️ Недостаточно {asset} для закрытия {sym}. Удаляю позицию.");
+                    _positions.Remove (sym);
+                    await SavePositions ();
+                    _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
+                    return;
+                }
+            }
+
+            if (spotBalance < qtyToSell - 0.000001m)
+            {
+                decimal need = qtyToSell - spotBalance;
+                bool redeemed = await _earn.EnsureLiquidBalanceAsync (asset, need, _client);
+                if (!redeemed)
+                {
+                    if (spotBalance > 0)
+                    {
+                        qtyToSell = Math.Floor (spotBalance / stepSize) * stepSize;
+                        if (qtyToSell <= 0)
+                        {
+                            _ui?.AddLog ($"⚠️ Не удалось выкупить {need} {asset} и нет спота. Удаляю.");
+                            _positions.Remove (sym);
+                            await SavePositions ();
+                            _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
+                            return;
+                        }
+                        _ui?.AddLog ($"⚠️ Выкуп {need} не удался, продаю только {qtyToSell} из спота");
+                    }
+                    else
+                    {
+                        _ui?.AddLog ($"⚠️ Не удалось выкупить {need} {asset}. Удаляю.");
+                        _positions.Remove (sym);
+                        await SavePositions ();
+                        _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
+                        return;
+                    }
+                }
+                else
+                    spotBalance = await _client.GetAccountBalanceAsync (asset);
+            }
+
+            if (qtyToSell > 0)
+            {
+                var order = await _client.PlaceOrder (sym, "SELL", "MARKET", qtyToSell);
+                if (order != null)
+                {
+                    _positions.Remove (sym);
+                    await SavePositions ();
+                    decimal pnl = ( price - pos.EntryPrice ) * qtyToSell;
+                    decimal pnlPct = ( price / pos.EntryPrice - 1 ) * 100;
+                    _ui?.AddLog ($"🔒 ЗАКРЫТА: {sym} по {price:F4} | PnL: {pnl:F2} ({pnlPct:F2}%) | {reason} (продано {qtyToSell})");
+                    var trade = new TradeLog
+                    {
+                        Symbol = sym,
+                        EntryPrice = pos.EntryPrice,
+                        ExitPrice = price,
+                        Quantity = qtyToSell,
+                        PnL = pnl,
+                        PnLPercent = pnlPct,
+                        OpenTime = pos.OpenTime,
+                        CloseTime = DateTime.UtcNow,
+                        Reason = reason,
+                        Duration = DateTime.UtcNow - pos.OpenTime,
+                        Action = "SELL_CLOSE"
+                    };
+                    _ui.AddTradeToHistory (trade);
+                    LogTradeToCsv (trade);
+                    _ = _telegram?.SendTradeNotification (sym, "SELL", price, qtyToSell, pnl, reason);
+                    decimal newBal = _wallet.GetTotalBalance ("USDC");
+                    _ui?.UpdateWalletDisplay (newBal.ToString ("F2"));
+                    _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
+                }
+                else
+                {
+                    _ui?.AddLog ($"❌ Не удалось продать {sym}. Удаляю.");
+                    _positions.Remove (sym);
+                    await SavePositions ();
+                    _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
+                }
+            }
+            else
+            {
+                _ui?.AddLog ($"⚠️ Невозможно продать {sym}: qty=0. Удаляю.");
                 _positions.Remove (sym);
                 await SavePositions ();
-                decimal pnl = ( price - pos.EntryPrice ) * pos.Quantity;
-                decimal pnlPct = ( price / pos.EntryPrice - 1 ) * 100;
-                _ui?.AddLog ($"🔒 ЗАКРЫТА: {sym} по {price:F4} | PnL: {pnl:F2} ({pnlPct:F2}%) | {reason}");
-                var trade = new TradeLog
-                {
-                    Symbol = sym,
-                    EntryPrice = pos.EntryPrice,
-                    ExitPrice = price,
-                    Quantity = pos.Quantity,
-                    PnL = pnl,
-                    PnLPercent = pnlPct,
-                    OpenTime = pos.OpenTime,
-                    CloseTime = DateTime.UtcNow,
-                    Reason = reason,
-                    Duration = DateTime.UtcNow - pos.OpenTime,
-                    Action = "SELL_CLOSE"
-                };
-                _ui.AddTradeToHistory (trade);
-                LogTradeToCsv (trade);
-                _ = _telegram?.SendTradeNotification (sym, "SELL", price, pos.Quantity, pnl, reason);
-                decimal newBal = _wallet.GetTotalBalance ("USDC");
-                _ui?.UpdateWalletDisplay (newBal.ToString ("F2"));
                 _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
             }
         }
@@ -710,46 +853,213 @@ namespace BinanceBotWpf.Services
 
         public void StopTrading() => _isRunning = false;
 
+        // ==================== АВТОМАТИЧЕСКОЕ ПЕРЕОБУЧЕНИЕ ====================
+        private async Task AutoRetrainLoop()
+        {
+            while (_isRunning)
+            {
+                await Task.Delay (TimeSpan.FromHours (24));
+                if (!_isRunning) break;
+                await RetrainModelAsync ();
+            }
+        }
+
+        private async Task RetrainModelAsync()
+        {
+            try
+            {
+                _ui?.AddLog ("🤖 Запуск переобучения ML модели...");
+                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                if (!Directory.Exists (logsDir))
+                {
+                    _ui?.AddLog ("❌ Папка Logs не найдена.");
+                    return;
+                }
+
+                var trades = new List<(DateTime CloseTime, string Symbol, bool IsProfitable)> ();
+                var tradeFiles = Directory.GetFiles (logsDir, "trades_*.csv");
+                foreach (var file in tradeFiles)
+                {
+                    using var reader = new StreamReader (file);
+                    using var csv = new CsvReader (reader, CultureInfo.InvariantCulture);
+                    var records = csv.GetRecords<dynamic> ();
+                    foreach (var r in records)
+                    {
+                        string action = r.Action;
+                        if (action != "SELL_CLOSE") continue;
+                        DateTime dt = DateTime.Parse (r.CloseTime);
+                        string symbol = r.Symbol;
+                        decimal pnl = decimal.Parse (r.PnL, CultureInfo.InvariantCulture);
+                        trades.Add ((dt, symbol, pnl > 0));
+                    }
+                }
+
+                string featuresPath = Path.Combine (logsDir, "features.csv");
+                if (!File.Exists (featuresPath))
+                {
+                    _ui?.AddLog ("❌ Файл features.csv не найден.");
+                    return;
+                }
+
+                var features = new List<(DateTime Timestamp, string Symbol, decimal FastSma, decimal SlowSma, decimal Rsi, decimal Volume, decimal Volatility)> ();
+                using (var reader = new StreamReader (featuresPath))
+                using (var csv = new CsvReader (reader, CultureInfo.InvariantCulture))
+                {
+                    var records = csv.GetRecords<dynamic> ();
+                    foreach (var r in records)
+                    {
+                        DateTime ts = DateTime.Parse (r.Timestamp);
+                        string symbol = r.Symbol;
+                        decimal fast = decimal.Parse (r.FastSma, CultureInfo.InvariantCulture);
+                        decimal slow = decimal.Parse (r.SlowSma, CultureInfo.InvariantCulture);
+                        decimal rsi = decimal.Parse (r.Rsi, CultureInfo.InvariantCulture);
+                        decimal vol = decimal.Parse (r.Volume, CultureInfo.InvariantCulture);
+                        decimal volt = decimal.Parse (r.Volatility, CultureInfo.InvariantCulture);
+                        features.Add ((ts, symbol, fast, slow, rsi, vol, volt));
+                    }
+                }
+
+                if (trades.Count < 30)
+                {
+                    _ui?.AddLog ($"⚠️ Недостаточно сделок: {trades.Count} (нужно 30)");
+                    return;
+                }
+
+                var merged = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal Volume, decimal Volatility, bool IsProfitable)> ();
+                foreach (var t in trades)
+                {
+                    var closest = features
+                        .Where (f => f.Symbol == t.Symbol && f.Timestamp <= t.CloseTime)
+                        .OrderByDescending (f => f.Timestamp)
+                        .FirstOrDefault ();
+                    if (closest.Timestamp != DateTime.MinValue)
+                    {
+                        merged.Add ((closest.FastSma, closest.SlowSma, closest.Rsi, closest.Volume, closest.Volatility, t.IsProfitable));
+                    }
+                }
+
+                if (merged.Count < 20)
+                {
+                    _ui?.AddLog ($"⚠️ Недостаточно объединённых записей: {merged.Count} (нужно 20)");
+                    return;
+                }
+
+                var mlContext = new MLContext (seed: 42);
+                var dataWithLabel = merged.Select ((m, idx) => new
+                {
+                    FastSma = (float)m.FastSma,
+                    SlowSma = (float)m.SlowSma,
+                    Rsi = (float)m.Rsi,
+                    Volume = (float)m.Volume,
+                    Volatility = (float)m.Volatility,
+                    Label = m.IsProfitable
+                }).ToList ();
+
+                var dataView = mlContext.Data.LoadFromEnumerable (dataWithLabel);
+                var split = mlContext.Data.TrainTestSplit (dataView, testFraction: 0.2);
+                var trainData = split.TrainSet;
+                var testData = split.TestSet;
+
+                var pipeline = mlContext.Transforms.Concatenate ("Features",
+                        nameof (ModelInput.FastSma),
+                        nameof (ModelInput.SlowSma),
+                        nameof (ModelInput.Rsi),
+                        nameof (ModelInput.Volume),
+                        nameof (ModelInput.Volatility))
+                    .Append (mlContext.BinaryClassification.Trainers.FastTree (
+                        numberOfTrees: 100,
+                        numberOfLeaves: 20,
+                        minimumExampleCountPerLeaf: 5));
+
+                _ui?.AddLog ($"🔄 Обучение на {merged.Count} примерах...");
+                var model = pipeline.Fit (trainData);
+
+                var predictions = model.Transform (testData);
+                var metrics = mlContext.BinaryClassification.Evaluate (predictions);
+                _ui?.AddLog ($"📊 Точность: {metrics.Accuracy:P2}, AUC: {metrics.AreaUnderRocCurve:P2}, F1: {metrics.F1Score:P2}");
+
+                string tempModelPath = _modelPath + ".tmp";
+                mlContext.Model.Save (model, trainData.Schema, tempModelPath);
+                if (File.Exists (_modelPath)) File.Delete (_modelPath);
+                File.Move (tempModelPath, _modelPath);
+
+                _mlModel = mlContext.Model.Load (_modelPath, out _);
+                _mlModelLoaded = true;
+                _ui?.AddLog ("✅ ML модель переобучена и загружена!");
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка переобучения: {ex.Message}");
+            }
+        }
+
+        // ==================== СТАТИСТИКА ДЛЯ TELEGRAM ====================
+        private string GetStatisticsText()
+        {
+            var stats = new StringBuilder ();
+            stats.AppendLine ("📊 <b>СТАТИСТИКА БОТА</b>");
+            stats.AppendLine ($"🟢 Статус: {( _isRunning ? "Активен" : "Остановлен" )}");
+            stats.AppendLine ($"💰 Баланс USDC: {_wallet.GetTotalBalance ("USDC"):F2}");
+            stats.AppendLine ($"📈 Общий PnL: {( _ui?.TotalPnL ?? 0 ):F2} USDC");
+            stats.AppendLine ($"🎯 Win Rate: {( _ui?.WinRate ?? 0 ):F1}%");
+            stats.AppendLine ($"📊 Сделок: {( _ui?.TotalTrades ?? 0 )} (✅{_ui?.WinningTrades ?? 0}/❌{_ui?.LosingTrades ?? 0})");
+            stats.AppendLine ($"📉 Макс. просадка: {( _ui?.MaxDrawdownDisplay ?? "0%" )}");
+            stats.AppendLine ($"🤖 ML модель: {( _mlModelLoaded ? "активна" : "не загружена" )}");
+            stats.AppendLine ($"📂 Последний бэкап: {GetLastBackupDate ()}");
+            stats.AppendLine ($"📊 Открытых позиций: {_positions.Count}/{_maxConcurrentPositions}");
+            return stats.ToString ();
+        }
+
+        private string GetLastBackupDate()
+        {
+            string backupDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Backups");
+            if (!Directory.Exists (backupDir)) return "нет";
+            var lastBackup = Directory.GetFiles (backupDir, "backup_*.zip")
+                .OrderByDescending (f => File.GetCreationTime (f))
+                .FirstOrDefault ();
+            return lastBackup == null ? "нет" : File.GetCreationTime (lastBackup).ToString ("dd.MM.yyyy HH:mm");
+        }
+
+        // ==================== ОБРАБОТКА ТЕЛЕГРАМ-КОМАНД ====================
         private async Task HandleTelegramCommand(string command, string chatId)
         {
             var parts = command.Trim ().Split (' ');
             var cmd = parts[0].ToLower ();
-
             switch (cmd)
             {
                 case "/status":
                     await _telegram.SendMessageAsync (GetStatusText (), chatId);
                     break;
                 case "/stop":
-                    if (_isRunning)
-                    {
-                        StopTrading ();
-                        await _telegram.SendMessageAsync ("⏹️ Торговля остановлена.", chatId);
-                    }
-                    else
-                        await _telegram.SendMessageAsync ("Бот уже остановлен.", chatId);
+                    if (_isRunning) { StopTrading (); await _telegram.SendMessageAsync ("⏹️ Торговля остановлена.", chatId); }
+                    else await _telegram.SendMessageAsync ("Бот уже остановлен.", chatId);
                     break;
                 case "/start":
                     if (!_isRunning && _ui != null)
                     {
-                        await _telegram.SendMessageAsync ("🔄 Перезапуск бота...", chatId);
+                        await _telegram.SendMessageAsync ("🔄 Перезапуск...", chatId);
                         _isRunning = true;
                         _ = Task.Run (TradingLoop);
                         await _telegram.SendMessageAsync ("✅ Бот запущен.", chatId);
                     }
-                    else
-                        await _telegram.SendMessageAsync ("Бот уже запущен.", chatId);
+                    else await _telegram.SendMessageAsync ("Бот уже запущен.", chatId);
                     break;
                 case "/export":
                     _ui?.ExportData ();
                     await _telegram.SendMessageAsync ("📁 Данные экспортированы в папку Export.", chatId);
                     break;
+                case "/retrain":
+                    await _telegram.SendMessageAsync ("🔄 Запускаю переобучение ML модели...", chatId);
+                    _ = Task.Run (RetrainModelAsync);
+                    break;
+                case "/stats":
+                    await _telegram.SendMessageAsync (GetStatisticsText (), chatId);
+                    break;
                 case "/help":
-                    string help = "Доступные команды:\n/status – состояние бота\n/stop – остановить торговлю\n/start – запустить торговлю\n/export – экспорт логов и признаков\n/help – эта справка";
-                    await _telegram.SendMessageAsync (help, chatId);
+                    await _telegram.SendMessageAsync ("Доступны: /status, /stop, /start, /export, /retrain, /stats, /help", chatId);
                     break;
                 default:
-                    await _telegram.SendMessageAsync ("Неизвестная команда. /help для списка.", chatId);
+                    await _telegram.SendMessageAsync ("Неизвестная команда. /help", chatId);
                     break;
             }
         }
@@ -759,7 +1069,7 @@ namespace BinanceBotWpf.Services
             string status = _isRunning ? "🟢 Активен" : "🔴 Остановлен";
             decimal balance = _wallet.GetTotalBalance ("USDC");
             int positions = _positions.Count;
-            return $"🤖 <b>Статус бота:</b> {status}\n💰 Баланс USDC: {balance:F2}\n📊 Открытых позиций: {positions}";
+            return $"🤖 Статус: {status}\n💰 USDC: {balance:F2}\n📊 Открыто позиций: {positions}";
         }
     }
 }
