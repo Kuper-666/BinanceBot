@@ -28,21 +28,21 @@ namespace BinanceBotWpf
             }
 
             // === 2. Проверка обновлений (тихо, без UI) ===
-            try
-            {
-                var tempLogger = new Action<string> (msg => System.Diagnostics.Debug.WriteLine (msg));
-                var updater = new UpdateManager (tempLogger);
-                bool updated = await updater.CheckAndUpdateAsync (silent: true);
-                if (updated)
-                {
-                    // Если обновление найдено и установлено, текущий процесс будет закрыт скриптом
-                    return;
-                }
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine ($"Ошибка при проверке обновлений: {ex.Message}");
-            }
+            //try
+            //{
+            //    var tempLogger = new Action<string> (msg => System.Diagnostics.Debug.WriteLine (msg));
+            //    var updater = new UpdateManager (tempLogger);
+            //    bool updated = await updater.CheckAndUpdateAsync (silent: true);
+            //    if (updated)
+            //    {
+            //        // Если обновление найдено и установлено, текущий процесс будет закрыт скриптом
+            //        return;
+            //    }
+            //}
+            //catch (Exception ex)
+            //{
+            //    System.Diagnostics.Debug.WriteLine ($"Ошибка при проверке обновлений: {ex.Message}");
+            //}
 
             // === 3. Основная инициализация бота (ваш существующий код) ===
             base.OnStartup (e);
