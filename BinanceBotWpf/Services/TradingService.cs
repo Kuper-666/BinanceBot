@@ -363,31 +363,109 @@ namespace BinanceBotWpf.Services
                 try
                 {
                     await CheckProtections ();
+
+                    // 1. Актуализируем баланс USDC (спот + Earn)
                     decimal balance = _wallet.GetTotalBalance ("USDC");
+                    _ui?.UpdateWalletDisplay (balance.ToString ("F2"));
+
+                    // 2. Проверяем минимальный баланс для торговли
                     if (balance < _ui.MinBalanceForTrading)
                     {
                         await _balanceManager.AutoRebalanceAsync ();
                         await _wallet.UpdateBalance ();
                         balance = _wallet.GetTotalBalance ("USDC");
-                        if (balance < _ui.MinBalanceForTrading) { await Task.Delay (30000); continue; }
+                        if (balance < _ui.MinBalanceForTrading)
+                        {
+                            await Task.Delay (30000);
+                            continue;
+                        }
                     }
+
+                    // 3. Получаем список пар
                     List<string> pairs;
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
-                    if (pairs.Count == 0) { await Task.Delay (5000); continue; }
+                    if (pairs.Count == 0)
+                    {
+                        await Task.Delay (5000);
+                        continue;
+                    }
 
+                    // 4. Анализируем сигналы
                     var signals = await AnalyzePairsAsync (pairs);
+
+                    // 5. Обрабатываем сигналы по очереди, обновляя баланс после каждой удачной покупки
                     foreach (var sig in signals)
                     {
                         bool hasPos = _positionManager.TryGet (sig.Symbol, out _);
                         if (sig.Action == TradeAction.Buy && !hasPos && _positionManager.Count < 3)
                         {
-                            await ExecuteBuy (sig, balance);
+                            // Перед покупкой ещё раз проверим баланс (он мог измениться из-за предыдущих покупок)
+                            if (balance < 10) break; // не хватает даже на минимальную сделку
+
+                            decimal spend = Math.Max (15m, balance * _ui.MaxRiskPercent);
+                            if (spend > balance) spend = balance;
+                            if (spend < 10) continue;
+
+                            // Убедимся, что USDC есть на споте (выкупим из Earn при необходимости)
+                            decimal availableSpot = await _client.GetAccountBalanceAsync ("USDC");
+                            if (availableSpot < spend)
+                            {
+                                bool redeemed = await _earn.EnsureLiquidBalanceAsync ("USDC", spend, _client);
+                                if (!redeemed)
+                                {
+                                    _ui?.AddLog ($"⚠️ Недостаточно USDC для покупки {sig.Symbol}");
+                                    continue;
+                                }
+                                availableSpot = await _client.GetAccountBalanceAsync ("USDC");
+                                if (availableSpot < spend) continue;
+                            }
+
+                            // Проверка ML
+                            if (!_mlManager.IsProfitable (sig.FastSma, sig.SlowSma, sig.Rsi, sig.Volume, sig.Volatility))
+                            {
+                                _ui?.AddLog ($"⏸️ ML отклонила покупку {sig.Symbol}");
+                                continue;
+                            }
+
+                            decimal rawQty = spend / sig.Price;
+                            decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
+                            decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
+                            qty = Math.Round (qty, 8);
+                            if (qty <= 0) continue;
+
+                            var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
+                            if (order != null)
+                            {
+                                var pos = new OpenPosition
+                                {
+                                    Symbol = sig.Symbol,
+                                    Quantity = qty,
+                                    EntryPrice = sig.Price,
+                                    OpenTime = DateTime.UtcNow,
+                                    StopLossPrice = sig.Price * ( 1 - _ui.StopLossPercent ),
+                                    TakeProfitPrice = sig.Price * ( 1 + _ui.TakeProfitPercent ),
+                                    HighestPrice = sig.Price
+                                };
+                                _positionManager.AddOrUpdate (sig.Symbol, pos);
+                                // Уменьшаем локальный баланс на сумму spend
+                                balance -= spend;
+                                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price:F4} | SL: {pos.StopLossPrice:F4} | TP: {pos.TakeProfitPrice:F4} | RSI={sig.Rsi:F1}");
+                                _ui?.UpdateWalletDisplay (balance.ToString ("F2"));
+                                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                                _dataLogger.LogTrade (new TradeLog { Symbol = sig.Symbol, EntryPrice = sig.Price, ExitPrice = sig.Price, Quantity = qty, Action = "BUY_OPEN", CloseTime = DateTime.UtcNow, Reason = "SMA Buy" });
+                            }
+                            else
+                            {
+                                _ui?.AddLog ($"❌ Ошибка ордера BUY {sig.Symbol}");
+                            }
                         }
                         else if (sig.Action == TradeAction.Sell && hasPos)
                         {
                             await ExecuteSell (sig);
+                            // После продажи баланс увеличится, но мы его обновим на следующей итерации цикла
                         }
                     }
+
                     await Task.Delay (10000);
                 }
                 catch (Exception ex)
