@@ -4,8 +4,7 @@ using System.Threading.Tasks;
 using Telegram.Bot;
 using Telegram.Bot.Types;
 using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Requests;
-using Telegram.Bot.Exceptions;
+using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BinanceBotWpf.Services
 {
@@ -24,6 +23,45 @@ namespace BinanceBotWpf.Services
             _enabled = !string.IsNullOrEmpty (botToken) && !string.IsNullOrEmpty (chatId);
         }
 
+        /// <summary>
+        /// Клавиатура с кнопками (reply keyboard)
+        /// </summary>
+        public ReplyKeyboardMarkup GetMainKeyboard()
+        {
+            return new ReplyKeyboardMarkup (new[]
+            {
+                new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
+                new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
+                new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
+                new KeyboardButton[] { "📈 График PnL", "❓ Помощь" }
+            })
+            {
+                ResizeKeyboard = true,
+                OneTimeKeyboard = false
+            };
+        }
+
+        /// <summary>
+        /// Отправить приветственное сообщение с клавиатурой
+        /// </summary>
+        public async Task SendWelcomeMessageAsync(string chatId)
+        {
+            if (!_enabled) return;
+            var message = "🤖 *Binance Trading Bot*\n\n" +
+                          "Я автоматический торговый бот на базе SMA и ML.\n" +
+                          "Выберите действие (кнопки внизу) или введите команду:";
+            try
+            {
+                await _botClient.SendMessage (
+                    chatId: chatId,
+                    text: message,
+                    parseMode: ParseMode.Markdown,
+                    replyMarkup: GetMainKeyboard ()
+                );
+            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"SendWelcomeMessage error: {ex.Message}"); }
+        }
+
         public async Task SendMessageAsync(string text, string targetChatId = null)
         {
             if (!_enabled) return;
@@ -31,10 +69,7 @@ namespace BinanceBotWpf.Services
             {
                 await _botClient.SendMessage (targetChatId ?? _chatId, text, parseMode: ParseMode.Html);
             }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine ($"Telegram send error: {ex.Message}");
-            }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Telegram send error: {ex.Message}"); }
         }
 
         public void StartListening(Func<string, string, Task> onCommandReceived)
@@ -42,6 +77,8 @@ namespace BinanceBotWpf.Services
             _commandHandler = onCommandReceived;
             _cts = new CancellationTokenSource ();
             _ = Task.Run (() => ListenLoop (_cts.Token));
+            // Отправляем приветствие после запуска (для основного чата)
+            _ = Task.Run (async () => { await Task.Delay (2000); await SendWelcomeMessageAsync (_chatId); });
         }
 
         public void StopListening()
@@ -60,14 +97,18 @@ namespace BinanceBotWpf.Services
                     foreach (var update in updates)
                     {
                         offset = update.Id + 1;
+                        // Обработка нажатий на Inline-кнопки (если используем)
+                        if (update.CallbackQuery != null)
+                        {
+                            await HandleCallbackQuery (update.CallbackQuery);
+                            continue;
+                        }
+                        // Обработка текстовых сообщений (включая reply-кнопки)
                         if (update.Message?.Text != null)
                         {
                             string text = update.Message.Text.Trim ();
                             string chatId = update.Message.Chat.Id.ToString ();
-                            if (text.StartsWith ("/"))
-                            {
-                                await _commandHandler?.Invoke (text, chatId);
-                            }
+                            await _commandHandler?.Invoke (text, chatId);
                         }
                     }
                 }
@@ -81,6 +122,29 @@ namespace BinanceBotWpf.Services
                     await Task.Delay (5000, token);
                 }
             }
+        }
+
+        private async Task HandleCallbackQuery(CallbackQuery callbackQuery)
+        {
+            if (callbackQuery == null) return;
+            var chatId = callbackQuery.Message.Chat.Id.ToString ();
+            var data = callbackQuery.Data;
+            await _botClient.AnswerCallbackQuery (callbackQuery.Id);
+            // Преобразуем callback в команду
+            string command = data switch
+            {
+                "status" => "/status",
+                "balance" => "/balance",
+                "retrain" => "/retrain",
+                "export" => "/export",
+                "start_bot" => "/start",
+                "stop_bot" => "/stop",
+                "pnl_chart" => "/pnl",
+                "help" => "/help",
+                _ => null
+            };
+            if (!string.IsNullOrEmpty (command))
+                await _commandHandler?.Invoke (command, chatId);
         }
 
         public async Task SendTradeNotification(string symbol, string action, decimal price, decimal quantity, decimal pnl = 0, string reason = "")

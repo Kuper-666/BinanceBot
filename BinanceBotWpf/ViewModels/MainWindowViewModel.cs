@@ -14,6 +14,8 @@ using OxyPlot.Axes;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.Models;
 using System.Collections.Generic;
+using System.Windows.Media;
+using System.Collections.Concurrent;
 
 namespace BinanceBotWpf.ViewModels
 {
@@ -21,9 +23,23 @@ namespace BinanceBotWpf.ViewModels
     {
         private string _price;
         private string _analysis;
+        private SolidColorBrush _rowColor = Brushes.Transparent;
+        private SolidColorBrush _foregroundBrush = Brushes.White;
+
         public string Pair { get; set; }
         public string Price { get => _price; set { _price = value; OnPropertyChanged (); } }
         public string Analysis { get => _analysis; set { _analysis = value; OnPropertyChanged (); } }
+        public SolidColorBrush RowColor
+        {
+            get => _rowColor;
+            set { _rowColor = value; OnPropertyChanged (); }
+        }
+        public SolidColorBrush ForegroundBrush
+        {
+            get => _foregroundBrush;
+            set { _foregroundBrush = value; OnPropertyChanged (); }
+        }
+
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) =>
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
@@ -71,11 +87,8 @@ namespace BinanceBotWpf.ViewModels
         private string _positionsStatusText = "0/1 нет открытых";
         private string _riskPercentDisplay = "Риск: 0%";
 
-        // График баланса (OxyPlot)
+        // График баланса
         private PlotModel _plotModel;
-
-        private decimal _maxAllowedDrawdownPercent = 20m;
-        private bool _riskReduced = false;
         public PlotModel PlotModel
         {
             get => _plotModel;
@@ -87,7 +100,8 @@ namespace BinanceBotWpf.ViewModels
         public ICommand StopCommand { get; }
         public ICommand ExportDataCommand { get; }
 
-        public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
+        public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ObservableCollection<PairAnalysisItem> ();
+        private readonly ConcurrentDictionary<string, PairAnalysisItem> _pairItems = new ConcurrentDictionary<string, PairAnalysisItem> ();
 
         // Свойства для привязки
         public string SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
@@ -114,7 +128,6 @@ namespace BinanceBotWpf.ViewModels
             get => _rsiSellThreshold;
             set { if (_rsiSellThreshold != value) { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } }
         }
-
         public decimal StopLossPercent
         {
             get => _stopLossPercent;
@@ -165,13 +178,12 @@ namespace BinanceBotWpf.ViewModels
         {
             _tradingService = tradingService;
             _settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
-            LoadSettings (); // загружаем сохранённые параметры
+            LoadSettings ();
 
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
 
-            // Инициализация графика OxyPlot
             PlotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
             PlotModel.Axes.Add (new DateTimeAxis { Position = AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             PlotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
@@ -295,19 +307,66 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        public void UpdateMarketTable(string pair, string price, decimal fastSma, decimal slowSma)
+        // Основной метод обновления таблицы
+        public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma)
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
-                var existing = PairsList.FirstOrDefault (p => p.Pair == pair);
-                if (existing != null)
+                // Определяем цвета
+                SolidColorBrush bgBrush = Brushes.Transparent;
+                SolidColorBrush fgBrush = Brushes.White;
+
+                if (hasPosition)
                 {
-                    existing.Price = price;
-                    existing.Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}";
+                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 80, 0));      // тёмно-зелёный
+                }
+                else if (signal == TradeAction.Buy)
+                {
+                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 70, 150));    // тёмно-синий
+                }
+                else if (signal == TradeAction.Sell)
+                {
+                    bgBrush = new SolidColorBrush (Color.FromRgb (150, 40, 40));   // тёмно-красный
                 }
                 else
                 {
-                    PairsList.Add (new PairAnalysisItem { Pair = pair, Price = price, Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}" });
+                    fgBrush = new SolidColorBrush (Color.FromRgb (200, 200, 200));
+                }
+
+                // Обновляем или добавляем элемент
+                if (_pairItems.TryGetValue (pair, out var existing))
+                {
+                    existing.Price = price;
+                    existing.Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}";
+                    existing.RowColor = bgBrush;
+                    existing.ForegroundBrush = fgBrush;
+                }
+                else
+                {
+                    var newItem = new PairAnalysisItem
+                    {
+                        Pair = pair,
+                        Price = price,
+                        Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}",
+                        RowColor = bgBrush,
+                        ForegroundBrush = fgBrush
+                    };
+                    _pairItems[pair] = newItem;
+                    PairsList.Add (newItem);
+                }
+            });
+        }
+
+        // Удаление пар, которые больше не в списке активных
+        public void RemoveMissingPairs(List<string> activePairs)
+        {
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                var toRemove = PairsList.Where (p => !activePairs.Contains (p.Pair)).ToList ();
+                foreach (var item in toRemove)
+                {
+                    _pairItems.TryRemove (item.Pair, out _);
+                    PairsList.Remove (item);
                 }
             });
         }
@@ -376,23 +435,5 @@ namespace BinanceBotWpf.ViewModels
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) =>
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
-
-        public void UpdateDynamicRisk(decimal currentDrawdownPercent)
-        {
-            if (currentDrawdownPercent > _maxAllowedDrawdownPercent && !_riskReduced)
-            {
-                var newRisk = MaxRiskPercent / 2;
-                if (newRisk < 0.05m) newRisk = 0.05m;
-                MaxRiskPercent = newRisk;
-                _riskReduced = true;
-                AddLog ($"⚠️ Просадка {currentDrawdownPercent:F1}% > {_maxAllowedDrawdownPercent}% → риск уменьшен до {MaxRiskPercent * 100:F0}%");
-            }
-            else if (currentDrawdownPercent < _maxAllowedDrawdownPercent / 2 && _riskReduced)
-            {
-                MaxRiskPercent = 0.25m;
-                _riskReduced = false;
-                AddLog ($"✅ Просадка снизилась до {currentDrawdownPercent:F1}% → риск восстановлен до {MaxRiskPercent * 100:F0}%");
-            }
-        }
     }
 }

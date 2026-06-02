@@ -7,6 +7,7 @@
         Background="#121212">
 
     <Window.Resources>
+        <!-- Стиль для заголовков столбцов (общий для всех DataGrid) -->
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#2c3e50"/>
             <Setter Property="Foreground" Value="White"/>
@@ -15,25 +16,6 @@
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
-        </Style>
-        <Style TargetType="DataGridCell">
-            <Setter Property="Foreground" Value="#e0e0e0"/>
-            <Setter Property="Background" Value="Transparent"/>
-            <Setter Property="BorderBrush" Value="#2c3e50"/>
-            <Setter Property="BorderThickness" Value="0,0,1,1"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
-            <Setter Property="Padding" Value="6,4"/>
-        </Style>
-        <Style TargetType="DataGridRow">
-            <Setter Property="Background" Value="#1e1e1e"/>
-            <Style.Triggers>
-                <Trigger Property="ItemsControl.AlternationIndex" Value="1">
-                    <Setter Property="Background" Value="#252525"/>
-                </Trigger>
-                <Trigger Property="IsMouseOver" Value="True">
-                    <Setter Property="Background" Value="#34495e"/>
-                </Trigger>
-            </Style.Triggers>
         </Style>
     </Window.Resources>
 
@@ -80,22 +62,40 @@
 
         <!-- Вкладки -->
         <TabControl Grid.Row="3" Background="Transparent" Foreground="White">
+            <!-- Вкладка Торговля -->
             <TabItem Header="Торговля" Background="#1e1e1e" Foreground="White">
-                <DataGrid ItemsSource="{Binding PairsList}" 
-                          AutoGenerateColumns="False" 
-                          HeadersVisibility="Column"
-                          Background="#121212"
-                          Foreground="White"
-                          BorderThickness="0"
-                          FontSize="14"
+                <DataGrid x:Name="TradingDataGrid" ItemsSource="{Binding PairsList}" 
+                          AutoGenerateColumns="False" HeadersVisibility="Column"
+                          Background="#121212" Foreground="White"
+                          BorderThickness="0" FontSize="14"
                           GridLinesVisibility="Horizontal"
-                          SelectionMode="Single"
-                          AlternationCount="2"
-                          RowHeight="32"
-                          CanUserAddRows="False"
-                          CanUserDeleteRows="False"
-                          CanUserResizeColumns="True"
-                          CanUserSortColumns="True">
+                          SelectionMode="Single" RowHeight="32"
+                          CanUserAddRows="False" CanUserDeleteRows="False"
+                          CanUserResizeColumns="True" CanUserSortColumns="True">
+
+                    <DataGrid.Resources>
+                        <!-- Стиль строки для цветов из PairAnalysisItem -->
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="Background" Value="{Binding RowColor}"/>
+                            <Setter Property="Foreground" Value="{Binding ForegroundBrush}"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#34495e"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                        <!-- Стиль ячейки -->
+                        <Style TargetType="DataGridCell">
+                            <Setter Property="Foreground" Value="{Binding ForegroundBrush}"/>
+                            <Setter Property="Background" Value="{Binding RowColor}"/>
+                            <Setter Property="BorderBrush" Value="#2c3e50"/>
+                            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                            <Setter Property="VerticalAlignment" Value="Center"/>
+                            <Setter Property="Padding" Value="6,4"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </Style>
+                    </DataGrid.Resources>
+
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="ПАРА"      Binding="{Binding Pair}"     Width="120" />
                         <DataGridTextColumn Header="ЦЕНА"      Binding="{Binding Price}"    Width="120" />
@@ -104,6 +104,7 @@
                 </DataGrid>
             </TabItem>
 
+            <!-- Вкладка История сделок -->
             <TabItem Header="История сделок" Background="#1e1e1e" Foreground="White">
                 <Grid>
                     <Grid.RowDefinitions>
@@ -111,6 +112,7 @@
                         <RowDefinition Height="*"/>
                     </Grid.RowDefinitions>
 
+                    <!-- Блок статистики -->
                     <Border Grid.Row="0" Background="#252525" Margin="0,0,0,10" Padding="10" CornerRadius="5">
                         <Grid>
                             <Grid.ColumnDefinitions>
@@ -169,20 +171,30 @@
                         </Grid>
                     </Border>
 
+                    <!-- Таблица истории с чередованием строк -->
                     <DataGrid Grid.Row="1" ItemsSource="{Binding TradesHistory}" 
-                              AutoGenerateColumns="False"
-                              HeadersVisibility="Column"
-                              Background="#121212"
-                              Foreground="White"
-                              BorderThickness="0"
-                              FontSize="12"
+                              AutoGenerateColumns="False" HeadersVisibility="Column"
+                              Background="#121212" Foreground="White"
+                              BorderThickness="0" FontSize="12"
                               GridLinesVisibility="Horizontal"
                               AlternationCount="2"
-                              RowHeight="30"
-                              CanUserAddRows="False"
-                              CanUserDeleteRows="False"
-                              CanUserResizeColumns="True"
-                              CanUserSortColumns="True">
+                              RowHeight="30" CanUserAddRows="False" CanUserDeleteRows="False"
+                              CanUserResizeColumns="True" CanUserSortColumns="True">
+
+                        <DataGrid.Resources>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Background" Value="#1e1e1e"/>
+                                <Style.Triggers>
+                                    <Trigger Property="ItemsControl.AlternationIndex" Value="0">
+                                        <Setter Property="Background" Value="#252525"/>
+                                    </Trigger>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#34495e"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.Resources>
+
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Время открытия" Binding="{Binding OpenTime, StringFormat='HH:mm:ss dd.MM'}" Width="110"/>
                             <DataGridTextColumn Header="Время закрытия" Binding="{Binding CloseTime, StringFormat='HH:mm:ss dd.MM'}" Width="110"/>
@@ -199,6 +211,7 @@
                 </Grid>
             </TabItem>
 
+            <!-- Вкладка Баланс -->
             <TabItem Header="Баланс" Background="#1e1e1e" Foreground="White">
                 <oxy:PlotView Model="{Binding PlotModel}" Background="#1e1e1e"/>
             </TabItem>

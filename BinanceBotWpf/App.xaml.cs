@@ -1,17 +1,50 @@
-﻿using BinanceBotWpf.Models;
-using BinanceBotWpf.Services;
-using BinanceBotWpf.ViewModels;
-using System;
+﻿using System;
 using System.IO;
 using System.Globalization;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
+using BinanceBotWpf.Models;
+using BinanceBotWpf.Services;
+using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf
 {
     public partial class App : Application
     {
+        private static Mutex? _appMutex;
+
         protected override async void OnStartup(StartupEventArgs e)
         {
+            // === 1. Защита от запуска нескольких копий ===
+            const string mutexName = "Global\\{B9E8F2A1-5C7D-4A3E-8F2C-9D7E5B4A3C2F}";
+            bool createdNew;
+            _appMutex = new Mutex (true, mutexName, out createdNew);
+            if (!createdNew)
+            {
+                MessageBox.Show ("Бот уже запущен!", "Предупреждение", MessageBoxButton.OK, MessageBoxImage.Warning);
+                Current.Shutdown ();
+                return;
+            }
+
+            // === 2. Проверка обновлений (тихо, без UI) ===
+            try
+            {
+                var tempLogger = new Action<string> (msg => System.Diagnostics.Debug.WriteLine (msg));
+                var updater = new UpdateManager (tempLogger);
+                bool updated = await updater.CheckAndUpdateAsync (silent: true);
+                if (updated)
+                {
+                    // Если обновление найдено и установлено, текущий процесс будет закрыт скриптом
+                    return;
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"Ошибка при проверке обновлений: {ex.Message}");
+            }
+
+            // === 3. Основная инициализация бота (ваш существующий код) ===
             base.OnStartup (e);
 
             string apiKey = "";
@@ -73,9 +106,8 @@ namespace BinanceBotWpf
             object consoleLock = new object ();
             var walletManager = new WalletManager (binanceClient);
             var earnManager = new EarnManager (consoleLock);
-            var rebalancer = new BalanceRebalancer (consoleLock, 0.1m); // только 2 параметра
+            var rebalancer = new BalanceRebalancer (consoleLock, 0.1m);
 
-            // Создаем TradingService (без третьего параметра для ребалансировщика)
             var tradingService = new TradingService (binanceClient, walletManager, earnManager, rebalancer, minUsdcBalance, telegramBotToken, telegramChatId);
 
             var viewModel = new MainWindowViewModel (tradingService);

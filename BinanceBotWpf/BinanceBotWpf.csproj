@@ -5,6 +5,10 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <StartupUri>/Views/MainWindow.xaml</StartupUri>
+	  <VersionPrefix>1.0.0</VersionPrefix>
+	  <VersionSuffix>$(VersionSuffix)</VersionSuffix>
+	  <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
+	  <Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
   </PropertyGroup>
 
   <ItemGroup>

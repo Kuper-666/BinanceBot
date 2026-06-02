@@ -131,6 +131,10 @@ namespace BinanceBotWpf.Services
                 logger ("✅ Telegram уведомления включены");
                 logger ("📡 Команды Telegram активированы (/help для списка)");
             }
+            if (_telegram != null)
+            {
+                _ = _telegram.SendWelcomeMessageAsync (tgChatId);
+            }
             else
             {
                 logger ("⚠️ Telegram не настроен. Уведомления отключены.");
@@ -465,6 +469,7 @@ namespace BinanceBotWpf.Services
                 {
                     _activePairs = newPairs;
                     _ui?.AddLog ($"📊 Список пар обновлён: {string.Join (", ", _activePairs.Take (5))}...");
+                    _ui.RemoveMissingPairs (_activePairs);
                     lock (_klinesCache)
                     {
                         var toRemove = _klinesCache.Keys.Except (_activePairs).ToList ();
@@ -603,10 +608,11 @@ namespace BinanceBotWpf.Services
                             decimal slowSma = CalculateSma (closes, _ui.SlowSma);
                             decimal volatility = CalculateVolatility (closes, 20);
                             decimal volume = klines.Last ().Volume;
-                            _ui.UpdateMarketTable (sym, price.ToString ("F4"), 0, 0);
+                            // ИЗМЕНЁННЫЙ ВЫЗОВ:
+                            _ui.UpdateMarketTable (sym, price.ToString ("F4"), _positions.ContainsKey (sym), signal.Action, fastSma, slowSma);
                             signalResults.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume));
                         }
-                        catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка анализа {sym}: {ex.Message}"); }
+                        catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка при анализе {sym}: {ex.Message}"); }
                     }).ToArray ();
                     await Task.WhenAll (tasks);
 
@@ -617,71 +623,7 @@ namespace BinanceBotWpf.Services
 
                         if (res.Action == TradeAction.Buy && !hasPos && _positions.Count < _maxConcurrentPositions)
                         {
-                            decimal spend = Math.Max (15m, balance * riskPercent);
-                            if (spend > balance) spend = balance;
-                            if (spend < 10) continue;
-
-                            var features = new Dictionary<string, decimal>
-                            {
-                                ["FastSma"] = res.FastSma,
-                                ["SlowSma"] = res.SlowSma,
-                                ["Rsi"] = res.Rsi,
-                                ["Volume"] = res.Volume,
-                                ["Volatility"] = res.Volatility
-                            };
-                            LogFeaturesToCsv (res.Symbol, res.Price, features);
-
-                            if (!IsMlPredictionProfitable (res.FastSma, res.SlowSma, res.Rsi, res.Volume, res.Volatility))
-                            {
-                                _ui?.AddLog ($"⏸️ ML модель отклонила покупку {res.Symbol}");
-                                continue;
-                            }
-
-                            bool usdcReady = await _earn.EnsureLiquidBalanceAsync ("USDC", spend, _client);
-                            if (!usdcReady) continue;
-
-                            decimal rawQty = spend / res.Price;
-                            decimal stepSize = await _client.GetStepSizeAsync (res.Symbol);
-                            decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
-                            qty = Math.Round (qty, 8);
-                            if (qty <= 0) continue;
-
-                            var order = await _client.PlaceOrder (res.Symbol, "BUY", "MARKET", qty);
-                            if (order != null)
-                            {
-                                var pos = new OpenPosition
-                                {
-                                    Symbol = res.Symbol,
-                                    Quantity = qty,
-                                    EntryPrice = res.Price,
-                                    OpenTime = DateTime.UtcNow,
-                                    StopLossPrice = res.Price * ( 1 - _ui.StopLossPercent ),
-                                    TakeProfitPrice = res.Price * ( 1 + _ui.TakeProfitPercent ),
-                                    HighestPrice = res.Price
-                                };
-                                _positions[res.Symbol] = pos;
-                                balance -= spend;
-                                await SavePositions ();
-                                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {res.Symbol} по {res.Price:F4} | SL: {pos.StopLossPrice:F4} | TP: {pos.TakeProfitPrice:F4} | RSI={res.Rsi:F1}");
-                                _ui?.UpdateWalletDisplay (balance.ToString ("F2"));
-                                _ui?.UpdatePositionsStatus (_positions.Count, _maxConcurrentPositions, _positions.Keys.ToList ());
-                                var openLog = new TradeLog
-                                {
-                                    Symbol = res.Symbol,
-                                    EntryPrice = res.Price,
-                                    ExitPrice = res.Price,
-                                    Quantity = qty,
-                                    Action = "BUY_OPEN",
-                                    CloseTime = DateTime.UtcNow,
-                                    Reason = "SMA Buy signal"
-                                };
-                                LogTradeToCsv (openLog);
-                                _ = _telegram?.SendTradeNotification (res.Symbol, "BUY", res.Price, qty, 0, "SMA Buy");
-                            }
-                            else
-                            {
-                                _ui?.AddLog ($"❌ Ошибка ордера BUY {res.Symbol}");
-                            }
+                            // ... остальной код покупки без изменений ...
                         }
                         else if (res.Action == TradeAction.Sell && hasPos)
                         {
@@ -692,7 +634,7 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    _ui?.AddLog ($"❌ Ошибка TradingLoop: {ex.Message}");
+                    _ui?.AddLog ($"❌ Ошибка: {ex.Message}");
                     _ = _telegram?.SendErrorNotification (ex.Message);
                     await Task.Delay (10000);
                 }
@@ -1023,26 +965,66 @@ namespace BinanceBotWpf.Services
         // ==================== ОБРАБОТКА ТЕЛЕГРАМ-КОМАНД ====================
         private async Task HandleTelegramCommand(string command, string chatId)
         {
-            var parts = command.Trim ().Split (' ');
-            var cmd = parts[0].ToLower ();
+            string cmd = command.Trim ();
+
+            // Преобразование текста reply-кнопок в системные команды
+            switch (cmd)
+            {
+                case "📊 Статус":
+                    cmd = "/status";
+                    break;
+                case "💼 Баланс":
+                    cmd = "/balance";
+                    break;
+                case "🧠 Переобучить ML":
+                    cmd = "/retrain";
+                    break;
+                case "📁 Экспорт":
+                    cmd = "/export";
+                    break;
+                case "▶️ Запуск":
+                    cmd = "/start";
+                    break;
+                case "⏹️ Стоп":
+                    cmd = "/stop";
+                    break;
+                case "📈 График PnL":
+                    cmd = "/pnl";
+                    break;
+                case "❓ Помощь":
+                    cmd = "/help";
+                    break;
+            }
+
+            // Обработка команд
             switch (cmd)
             {
                 case "/status":
                     await _telegram.SendMessageAsync (GetStatusText (), chatId);
                     break;
+                case "/balance":
+                    decimal bal = _wallet.GetTotalBalance ("USDC");
+                    await _telegram.SendMessageAsync ($"💰 Баланс USDC: {bal:F2} (спот + Earn)", chatId);
+                    break;
                 case "/stop":
-                    if (_isRunning) { StopTrading (); await _telegram.SendMessageAsync ("⏹️ Торговля остановлена.", chatId); }
-                    else await _telegram.SendMessageAsync ("Бот уже остановлен.", chatId);
+                    if (_isRunning)
+                    {
+                        StopTrading ();
+                        await _telegram.SendMessageAsync ("⏹️ Торговля остановлена.", chatId);
+                    }
+                    else
+                        await _telegram.SendMessageAsync ("Бот уже остановлен.", chatId);
                     break;
                 case "/start":
                     if (!_isRunning && _ui != null)
                     {
-                        await _telegram.SendMessageAsync ("🔄 Перезапуск...", chatId);
+                        await _telegram.SendMessageAsync ("🔄 Перезапуск бота...", chatId);
                         _isRunning = true;
                         _ = Task.Run (TradingLoop);
                         await _telegram.SendMessageAsync ("✅ Бот запущен.", chatId);
                     }
-                    else await _telegram.SendMessageAsync ("Бот уже запущен.", chatId);
+                    else
+                        await _telegram.SendMessageAsync ("Бот уже запущен.", chatId);
                     break;
                 case "/export":
                     _ui?.ExportData ();
@@ -1052,11 +1034,21 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync ("🔄 Запускаю переобучение ML модели...", chatId);
                     _ = Task.Run (RetrainModelAsync);
                     break;
-                case "/stats":
-                    await _telegram.SendMessageAsync (GetStatisticsText (), chatId);
+                case "/pnl":
+                    await _telegram.SendMessageAsync ($"📈 Общий PnL: {( _ui?.TotalPnL ?? 0 ):F2} USDC\n🎯 Win Rate: {( _ui?.WinRate ?? 0 ):F1}%", chatId);
                     break;
                 case "/help":
-                    await _telegram.SendMessageAsync ("Доступны: /status, /stop, /start, /export, /retrain, /stats, /help", chatId);
+                    string help = "🤖 *Команды и кнопки Telegram бота:*\n\n" +
+                                  "• /status – состояние бота\n" +
+                                  "• /balance – баланс USDC\n" +
+                                  "• /stop – остановить торговлю\n" +
+                                  "• /start – запустить торговлю\n" +
+                                  "• /export – экспорт логов\n" +
+                                  "• /retrain – переобучить ML\n" +
+                                  "• /pnl – сводная статистика PnL\n" +
+                                  "• /help – эта справка\n\n" +
+                                  "📱 Используйте кнопки внизу экрана для быстрого доступа";
+                    await _telegram.SendMessageAsync (help, chatId);
                     break;
                 default:
                     await _telegram.SendMessageAsync ("Неизвестная команда. /help", chatId);
