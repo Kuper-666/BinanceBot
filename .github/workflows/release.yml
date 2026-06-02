@@ -2,7 +2,7 @@ name: Build and Release
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
   workflow_dispatch:
 
 jobs:
@@ -16,26 +16,24 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Get version from csproj
+      - name: Get version
         id: get_version
         shell: pwsh
         run: |
-          # Укажите правильный путь к вашему .csproj файлу
+          # Если .csproj лежит в корне репозитория, укажите "BinanceBotWpf.csproj"
+          # Если в папке BinanceBotWpf, то "BinanceBotWpf/BinanceBotWpf.csproj"
           $csprojPath = "BinanceBotWpf/BinanceBotWpf.csproj"
-          if (-not (Test-Path $csprojPath)) {
-            Write-Error "Файл не найден: $csprojPath"
-            exit 1
-          }
+          if (-not (Test-Path $csprojPath)) { $csprojPath = "BinanceBotWpf.csproj" }
           [xml]$xml = Get-Content $csprojPath
           $version = $xml.Project.PropertyGroup.VersionPrefix
           if (-not $version) { $version = "1.0.0" }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Restore dependencies
-        run: dotnet restore ${{ steps.get_version.outputs.csprojPath }}  # закомментировать
+      - name: Restore
+        run: dotnet restore
 
       - name: Publish
-        run: dotnet publish BinanceBotWpf/BinanceBotWpf.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o ./publish
+        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o ./publish
 
       - name: Create ZIP
         run: Compress-Archive -Path .\publish\* -DestinationPath BinanceBot_v${{ steps.get_version.outputs.VERSION }}.zip
