@@ -133,23 +133,48 @@ namespace BinanceBotWpf.Services
             return results.ToList ();
         }
 
-        private async Task ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal balance)
+        private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
         {
-            decimal spend = Math.Max (15m, balance * _ui.MaxRiskPercent);
-            if (spend > balance) spend = balance;
-            if (spend < 10) return;
+            // 1. Проверяем, достаточно ли USDC на споте
+            if (currentSpotBalance < 10)
+            {
+                _ui?.AddLog ($"⚠️ Недостаточно USDC на споте для {sig.Symbol}: {currentSpotBalance:F2} (нужно минимум 10)");
+                return currentSpotBalance;
+            }
 
+            // 2. Расчёт суммы сделки (не более доступного спота)
+            decimal totalBalance = _wallet.GetTotalBalance ("USDC");
+            decimal riskAmount = totalBalance * _ui.MaxRiskPercent;
+            decimal spend = Math.Max (10m, riskAmount);
+            if (spend > currentSpotBalance) spend = currentSpotBalance;
+            if (spend < 10)
+            {
+                _ui?.AddLog ($"⚠️ Недостаточно USDC для покупки {sig.Symbol} (нужно min 10, есть {currentSpotBalance:F2})");
+                return currentSpotBalance;
+            }
+
+            // 3. ML проверка
             if (!_mlManager.IsProfitable (sig.FastSma, sig.SlowSma, sig.Rsi, sig.Volume, sig.Volatility))
             {
                 _ui?.AddLog ($"⏸️ ML отклонила покупку {sig.Symbol}");
-                return;
+                return currentSpotBalance;
             }
 
+            // 4. Расчёт количества с шагом лота
             decimal rawQty = spend / sig.Price;
             decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
             decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
             qty = Math.Round (qty, 8);
-            if (qty <= 0) return;
+            if (qty <= 0) return currentSpotBalance;
+
+            decimal required = qty * sig.Price;
+            if (required > currentSpotBalance)
+            {
+                _ui?.AddLog ($"⚠️ Сумма покупки {required:F2} USDC превышает спот-баланс {currentSpotBalance:F2} для {sig.Symbol}");
+                return currentSpotBalance;
+            }
+
+            _ui?.AddLog ($"💵 Попытка купить {qty} {sig.Symbol} по {sig.Price:F4}, сумма ~{required:F2} USDC (доступно {currentSpotBalance:F2})");
 
             var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
             if (order != null)
@@ -165,9 +190,26 @@ namespace BinanceBotWpf.Services
                     HighestPrice = sig.Price
                 };
                 _positionManager.AddOrUpdate (sig.Symbol, pos);
-                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price:F4} | SL: {pos.StopLossPrice:F4} | TP: {pos.TakeProfitPrice:F4} | RSI={sig.Rsi:F1}");
+                decimal newSpotBalance = currentSpotBalance - required;
+                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price:F4} | Остаток USDC на споте: {newSpotBalance:F2}");
+                _ui?.UpdateWalletDisplay (_wallet.GetTotalBalance ("USDC").ToString ("F2"));
                 _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                _dataLogger.LogTrade (new TradeLog { Symbol = sig.Symbol, EntryPrice = sig.Price, ExitPrice = sig.Price, Quantity = qty, Action = "BUY_OPEN", CloseTime = DateTime.UtcNow, Reason = "SMA Buy" });
+                _dataLogger.LogTrade (new TradeLog
+                {
+                    Symbol = sig.Symbol,
+                    EntryPrice = sig.Price,
+                    ExitPrice = sig.Price,
+                    Quantity = qty,
+                    Action = "BUY_OPEN",
+                    CloseTime = DateTime.UtcNow,
+                    Reason = "SMA Buy"
+                });
+                return newSpotBalance;
+            }
+            else
+            {
+                _ui?.AddLog ($"❌ Ошибка ордера BUY {sig.Symbol}");
+                return currentSpotBalance;
             }
         }
 
@@ -364,105 +406,51 @@ namespace BinanceBotWpf.Services
                 {
                     await CheckProtections ();
 
-                    // 1. Актуализируем баланс USDC (спот + Earn)
-                    decimal balance = _wallet.GetTotalBalance ("USDC");
-                    _ui?.UpdateWalletDisplay (balance.ToString ("F2"));
+                    decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                    decimal totalBalance = _wallet.GetTotalBalance ("USDC");
+                    _ui?.UpdateWalletDisplay (totalBalance.ToString ("F2"));
+                    _ui?.AddLog ($"💰 Баланс USDC: спот={spotBalance:F2}, всего={totalBalance:F2}");
 
-                    // 2. Проверяем минимальный баланс для торговли
-                    if (balance < _ui.MinBalanceForTrading)
+                    if (spotBalance < 15)
                     {
-                        await _balanceManager.AutoRebalanceAsync ();
-                        await _wallet.UpdateBalance ();
-                        balance = _wallet.GetTotalBalance ("USDC");
-                        if (balance < _ui.MinBalanceForTrading)
+                        _ui?.AddLog ($"🔄 Спот USDC низкий ({spotBalance:F2}), выкупаю до 15 USDC...");
+                        bool redeemed = await _earn.EnsureLiquidBalanceAsync ("USDC", 15, _client);
+                        if (redeemed)
                         {
+                            spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            totalBalance = _wallet.GetTotalBalance ("USDC");
+                            _ui?.AddLog ($"✅ После выкупа: спот={spotBalance:F2}, всего={totalBalance:F2}");
+                        }
+                        else
+                        {
+                            _ui?.AddLog ($"⚠️ Не удалось выкупить USDC, жду...");
                             await Task.Delay (30000);
                             continue;
                         }
                     }
 
-                    // 3. Получаем список пар
                     List<string> pairs;
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
-                    if (pairs.Count == 0)
-                    {
-                        await Task.Delay (5000);
-                        continue;
-                    }
+                    if (pairs.Count == 0) { await Task.Delay (5000); continue; }
 
-                    // 4. Анализируем сигналы
                     var signals = await AnalyzePairsAsync (pairs);
 
-                    // 5. Обрабатываем сигналы по очереди, обновляя баланс после каждой удачной покупки
                     foreach (var sig in signals)
                     {
                         bool hasPos = _positionManager.TryGet (sig.Symbol, out _);
                         if (sig.Action == TradeAction.Buy && !hasPos && _positionManager.Count < 3)
                         {
-                            // Перед покупкой ещё раз проверим баланс (он мог измениться из-за предыдущих покупок)
-                            if (balance < 10) break; // не хватает даже на минимальную сделку
-
-                            decimal spend = Math.Max (15m, balance * _ui.MaxRiskPercent);
-                            if (spend > balance) spend = balance;
-                            if (spend < 10) continue;
-
-                            // Убедимся, что USDC есть на споте (выкупим из Earn при необходимости)
-                            decimal availableSpot = await _client.GetAccountBalanceAsync ("USDC");
-                            if (availableSpot < spend)
+                            if (spotBalance < 10)
                             {
-                                bool redeemed = await _earn.EnsureLiquidBalanceAsync ("USDC", spend, _client);
-                                if (!redeemed)
-                                {
-                                    _ui?.AddLog ($"⚠️ Недостаточно USDC для покупки {sig.Symbol}");
-                                    continue;
-                                }
-                                availableSpot = await _client.GetAccountBalanceAsync ("USDC");
-                                if (availableSpot < spend) continue;
-                            }
-
-                            // Проверка ML
-                            if (!_mlManager.IsProfitable (sig.FastSma, sig.SlowSma, sig.Rsi, sig.Volume, sig.Volatility))
-                            {
-                                _ui?.AddLog ($"⏸️ ML отклонила покупку {sig.Symbol}");
+                                _ui?.AddLog ($"⚠️ Недостаточно USDC на споте для {sig.Symbol}: {spotBalance:F2}");
                                 continue;
                             }
-
-                            decimal rawQty = spend / sig.Price;
-                            decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
-                            decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
-                            qty = Math.Round (qty, 8);
-                            if (qty <= 0) continue;
-
-                            var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
-                            if (order != null)
-                            {
-                                var pos = new OpenPosition
-                                {
-                                    Symbol = sig.Symbol,
-                                    Quantity = qty,
-                                    EntryPrice = sig.Price,
-                                    OpenTime = DateTime.UtcNow,
-                                    StopLossPrice = sig.Price * ( 1 - _ui.StopLossPercent ),
-                                    TakeProfitPrice = sig.Price * ( 1 + _ui.TakeProfitPercent ),
-                                    HighestPrice = sig.Price
-                                };
-                                _positionManager.AddOrUpdate (sig.Symbol, pos);
-                                // Уменьшаем локальный баланс на сумму spend
-                                balance -= spend;
-                                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price:F4} | SL: {pos.StopLossPrice:F4} | TP: {pos.TakeProfitPrice:F4} | RSI={sig.Rsi:F1}");
-                                _ui?.UpdateWalletDisplay (balance.ToString ("F2"));
-                                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                                _dataLogger.LogTrade (new TradeLog { Symbol = sig.Symbol, EntryPrice = sig.Price, ExitPrice = sig.Price, Quantity = qty, Action = "BUY_OPEN", CloseTime = DateTime.UtcNow, Reason = "SMA Buy" });
-                            }
-                            else
-                            {
-                                _ui?.AddLog ($"❌ Ошибка ордера BUY {sig.Symbol}");
-                            }
+                            spotBalance = await ExecuteBuy (sig, spotBalance);
                         }
                         else if (sig.Action == TradeAction.Sell && hasPos)
                         {
                             await ExecuteSell (sig);
-                            // После продажи баланс увеличится, но мы его обновим на следующей итерации цикла
+                            spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                         }
                     }
 
