@@ -5,6 +5,9 @@ on:
     branches: [ "master" ]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -20,20 +23,17 @@ jobs:
         id: get_version
         shell: pwsh
         run: |
-          # Если .csproj лежит в корне репозитория, укажите "BinanceBotWpf.csproj"
-          # Если в папке BinanceBotWpf, то "BinanceBotWpf/BinanceBotWpf.csproj"
-          $csprojPath = "BinanceBotWpf/BinanceBotWpf.csproj"
-          if (-not (Test-Path $csprojPath)) { $csprojPath = "BinanceBotWpf.csproj" }
-          [xml]$xml = Get-Content $csprojPath
+          $csproj = "BinanceBotWpf/BinanceBotWpf.csproj"
+          [xml]$xml = Get-Content $csproj
           $version = $xml.Project.PropertyGroup.VersionPrefix
           if (-not $version) { $version = "1.0.0" }
           echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
       - name: Restore
-        run: dotnet restore
+        run: dotnet restore BinanceBotWpf/BinanceBotWpf.csproj
 
       - name: Publish
-        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o ./publish
+        run: dotnet publish BinanceBotWpf/BinanceBotWpf.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o ./publish
 
       - name: Create ZIP
         run: Compress-Archive -Path .\publish\* -DestinationPath BinanceBot_v${{ steps.get_version.outputs.VERSION }}.zip
@@ -46,4 +46,4 @@ jobs:
           files: BinanceBot_v${{ steps.get_version.outputs.VERSION }}.zip
           generate_release_notes: true
         env:
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GT_TOKEN }}
