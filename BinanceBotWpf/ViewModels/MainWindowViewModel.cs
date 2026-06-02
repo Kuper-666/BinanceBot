@@ -15,7 +15,6 @@ using BinanceBotWpf.Services;
 using BinanceBotWpf.Models;
 using System.Collections.Generic;
 using System.Windows.Media;
-using System.Collections.Concurrent;
 
 namespace BinanceBotWpf.ViewModels
 {
@@ -45,9 +44,42 @@ namespace BinanceBotWpf.ViewModels
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
     }
 
+    // Класс для строки таблицы акций
+    public class StockListItem : INotifyPropertyChanged
+    {
+        private decimal _price;
+        private decimal _changePercent;
+        private decimal _volume;
+
+        public string Symbol { get; set; }
+
+        public decimal Price
+        {
+            get => _price;
+            set { _price = value; OnPropertyChanged (); }
+        }
+
+        public decimal ChangePercent
+        {
+            get => _changePercent;
+            set { _changePercent = value; OnPropertyChanged (); }
+        }
+
+        public decimal Volume
+        {
+            get => _volume;
+            set { _volume = value; OnPropertyChanged (); }
+        }
+
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string name = null) =>
+            PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
+    }
+
     public class MainWindowViewModel : INotifyPropertyChanged
     {
         private readonly TradingService _tradingService;
+        private StockPriceMonitor _stockMonitor;
         private string _systemLogs = "";
         private string _walletBalance = "0.00";
         private bool _isRunning = false;
@@ -100,8 +132,13 @@ namespace BinanceBotWpf.ViewModels
         public ICommand StopCommand { get; }
         public ICommand ExportDataCommand { get; }
 
+        // Таблица пар криптовалют
         public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ObservableCollection<PairAnalysisItem> ();
-        private readonly ConcurrentDictionary<string, PairAnalysisItem> _pairItems = new ConcurrentDictionary<string, PairAnalysisItem> ();
+        private readonly Dictionary<string, PairAnalysisItem> _pairDict = new Dictionary<string, PairAnalysisItem> ();
+
+        // Таблица акций
+        public ObservableCollection<StockListItem> StocksList { get; set; } = new ObservableCollection<StockListItem> ();
+        private readonly Dictionary<string, StockListItem> _stockDict = new Dictionary<string, StockListItem> ();
 
         // Свойства для привязки
         public string SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
@@ -184,10 +221,15 @@ namespace BinanceBotWpf.ViewModels
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
 
+            // Инициализация графика OxyPlot
             PlotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
             PlotModel.Axes.Add (new DateTimeAxis { Position = AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             PlotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             PlotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
+
+            // Инициализация монитора акций
+            _stockMonitor = new StockPriceMonitor (AddLog);
+            _ = Task.Run (StocksLoop);
         }
 
         private void LoadSettings()
@@ -307,34 +349,23 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        // Основной метод обновления таблицы
         public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma)
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
-                // Определяем цвета
                 SolidColorBrush bgBrush = Brushes.Transparent;
                 SolidColorBrush fgBrush = Brushes.White;
 
                 if (hasPosition)
-                {
-                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 80, 0));      // тёмно-зелёный
-                }
+                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 80, 0));
                 else if (signal == TradeAction.Buy)
-                {
-                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 70, 150));    // тёмно-синий
-                }
+                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 70, 150));
                 else if (signal == TradeAction.Sell)
-                {
-                    bgBrush = new SolidColorBrush (Color.FromRgb (150, 40, 40));   // тёмно-красный
-                }
+                    bgBrush = new SolidColorBrush (Color.FromRgb (150, 40, 40));
                 else
-                {
                     fgBrush = new SolidColorBrush (Color.FromRgb (200, 200, 200));
-                }
 
-                // Обновляем или добавляем элемент
-                if (_pairItems.TryGetValue (pair, out var existing))
+                if (_pairDict.TryGetValue (pair, out var existing))
                 {
                     existing.Price = price;
                     existing.Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}";
@@ -351,13 +382,12 @@ namespace BinanceBotWpf.ViewModels
                         RowColor = bgBrush,
                         ForegroundBrush = fgBrush
                     };
-                    _pairItems[pair] = newItem;
+                    _pairDict[pair] = newItem;
                     PairsList.Add (newItem);
                 }
             });
         }
 
-        // Удаление пар, которые больше не в списке активных
         public void RemoveMissingPairs(List<string> activePairs)
         {
             Application.Current.Dispatcher.Invoke (() =>
@@ -365,10 +395,52 @@ namespace BinanceBotWpf.ViewModels
                 var toRemove = PairsList.Where (p => !activePairs.Contains (p.Pair)).ToList ();
                 foreach (var item in toRemove)
                 {
-                    _pairItems.TryRemove (item.Pair, out _);
+                    _pairDict.Remove (item.Pair);
                     PairsList.Remove (item);
                 }
             });
+        }
+
+        // Цикл обновления акций
+        private async Task StocksLoop()
+        {
+            while (true)
+            {
+                try
+                {
+                    var stocksData = await _stockMonitor.FetchAllTrackedStocksAsync ();
+                    await Application.Current.Dispatcher.InvokeAsync (() =>
+                    {
+                        foreach (var stock in stocksData)
+                        {
+                            if (_stockDict.TryGetValue (stock.Symbol, out var existing))
+                            {
+                                existing.Price = stock.Price;
+                                existing.ChangePercent = stock.PriceChangePercent;
+                                existing.Volume = stock.Volume;
+                            }
+                            else
+                            {
+                                var newItem = new StockListItem
+                                {
+                                    Symbol = stock.Symbol,
+                                    Price = stock.Price,
+                                    ChangePercent = stock.PriceChangePercent,
+                                    Volume = stock.Volume
+                                };
+                                _stockDict[stock.Symbol] = newItem;
+                                StocksList.Add (newItem);
+                            }
+                        }
+                    });
+                    await Task.Delay (30000);
+                }
+                catch (Exception ex)
+                {
+                    AddLog ($"❌ Ошибка в StocksLoop: {ex.Message}");
+                    await Task.Delay (30000);
+                }
+            }
         }
 
         public void AddLog(string message)

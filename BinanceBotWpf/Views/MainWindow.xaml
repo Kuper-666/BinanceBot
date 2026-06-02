@@ -210,6 +210,23 @@
                     </DataGrid>
                 </Grid>
             </TabItem>
+            <TabItem Header="Акции США" Background="#1e1e1e" Foreground="White">
+                <DataGrid ItemsSource="{Binding StocksList}" 
+              AutoGenerateColumns="False" HeadersVisibility="Column"
+              Background="#121212" Foreground="White"
+              BorderThickness="0" FontSize="14"
+              GridLinesVisibility="Horizontal"
+              SelectionMode="Single" RowHeight="32"
+              CanUserAddRows="False" CanUserDeleteRows="False"
+              CanUserResizeColumns="True" CanUserSortColumns="True">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="Символ" Binding="{Binding Symbol}" Width="120" />
+                        <DataGridTextColumn Header="Цена, USDC" Binding="{Binding Price, StringFormat=F2}" Width="140" />
+                        <DataGridTextColumn Header="Изм. за 24ч, %" Binding="{Binding ChangePercent, StringFormat=F2}" Width="140" />
+                        <DataGridTextColumn Header="Объём, USDC" Binding="{Binding Volume, StringFormat=N0}" Width="*" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </TabItem>
 
             <!-- Вкладка Баланс -->
             <TabItem Header="Баланс" Background="#1e1e1e" Foreground="White">
