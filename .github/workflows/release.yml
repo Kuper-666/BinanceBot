@@ -2,12 +2,12 @@ name: Build and Release
 
 on:
   push:
-    branches: [ "master" ]
+    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -16,23 +16,29 @@ jobs:
         with:
           dotnet-version: 8.0.x
 
-      - name: Get version from .csproj
+      - name: Get version from csproj
         id: get_version
+        shell: pwsh
         run: |
-          VERSION=$(grep -oPm1 "(?<=<VersionPrefix>)[^<]+" BinanceBotWpf.csproj)
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          # Укажите правильный путь к вашему .csproj файлу
+          $csprojPath = "BinanceBotWpf/BinanceBotWpf.csproj"
+          if (-not (Test-Path $csprojPath)) {
+            Write-Error "Файл не найден: $csprojPath"
+            exit 1
+          }
+          [xml]$xml = Get-Content $csprojPath
+          $version = $xml.Project.PropertyGroup.VersionPrefix
+          if (-not $version) { $version = "1.0.0" }
+          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
-      - name: Publish single-file executable
-        run: |
-          dotnet publish -c Release -r win-x64 --self-contained true \
-            -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false \
-            -o ./publish
+      - name: Restore dependencies
+        run: dotnet restore ${{ steps.get_version.outputs.csprojPath }}  # закомментировать
 
-      - name: Create ZIP archive
-        run: |
-          cd ./publish
-          zip -r ../BinanceBot_v${{ steps.get_version.outputs.VERSION }}.zip .
-          cd ..
+      - name: Publish
+        run: dotnet publish BinanceBotWpf/BinanceBotWpf.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o ./publish
+
+      - name: Create ZIP
+        run: Compress-Archive -Path .\publish\* -DestinationPath BinanceBot_v${{ steps.get_version.outputs.VERSION }}.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
