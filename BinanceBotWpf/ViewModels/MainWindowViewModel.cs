@@ -44,7 +44,6 @@ namespace BinanceBotWpf.ViewModels
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
     }
 
-    // Класс для строки таблицы акций
     public class StockListItem : INotifyPropertyChanged
     {
         private decimal _price;
@@ -52,24 +51,9 @@ namespace BinanceBotWpf.ViewModels
         private decimal _volume;
 
         public string Symbol { get; set; }
-
-        public decimal Price
-        {
-            get => _price;
-            set { _price = value; OnPropertyChanged (); }
-        }
-
-        public decimal ChangePercent
-        {
-            get => _changePercent;
-            set { _changePercent = value; OnPropertyChanged (); }
-        }
-
-        public decimal Volume
-        {
-            get => _volume;
-            set { _volume = value; OnPropertyChanged (); }
-        }
+        public decimal Price { get => _price; set { _price = value; OnPropertyChanged (); } }
+        public decimal ChangePercent { get => _changePercent; set { _changePercent = value; OnPropertyChanged (); } }
+        public decimal Volume { get => _volume; set { _volume = value; OnPropertyChanged (); } }
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) =>
@@ -83,22 +67,20 @@ namespace BinanceBotWpf.ViewModels
         private string _systemLogs = "";
         private string _walletBalance = "0.00";
         private bool _isRunning = false;
+
+        // Параметры стратегии (значения по умолчанию)
         private int _fastSma = 9;
         private int _slowSma = 21;
         private int _rsiBuyThreshold = 70;
         private int _rsiSellThreshold = 70;
-
-        // Параметры стратегии
         private decimal _stopLossPercent = 0.02m;
         private decimal _takeProfitPercent = 0.04m;
         private decimal _trailingStopPercent = 0.02m;
         private decimal _minBalanceForTrading = 20m;
         private decimal _maxRiskPercent = 0.25m;
 
-        // История сделок
-        private ObservableCollection<TradeLog> _tradesHistory = new ObservableCollection<TradeLog> ();
-
-        // Статистика
+        // История и статистика
+        private ObservableCollection<TradeLog> _tradesHistory = new ();
         private decimal _totalPnL = 0;
         private decimal _winRate = 0;
         private int _totalTrades = 0;
@@ -112,14 +94,12 @@ namespace BinanceBotWpf.ViewModels
         private decimal _totalProfitSum = 0;
         private decimal _totalLossSum = 0;
         private string _avgProfitLossDisplay = "Ср. приб/убыток: 0 / 0";
-
-        // Статус позиций
         private int _currentPositionsCount = 0;
         private int _maxPositions = 1;
         private string _positionsStatusText = "0/1 нет открытых";
         private string _riskPercentDisplay = "Риск: 0%";
 
-        // График баланса
+        // График
         private PlotModel _plotModel;
         public PlotModel PlotModel
         {
@@ -132,65 +112,29 @@ namespace BinanceBotWpf.ViewModels
         public ICommand StopCommand { get; }
         public ICommand ExportDataCommand { get; }
 
-        // Таблица пар криптовалют
-        public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ObservableCollection<PairAnalysisItem> ();
-        private readonly Dictionary<string, PairAnalysisItem> _pairDict = new Dictionary<string, PairAnalysisItem> ();
+        // Коллекции для UI
+        public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
+        private Dictionary<string, PairAnalysisItem> _pairDict = new ();
+        public ObservableCollection<StockListItem> StocksList { get; set; } = new ();
+        private Dictionary<string, StockListItem> _stockDict = new ();
 
-        // Таблица акций
-        public ObservableCollection<StockListItem> StocksList { get; set; } = new ObservableCollection<StockListItem> ();
-        private readonly Dictionary<string, StockListItem> _stockDict = new Dictionary<string, StockListItem> ();
-
-        // Свойства для привязки
+        // Свойства для биндинга
         public string SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
         public string WalletBalance { get => _walletBalance; set { _walletBalance = value; OnPropertyChanged (); } }
         public bool IsRunning { get => _isRunning; set { _isRunning = value; OnPropertyChanged (); } }
 
-        public int FastSma
-        {
-            get => _fastSma;
-            set { if (_fastSma != value) { _fastSma = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public int SlowSma
-        {
-            get => _slowSma;
-            set { if (_slowSma != value) { _slowSma = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public int RsiBuyThreshold
-        {
-            get => _rsiBuyThreshold;
-            set { if (_rsiBuyThreshold != value) { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public int RsiSellThreshold
-        {
-            get => _rsiSellThreshold;
-            set { if (_rsiSellThreshold != value) { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public decimal StopLossPercent
-        {
-            get => _stopLossPercent;
-            set { if (_stopLossPercent != value) { _stopLossPercent = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public decimal TakeProfitPercent
-        {
-            get => _takeProfitPercent;
-            set { if (_takeProfitPercent != value) { _takeProfitPercent = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public decimal TrailingStopPercent
-        {
-            get => _trailingStopPercent;
-            set { if (_trailingStopPercent != value) { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public decimal MinBalanceForTrading
-        {
-            get => _minBalanceForTrading;
-            set { if (_minBalanceForTrading != value) { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } }
-        }
-        public decimal MaxRiskPercent
-        {
-            get => _maxRiskPercent;
-            set { if (_maxRiskPercent != value) { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } }
-        }
+        // Настраиваемые параметры с автоматическим сохранением
+        public int FastSma { get => _fastSma; set { if (_fastSma != value) { _fastSma = value; OnPropertyChanged (); SaveSettings (); } } }
+        public int SlowSma { get => _slowSma; set { if (_slowSma != value) { _slowSma = value; OnPropertyChanged (); SaveSettings (); } } }
+        public int RsiBuyThreshold { get => _rsiBuyThreshold; set { if (_rsiBuyThreshold != value) { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } } }
+        public int RsiSellThreshold { get => _rsiSellThreshold; set { if (_rsiSellThreshold != value) { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } } }
+        public decimal StopLossPercent { get => _stopLossPercent; set { if (_stopLossPercent != value) { _stopLossPercent = value; OnPropertyChanged (); SaveSettings (); } } }
+        public decimal TakeProfitPercent { get => _takeProfitPercent; set { if (_takeProfitPercent != value) { _takeProfitPercent = value; OnPropertyChanged (); SaveSettings (); } } }
+        public decimal TrailingStopPercent { get => _trailingStopPercent; set { if (_trailingStopPercent != value) { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } } }
+        public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { if (_minBalanceForTrading != value) { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } } }
+        public decimal MaxRiskPercent { get => _maxRiskPercent; set { if (_maxRiskPercent != value) { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } } }
 
+        // Остальные свойства
         public ObservableCollection<TradeLog> TradesHistory { get => _tradesHistory; set { _tradesHistory = value; OnPropertyChanged (); } }
         public decimal TotalPnL { get => _totalPnL; set { _totalPnL = value; OnPropertyChanged (); } }
         public decimal WinRate { get => _winRate; set { _winRate = value; OnPropertyChanged (); } }
@@ -206,7 +150,7 @@ namespace BinanceBotWpf.ViewModels
         public int CurrentPositionsCount { get => _currentPositionsCount; set { _currentPositionsCount = value; OnPropertyChanged (); } }
         public int MaxPositions { get => _maxPositions; set { _maxPositions = value; OnPropertyChanged (); } }
 
-        // Сохранение настроек
+        // Путь к файлу настроек
         private readonly string _settingsPath;
         private readonly object _settingsLock = new object ();
         private bool _isLoadingSettings = false;
@@ -215,23 +159,26 @@ namespace BinanceBotWpf.ViewModels
         {
             _tradingService = tradingService;
             _settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
+
+            // Загружаем сохранённые настройки
             LoadSettings ();
 
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
 
-            // Инициализация графика OxyPlot
+            // Инициализация графика
             PlotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
             PlotModel.Axes.Add (new DateTimeAxis { Position = AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             PlotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             PlotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
 
-            // Инициализация монитора акций
+            // Мониторинг акций
             _stockMonitor = new StockPriceMonitor (AddLog);
             _ = Task.Run (StocksLoop);
         }
 
+        // Загрузка настроек из файла
         private void LoadSettings()
         {
             try
@@ -263,6 +210,7 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
+        // Сохранение настроек в файл
         private void SaveSettings()
         {
             if (_isLoadingSettings) return;
@@ -287,7 +235,10 @@ namespace BinanceBotWpf.ViewModels
                     string json = System.Text.Json.JsonSerializer.Serialize (settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                     File.WriteAllText (_settingsPath, json);
                 }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"SaveSettings error: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine ($"SaveSettings error: {ex.Message}");
+                }
             }
         }
 
@@ -342,8 +293,7 @@ namespace BinanceBotWpf.ViewModels
                 if (series != null)
                 {
                     series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
-                    if (series.Points.Count > 200)
-                        series.Points.RemoveAt (0);
+                    if (series.Points.Count > 200) series.Points.RemoveAt (0);
                     PlotModel.InvalidatePlot (true);
                 }
             });
@@ -353,17 +303,12 @@ namespace BinanceBotWpf.ViewModels
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
-                SolidColorBrush bgBrush = Brushes.Transparent;
-                SolidColorBrush fgBrush = Brushes.White;
-
-                if (hasPosition)
-                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 80, 0));
-                else if (signal == TradeAction.Buy)
-                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 70, 150));
-                else if (signal == TradeAction.Sell)
-                    bgBrush = new SolidColorBrush (Color.FromRgb (150, 40, 40));
-                else
-                    fgBrush = new SolidColorBrush (Color.FromRgb (200, 200, 200));
+                var bgBrush = Brushes.Transparent;
+                var fgBrush = Brushes.White;
+                if (hasPosition) bgBrush = new SolidColorBrush (Color.FromRgb (0, 80, 0));
+                else if (signal == TradeAction.Buy) bgBrush = new SolidColorBrush (Color.FromRgb (0, 70, 150));
+                else if (signal == TradeAction.Sell) bgBrush = new SolidColorBrush (Color.FromRgb (150, 40, 40));
+                else fgBrush = new SolidColorBrush (Color.FromRgb (200, 200, 200));
 
                 if (_pairDict.TryGetValue (pair, out var existing))
                 {
@@ -401,7 +346,6 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        // Цикл обновления акций
         private async Task StocksLoop()
         {
             while (true)
@@ -463,7 +407,6 @@ namespace BinanceBotWpf.ViewModels
                 WinRate = TotalTrades > 0 ? (decimal)WinningTrades / TotalTrades * 100 : 0;
                 BestPnL = TotalTrades > 0 ? TradesHistory.Max (t => t.PnL) : 0;
                 WorstPnL = TotalTrades > 0 ? TradesHistory.Min (t => t.PnL) : 0;
-
                 if (trade.PnL > 0) _totalProfitSum += trade.PnL;
                 else _totalLossSum += trade.PnL;
                 decimal avgP = WinningTrades > 0 ? _totalProfitSum / WinningTrades : 0;
