@@ -219,6 +219,26 @@
               SelectionMode="Single" RowHeight="32"
               CanUserAddRows="False" CanUserDeleteRows="False"
               CanUserResizeColumns="True" CanUserSortColumns="True">
+                    <DataGrid.Resources>
+                        <Style TargetType="DataGridRow">
+                            <Setter Property="Background" Value="{Binding RowColor}"/>
+                            <Setter Property="Foreground" Value="{Binding ForegroundBrush}"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#34495e"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                        <Style TargetType="DataGridCell">
+                            <Setter Property="Foreground" Value="{Binding ForegroundBrush}"/>
+                            <Setter Property="Background" Value="{Binding RowColor}"/>
+                            <Setter Property="BorderBrush" Value="#2c3e50"/>
+                            <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                            <Setter Property="VerticalAlignment" Value="Center"/>
+                            <Setter Property="Padding" Value="6,4"/>
+                            <Setter Property="FontWeight" Value="Bold"/>
+                        </Style>
+                    </DataGrid.Resources>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="Символ" Binding="{Binding Symbol}" Width="120" />
                         <DataGridTextColumn Header="Цена, USDC" Binding="{Binding Price, StringFormat=F2}" Width="140" />
