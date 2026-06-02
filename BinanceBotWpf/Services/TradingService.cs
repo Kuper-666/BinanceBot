@@ -133,7 +133,8 @@ namespace BinanceBotWpf.Services
             return results.ToList ();
         }
 
-        private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
+        private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
+     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
         {
             // 1. Проверяем, достаточно ли USDC на споте
             if (currentSpotBalance < 10)
@@ -406,15 +407,17 @@ namespace BinanceBotWpf.Services
                 {
                     await CheckProtections ();
 
+                    // 1. Актуальный баланс USDC (спот)
                     decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                     decimal totalBalance = _wallet.GetTotalBalance ("USDC");
                     _ui?.UpdateWalletDisplay (totalBalance.ToString ("F2"));
                     _ui?.AddLog ($"💰 Баланс USDC: спот={spotBalance:F2}, всего={totalBalance:F2}");
 
-                    if (spotBalance < 15)
+                    // 2. Если спот-баланс ниже 10, пытаемся выкупить из Earn (но не блокируем торговлю при неудаче)
+                    if (spotBalance < 10)
                     {
-                        _ui?.AddLog ($"🔄 Спот USDC низкий ({spotBalance:F2}), выкупаю до 15 USDC...");
-                        bool redeemed = await _earn.EnsureLiquidBalanceAsync ("USDC", 15, _client);
+                        _ui?.AddLog ($"🔄 Спот USDC низкий ({spotBalance:F2}), пробую выкупить до 10 USDC...");
+                        bool redeemed = await _earn.EnsureLiquidBalanceAsync ("USDC", 10, _client);
                         if (redeemed)
                         {
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
@@ -423,18 +426,20 @@ namespace BinanceBotWpf.Services
                         }
                         else
                         {
-                            _ui?.AddLog ($"⚠️ Не удалось выкупить USDC, жду...");
-                            await Task.Delay (30000);
-                            continue;
+                            _ui?.AddLog ($"⚠️ Не удалось выкупить USDC, продолжаем с имеющимся спот-балансом {spotBalance:F2}");
+                            // Не делаем continue, чтобы не блокировать торговлю
                         }
                     }
 
+                    // 3. Список активных пар
                     List<string> pairs;
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
                     if (pairs.Count == 0) { await Task.Delay (5000); continue; }
 
+                    // 4. Анализ сигналов
                     var signals = await AnalyzePairsAsync (pairs);
 
+                    // 5. Обработка сигналов (покупки)
                     foreach (var sig in signals)
                     {
                         bool hasPos = _positionManager.TryGet (sig.Symbol, out _);
@@ -450,7 +455,9 @@ namespace BinanceBotWpf.Services
                         else if (sig.Action == TradeAction.Sell && hasPos)
                         {
                             await ExecuteSell (sig);
+                            // Обновляем спот-баланс после продажи
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            _ui?.AddLog ($"🔄 После продажи спот USDC: {spotBalance:F2}");
                         }
                     }
 
