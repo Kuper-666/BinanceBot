@@ -413,7 +413,7 @@ namespace BinanceBotWpf.Services
                     _ui?.UpdateWalletDisplay (totalBalance.ToString ("F2"));
                     _ui?.AddLog ($"💰 Баланс USDC: спот={spotBalance:F2}, всего={totalBalance:F2}");
 
-                    // 2. Если спот-баланс ниже 10, пытаемся выкупить из Earn (но не блокируем торговлю при неудаче)
+                    // 2. Если спот-баланс ниже 10 – пробуем выкупить из Earn (но не блокируем)
                     if (spotBalance < 10)
                     {
                         _ui?.AddLog ($"🔄 Спот USDC низкий ({spotBalance:F2}), пробую выкупить до 10 USDC...");
@@ -426,8 +426,12 @@ namespace BinanceBotWpf.Services
                         }
                         else
                         {
-                            _ui?.AddLog ($"⚠️ Не удалось выкупить USDC, продолжаем с имеющимся спот-балансом {spotBalance:F2}");
-                            // Не делаем continue, чтобы не блокировать торговлю
+                            // Не удалось выкупить – запускаем ребаланс (продажа других активов)
+                            _ui?.AddLog ($"⚠️ Не удалось выкупить USDC, запускаю ребаланс...");
+                            await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning);
+                            spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            totalBalance = _wallet.GetTotalBalance ("USDC");
+                            _ui?.AddLog ($"💰 После ребаланса: спот={spotBalance:F2}, всего={totalBalance:F2}");
                         }
                     }
 
@@ -439,7 +443,7 @@ namespace BinanceBotWpf.Services
                     // 4. Анализ сигналов
                     var signals = await AnalyzePairsAsync (pairs);
 
-                    // 5. Обработка сигналов (покупки)
+                    // 5. Обработка сигналов
                     foreach (var sig in signals)
                     {
                         bool hasPos = _positionManager.TryGet (sig.Symbol, out _);
@@ -455,7 +459,6 @@ namespace BinanceBotWpf.Services
                         else if (sig.Action == TradeAction.Sell && hasPos)
                         {
                             await ExecuteSell (sig);
-                            // Обновляем спот-баланс после продажи
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                             _ui?.AddLog ($"🔄 После продажи спот USDC: {spotBalance:F2}");
                         }

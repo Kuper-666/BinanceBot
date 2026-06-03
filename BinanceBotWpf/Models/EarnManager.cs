@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Models
@@ -9,6 +10,9 @@ namespace BinanceBotWpf.Models
         private readonly object _consoleLock;
         private readonly HashSet<string> _pendingRedemptions = new HashSet<string> ();
         private readonly object _pendingLock = new object ();
+
+        private DateTime _lastNoFundsLog = DateTime.MinValue;
+        private DateTime _lastSuccessLog = DateTime.MinValue;
 
         public event Action<string> OnLogGenerated;
 
@@ -29,23 +33,33 @@ namespace BinanceBotWpf.Models
                     return true;
 
                 decimal needToRedeem = requiredAmount - currentSpot;
-
-                // Минимальная сумма выкупа: для USDC – 1 USDC, для остальных – 0.0001
                 decimal minRedeemAmount = asset == "USDC" ? 1.0m : 0.0001m;
+
                 if (needToRedeem < minRedeemAmount)
                 {
-                    // Логируем только для не-USDC активов (чтобы не спамить USDC-предупреждениями)
-                    if (asset != "USDC")
+                    // Для USDC логируем не чаще раза в минуту
+                    if (asset == "USDC")
+                    {
+                        if (DateTime.UtcNow - _lastNoFundsLog > TimeSpan.FromMinutes (1))
+                        {
+                            decimal earnBalance = await GetEarnBalanceAsync (asset, client);
+                            Log ($"⚠️ В Earn недостаточно {asset}: доступно {earnBalance:F8}, требуется {needToRedeem:F8}");
+                            _lastNoFundsLog = DateTime.UtcNow;
+                        }
+                    }
+                    else
+                    {
                         Log ($"⚠️ Сумма выкупа {needToRedeem} {asset} меньше минимальной {minRedeemAmount}. Пропускаем.");
+                    }
                     return false;
                 }
 
-                // Блокировка повторного выкупа этого же актива
+                // Блокировка повторного выкупа
                 lock (_pendingLock)
                 {
                     if (_pendingRedemptions.Contains (asset))
                     {
-                        Log ($"⏳ Выкуп {asset} уже запущен, ждём его завершения...");
+                        Log ($"⏳ Выкуп {asset} уже запущен, ждём...");
                         return false;
                     }
                     _pendingRedemptions.Add (asset);
@@ -57,7 +71,18 @@ namespace BinanceBotWpf.Models
                     bool success = await client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem, maxWaitSeconds: 60);
                     if (success)
                     {
-                        Log ($"✅ Выкуп {asset} подтверждён.");
+                        if (asset == "USDC")
+                        {
+                            if (DateTime.UtcNow - _lastSuccessLog > TimeSpan.FromMinutes (5))
+                            {
+                                Log ($"✅ Выкуп {asset} подтверждён.");
+                                _lastSuccessLog = DateTime.UtcNow;
+                            }
+                        }
+                        else
+                        {
+                            Log ($"✅ Выкуп {asset} подтверждён.");
+                        }
                         return true;
                     }
                     Log ($"⚠️ Не удалось выкупить {asset} (таймаут или ошибка API).");
@@ -65,8 +90,7 @@ namespace BinanceBotWpf.Models
                 }
                 finally
                 {
-                    lock (_pendingLock)
-                        _pendingRedemptions.Remove (asset);
+                    lock (_pendingLock) _pendingRedemptions.Remove (asset);
                 }
             }
             catch (Exception ex)
@@ -74,6 +98,14 @@ namespace BinanceBotWpf.Models
                 Log ($"⚠️ Ошибка в EnsureLiquidBalanceAsync: {ex.Message}");
                 return false;
             }
+        }
+
+        // Вспомогательный метод для получения баланса в Earn
+        private async Task<decimal> GetEarnBalanceAsync(string asset, BinanceClient client)
+        {
+            var earnPositions = await client.GetFlexibleEarnBalanceAsync ();
+            var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+            return earnPos != null ? decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", System.Globalization.CultureInfo.InvariantCulture) : 0;
         }
 
         /// <summary>

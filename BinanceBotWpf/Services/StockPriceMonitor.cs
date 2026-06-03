@@ -11,6 +11,8 @@ namespace BinanceBotWpf.Services
         private readonly HttpClient _httpClient;
         private readonly Action<string> _logger;
 
+        private DateTime _lastMarketClosedLog = DateTime.MinValue;
+
         // Торгуемые символы (фьючерсные пары USDT)
         private readonly List<string> _trackedSymbols = new List<string>
         {
@@ -53,9 +55,16 @@ namespace BinanceBotWpf.Services
         public async Task<List<(string Symbol, decimal Price, decimal PriceChangePercent, decimal Volume)>> FetchAllTrackedStocksAsync()
         {
             var results = new List<(string, decimal, decimal, decimal)> ();
+
+            // Проверка торговых часов (Нью-Йорк, 9:30-16:00, Пн-Пт)
             if (!IsTradingHours ())
             {
-                _logger?.Invoke ("ℹ️ Рынок закрыт. Обновление данных приостановлено.");
+                // Логируем не чаще раза в час
+                if (DateTime.UtcNow - _lastMarketClosedLog > TimeSpan.FromHours (1))
+                {
+                    _logger?.Invoke ("ℹ️ Рынок акций закрыт. Обновление данных приостановлено.");
+                    _lastMarketClosedLog = DateTime.UtcNow;
+                }
                 return results;
             }
 
@@ -67,13 +76,17 @@ namespace BinanceBotWpf.Services
                     var data = await Get24hrTickerAsync (symbol);
                     if (data != null)
                     {
-                        var price = (decimal)data["lastPrice"];
-                        var change = (decimal)data["priceChangePercent"];
-                        var volume = (decimal)data["quoteVolume"];
-                        lock (results) { results.Add ((symbol, price, change, volume)); }
+                        decimal price = (decimal)data["lastPrice"];
+                        decimal changePercent = (decimal)data["priceChangePercent"];
+                        decimal volume = (decimal)data["quoteVolume"];
+                        lock (results)
+                        {
+                            results.Add ((symbol, price, changePercent, volume));
+                        }
                     }
                 }));
             }
+
             await Task.WhenAll (tasks);
             return results;
         }
