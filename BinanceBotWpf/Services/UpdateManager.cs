@@ -115,14 +115,25 @@ namespace BinanceBotWpf.Services
                 string scriptPath = CreateUpdateScript (extractPath, appDir, backupDir, currentExe);
 
                 _logger ("🔄 Запуск обновления... Бот будет закрыт.");
-                Process.Start (new ProcessStartInfo
+
+                // Запускаем скрипт обновления
+                var process = new Process
                 {
-                    FileName = scriptPath,
-                    UseShellExecute = true,
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    CreateNoWindow = true
-                });
-                Application.Current.Shutdown ();
+                    StartInfo = new ProcessStartInfo
+                    {
+                        FileName = scriptPath,
+                        UseShellExecute = true,
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true
+                    }
+                };
+                process.Start ();
+
+                // Даём скрипту время на запуск
+                await Task.Delay (1500);
+
+                // Принудительно завершаем текущий процесс
+                Environment.Exit (0);
                 return true;
             }
             catch (Exception ex)
@@ -137,13 +148,21 @@ namespace BinanceBotWpf.Services
             string batPath = Path.Combine (Path.GetTempPath (), "UpdateBot_" + Guid.NewGuid () + ".bat");
             string batContent = $@"
 @echo off
-timeout /t 2 /nobreak > nul
+echo Ожидание завершения старого процесса...
+timeout /t 3 /nobreak > nul
+
 echo Создание резервной копии в {backupDir}
 xcopy ""{targetDir}"" ""{backupDir}"" /E /I /Y /Q > nul
+
+echo Остановка старого процесса...
+taskkill /f /im ""{Path.GetFileName (currentExe)}"" > nul 2>&1
+
 echo Обновление файлов...
 xcopy ""{sourceDir}\*"" ""{targetDir}"" /E /I /Y /Q > nul
+
 echo Запуск обновлённого бота...
 start "" "" ""{currentExe}""
+
 echo Очистка...
 rmdir /S /Q ""{sourceDir}""
 del ""{batPath}""
