@@ -21,7 +21,6 @@ namespace BinanceBotWpf.Services
         private readonly MlModelManager _mlManager;
         private readonly DataLogger _dataLogger;
         private readonly BalanceManager _balanceManager;
-        private AirdropNotifier _airdropNotifier;
         private MainWindowViewModel _ui;
         private bool _isRunning;
 
@@ -90,7 +89,7 @@ namespace BinanceBotWpf.Services
                 }
             }
 
-            logger ($"🔍 Telegram: token='{tgToken?.Substring (0, Math.Min (10, tgToken?.Length ?? 0))}...', chatId='{tgChatId}'");
+            logger ($"🔍 Telegram: token='{( tgToken?.Length > 10 ? tgToken.Substring (0, 10) : tgToken )}...', chatId='{tgChatId}'");
 
             if (!string.IsNullOrEmpty (tgToken) && !string.IsNullOrEmpty (tgChatId))
             {
@@ -100,7 +99,6 @@ namespace BinanceBotWpf.Services
                     _telegram.StartListening (HandleTelegramCommand);
                     logger ("✅ Telegram уведомления включены");
                     logger ("📡 Команды Telegram активированы (/help для списка)");
-                    _airdropNotifier = new AirdropNotifier (_telegram, logger);
                 }
                 catch (Exception ex)
                 {
@@ -332,15 +330,31 @@ namespace BinanceBotWpf.Services
             var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
             if (order != null)
             {
+                decimal stopPrice = sig.Price * ( 1 - _ui.StopLossPercent );
+                decimal limitPrice = sig.Price * ( 1 + _ui.TakeProfitPercent );
+                long ocoOrderListId = 0;
+
+                var ocoOrder = await _client.PlaceOcoOrder (sig.Symbol, qty, stopPrice, limitPrice);
+                if (ocoOrder != null)
+                {
+                    ocoOrderListId = (long)ocoOrder["orderListId"];
+                    _ui?.AddLog ($"✅ OCO-ордер размещён (ID={ocoOrderListId}) | SL={stopPrice:F4}, TP={limitPrice:F4}");
+                }
+                else
+                {
+                    _ui?.AddLog ($"⚠️ Не удалось разместить OCO-ордер для {sig.Symbol}: {_client.LastOrderError}. Защита локальная.");
+                }
+
                 var pos = new OpenPosition
                 {
                     Symbol = sig.Symbol,
                     Quantity = qty,
                     EntryPrice = sig.Price,
                     OpenTime = DateTime.UtcNow,
-                    StopLossPrice = sig.Price * ( 1 - _ui.StopLossPercent ),
-                    TakeProfitPrice = sig.Price * ( 1 + _ui.TakeProfitPercent ),
-                    HighestPrice = sig.Price
+                    StopLossPrice = stopPrice,
+                    TakeProfitPrice = limitPrice,
+                    HighestPrice = sig.Price,
+                    OcoOrderListId = ocoOrderListId
                 };
                 _positionManager.AddOrUpdate (sig.Symbol, pos);
                 decimal newBalance = currentSpotBalance - required;
@@ -379,27 +393,56 @@ namespace BinanceBotWpf.Services
             decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig)
         {
             if (!_positionManager.TryGet (sig.Symbol, out var pos)) return;
+
             string asset = sig.Symbol.Replace ("USDC", "");
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
-            if (spotBalance < pos.Quantity - 0.000001m)
+            decimal qtyToSell = pos.Quantity;
+
+            // Корректировка, если на споте не хватает
+            if (spotBalance < qtyToSell - 0.000001m && spotBalance > 0)
             {
-                _ui?.AddLog ($"⚠️ Недостаточно {asset} на споте для продажи {sig.Symbol}. Удаляю позицию.");
+                decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
+                qtyToSell = Math.Floor (spotBalance / stepSize) * stepSize;
+                if (qtyToSell <= 0)
+                {
+                    _ui?.AddLog ($"⚠️ Недостаточно {asset} для продажи {sig.Symbol}. Удаляю позицию.");
+                    _positionManager.Remove (sig.Symbol);
+                    _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                    return;
+                }
+                _ui?.AddLog ($"⚠️ Корректировка продажи {sig.Symbol}: продаю {qtyToSell} вместо {pos.Quantity} (доступно {spotBalance})");
+            }
+
+            if (qtyToSell <= 0)
+            {
+                _ui?.AddLog ($"⚠️ Нулевое количество для продажи {sig.Symbol}. Удаляю позицию.");
                 _positionManager.Remove (sig.Symbol);
                 _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
                 return;
             }
-            var order = await _client.PlaceOrder (sig.Symbol, "SELL", "MARKET", pos.Quantity);
+
+            // Отмена OCO-ордера, если есть
+            if (pos.OcoOrderListId != 0)
+            {
+                bool cancelled = await _client.CancelOcoOrder (sig.Symbol, pos.OcoOrderListId);
+                if (cancelled)
+                    _ui?.AddLog ($"✅ Отменён OCO-ордер {pos.OcoOrderListId} для {sig.Symbol}");
+                else
+                    _ui?.AddLog ($"⚠️ Не удалось отменить OCO-ордер {pos.OcoOrderListId} (возможно, уже сработал)");
+            }
+
+            var order = await _client.PlaceOrder (sig.Symbol, "SELL", "MARKET", qtyToSell);
             if (order != null)
             {
-                decimal pnl = ( sig.Price - pos.EntryPrice ) * pos.Quantity;
+                decimal pnl = ( sig.Price - pos.EntryPrice ) * qtyToSell;
                 decimal pnlPct = ( sig.Price / pos.EntryPrice - 1 ) * 100;
-                _ui?.AddLog ($"🔒 ЗАКРЫТА: {sig.Symbol} по {sig.Price:F4} | PnL: {pnl:F2} ({pnlPct:F2}%) | SMA Sell");
+                _ui?.AddLog ($"🔒 ЗАКРЫТА: {sig.Symbol} по {sig.Price:F4} | PnL: {pnl:F2} ({pnlPct:F2}%) | SMA Sell (продано {qtyToSell})");
                 var trade = new TradeLog
                 {
                     Symbol = sig.Symbol,
                     EntryPrice = pos.EntryPrice,
                     ExitPrice = sig.Price,
-                    Quantity = pos.Quantity,
+                    Quantity = qtyToSell,
                     PnL = pnl,
                     PnLPercent = pnlPct,
                     OpenTime = pos.OpenTime,
@@ -416,7 +459,46 @@ namespace BinanceBotWpf.Services
             }
             else
             {
-                _ui?.AddLog ($"❌ Не удалось продать {sig.Symbol}: {_client.LastOrderError}");
+                // Если ошибка из-за маленького лота – конвертируем в пыль
+                if (_client.LastOrderError?.Contains ("Lot size") == true ||
+                    _client.LastOrderError?.Contains ("minimum notional") == true ||
+                    _client.LastOrderError?.Contains ("quantity below") == true)
+                {
+                    _ui?.AddLog ($"⚠️ Не удалось продать {sig.Symbol}: остаток слишком мал. Отправляю в конвертацию пыли.");
+                    await ConvertDustAssetAsync (asset);
+                    _positionManager.Remove (sig.Symbol);
+                    _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                }
+                else
+                {
+                    _ui?.AddLog ($"❌ Не удалось продать {sig.Symbol}: {_client.LastOrderError}");
+                }
+            }
+        }
+
+        private async Task ConvertDustAssetAsync(string asset)
+        {
+            try
+            {
+                var dustList = await _client.GetDustAssetsAsync ();
+                var assetId = dustList?.FirstOrDefault (d => d["asset"].ToString () == asset)?["assetId"].ToString ();
+                if (!string.IsNullOrEmpty (assetId))
+                {
+                    _ui?.AddLog ($"🔄 Добавляю {asset} в конвертацию пыли в BNB.");
+                    bool success = await _client.ConvertDustToBnbAsync (new List<string> { assetId });
+                    if (success)
+                        _ui?.AddLog ($"✅ {asset} конвертирован в BNB.");
+                    else
+                        _ui?.AddLog ($"⚠️ Не удалось конвертировать {asset} в BNB.");
+                }
+                else
+                {
+                    _ui?.AddLog ($"⚠️ Актив {asset} не найден в списке допустимых для конвертации пыли.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка конвертации {asset}: {ex.Message}");
             }
         }
 
@@ -538,25 +620,10 @@ namespace BinanceBotWpf.Services
                 if (!_isRunning) break;
                 var dust = await _client.GetDustAssetsAsync ();
                 if (dust == null || dust.Count == 0) continue;
-                var ids = new List<string> ();
-                foreach (var item in dust)
-                {
-                    string asset = item["asset"]?.ToString ();
-                    if (asset != "USDC" && !asset.StartsWith ("LD") && !new[] { "RDNT", "NTRN" }.Contains (asset))
-                        ids.Add (item["assetId"]?.ToString ());
-                }
+                var ids = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
                 if (ids.Count == 0) continue;
                 _ui?.AddLog ($"🧹 Конвертирую пыль ({ids.Count} активов)");
                 await _client.ConvertDustToBnbAsync (ids);
-                await Task.Delay (5000);
-                decimal bnb = await _client.GetAccountBalanceAsync ("BNB");
-                if (bnb > 0.001m)
-                {
-                    var price = ( await _client.GetKlinesAsync ("BNBUSDC", "5m", 1) ).Last ().Close;
-                    decimal step = await _client.GetStepSizeAsync ("BNBUSDC");
-                    decimal qty = Math.Floor (bnb / step) * step;
-                    if (qty > 0) await _client.PlaceOrder ("BNBUSDC", "SELL", "MARKET", qty);
-                }
             }
         }
 
@@ -647,7 +714,6 @@ namespace BinanceBotWpf.Services
             string cmd = command.Trim ();
             _ui?.AddLog ($"📨 Получена команда: '{cmd}'");
 
-            // Преобразование текста reply-кнопок в системные команды
             switch (cmd)
             {
                 case "📊 Статус":
@@ -727,6 +793,11 @@ namespace BinanceBotWpf.Services
                     if (!updated)
                         await _telegram.SendMessageAsync ("✅ Обновлений не найдено или ошибка.", chatId);
                     break;
+                case "/dust":
+                    await _telegram.SendMessageAsync ("🧹 Запускаю конвертацию пыли в BNB...", chatId);
+                    await _client.ConvertDustToBnbAsync (null);
+                    await _telegram.SendMessageAsync ("✅ Конвертация пыли выполнена (или запущена).", chatId);
+                    break;
                 case "/help":
                     string help = "🤖 *Команды и кнопки Telegram бота:*\n\n" +
                                   "• /status – состояние бота\n" +
@@ -737,6 +808,7 @@ namespace BinanceBotWpf.Services
                                   "• /retrain – переобучить ML\n" +
                                   "• /pnl – сводная статистика PnL\n" +
                                   "• /update – проверить обновления\n" +
+                                  "• /dust – конвертировать пыль в BNB\n" +
                                   "• /help – эта справка\n\n" +
                                   "📱 Используйте кнопки внизу экрана для быстрого доступа";
                     await _telegram.SendMessageAsync (help, chatId);

@@ -379,5 +379,91 @@ namespace BinanceBotWpf.Models
             catch (Exception ex) { Log ($"Subscribe exception: {ex.Message}"); }
             return false;
         }
+
+        public async Task<JObject> PlaceOcoOrder(string symbol, decimal quantity, decimal stopPrice, decimal limitPrice)
+        {
+            try
+            {
+                long timestamp = GetTimestamp ();
+                // Получаем tick size для округления цен
+                decimal tickSize = await GetTickSizeAsync (symbol);
+                decimal roundedLimitPrice = Math.Round (limitPrice / tickSize) * tickSize;
+                decimal roundedStopPrice = Math.Round (stopPrice / tickSize) * tickSize;
+
+                string query = $"symbol={symbol}&side=SELL&quantity={quantity.ToString (CultureInfo.InvariantCulture)}" +
+                               $"&price={roundedLimitPrice.ToString (CultureInfo.InvariantCulture)}" +
+                               $"&stopPrice={roundedStopPrice.ToString (CultureInfo.InvariantCulture)}" +
+                               $"&timestamp={timestamp}";
+                string signature = CreateSignature (query);
+                var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order/oco") { Content = content };
+                var response = await SendWithRetryAsync (request);
+                string body = await response.Content.ReadAsStringAsync ();
+                if (response.IsSuccessStatusCode)
+                {
+                    LastOrderError = null;
+                    return JObject.Parse (body);
+                }
+                else
+                {
+                    LastOrderError = body;
+                    Log ($"PlaceOcoOrder ERROR for {symbol}: {response.StatusCode} - {body}");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                LastOrderError = ex.Message;
+                Log ($"PlaceOcoOrder EXCEPTION: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<bool> CancelOcoOrder(string symbol, long orderListId)
+        {
+            try
+            {
+                long timestamp = GetTimestamp ();
+                string query = $"symbol={symbol}&orderListId={orderListId}&timestamp={timestamp}";
+                string signature = CreateSignature (query);
+                var request = new HttpRequestMessage (HttpMethod.Delete, $"/api/v3/orderList?{query}&signature={signature}");
+                var response = await SendWithRetryAsync (request);
+                string body = await response.Content.ReadAsStringAsync ();
+                if (response.IsSuccessStatusCode)
+                {
+                    Log ($"OCO order {orderListId} cancelled");
+                    return true;
+                }
+                else
+                {
+                    Log ($"CancelOcoOrder error: {body}");
+                    return false;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log ($"CancelOcoOrder exception: {ex.Message}");
+                return false;
+            }
+        }
+
+        private readonly Dictionary<string, decimal> _tickSizeCache = new ();
+
+        public async Task<decimal> GetTickSizeAsync(string symbol)
+        {
+            if (_tickSizeCache.TryGetValue (symbol, out var cached))
+                return cached;
+
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            var priceFilter = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "PRICE_FILTER");
+            if (priceFilter != null && priceFilter["tickSize"] != null)
+            {
+                decimal tickSize = decimal.Parse (priceFilter["tickSize"].ToString (), CultureInfo.InvariantCulture);
+                _tickSizeCache[symbol] = tickSize;
+                return tickSize;
+            }
+            return 0.0001m; // значение по умолчанию для USDC пар
+        }
     }
 }

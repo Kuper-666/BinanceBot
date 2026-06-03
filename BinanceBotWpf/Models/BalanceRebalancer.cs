@@ -14,7 +14,7 @@ namespace BinanceBotWpf.Models
         private readonly decimal _minTradePercent = 0.05m;
         private decimal _targetUsdcBalance = 5.50m;
 
-        public event Action<string> OnLogGenerated; // <-- изменено
+        public event Action<string> OnLogGenerated;
 
         private static readonly HashSet<string> BlacklistedAssets = new HashSet<string>
         {
@@ -45,45 +45,68 @@ namespace BinanceBotWpf.Models
             return Math.Min (_maxTradePercent, dynamicPercent);
         }
 
-        public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, decimal targetUsdc = 10m)
+        public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, decimal targetUsdc = 15m)
         {
             try
             {
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                 if (currentUsdc >= targetUsdc) return;
 
-                var allBalances = await GetAllBalancesAsync (client);
-                var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
+                // Шаг 1: сначала пробуем конвертировать мелкую пыль в BNB
+                Log ("🧹 Пробую конвертировать мелкие остатки (dust) в BNB...");
+                bool dustConverted = await client.ConvertDustToBnbAsync (null);
+                if (dustConverted)
+                {
+                    currentUsdc = await client.GetAccountBalanceAsync ("USDC");
+                    if (currentUsdc >= targetUsdc) return;
+                }
 
-                foreach (var assetEntry in sorted)
+                // Шаг 2: собираем все активы (спот + Earn), исключая чёрный список и USDC
+                var allBalances = await GetAllBalancesAsync (client);
+                // Оставляем только активы, которые можно продать (стоимость > 6 USDC)
+                var sellable = allBalances
+                    .Where (kv => kv.Key != "USDC" && !BlacklistedAssets.Contains (kv.Key) && !kv.Key.StartsWith ("LD"))
+                    .Select (async kv =>
+                    {
+                        string asset = kv.Key;
+                        decimal totalAmount = kv.Value.TotalAmount;
+                        string pair = asset + "USDC";
+                        var klines = await client.GetKlinesAsync (pair, "5m", 5);
+                        if (klines == null || klines.Count == 0) return (Asset: asset, Value: 0m, Amount: 0m, Price: 0m);
+                        decimal price = klines.Last ().Close;
+                        decimal estimatedValue = totalAmount * price;
+                        return (Asset: asset, Value: estimatedValue, Amount: totalAmount, Price: price);
+                    })
+                    .Select (t => t.Result)
+                    .Where (x => x.Value >= 6.0m)
+                    .OrderByDescending (x => x.Value)
+                    .ToList ();
+
+                foreach (var item in sellable)
                 {
                     if (!isRunning) break;
-                    string asset = assetEntry.Key;
-                    decimal totalAmount = assetEntry.Value.TotalAmount;
-                    if (totalAmount <= 0) continue;
-                    if (asset == "USDC" || BlacklistedAssets.Contains (asset) || asset.StartsWith ("LD")) continue;
-
+                    string asset = item.Asset;
+                    decimal totalAmount = item.Amount;
+                    decimal price = item.Price;
                     string pair = asset + "USDC";
-                    var klines = await client.GetKlinesAsync (pair, "5m", 5);
-                    if (klines == null || klines.Count == 0) continue;
-                    decimal price = klines.Last ().Close;
-                    decimal estimatedValue = totalAmount * price;
-                    if (estimatedValue < 6.0m) continue;
 
-                    // Продаём всё, чтобы быстро пополнить USDC
-                    decimal amountToSell = totalAmount;
                     decimal stepSize = await client.GetStepSizeAsync (pair);
+                    decimal amountToSell = totalAmount;
                     decimal normalizedAmount = Math.Floor (amountToSell / stepSize) * stepSize;
                     if (normalizedAmount <= 0) continue;
 
-                    // Выкупаем из Earn если нужно
+                    // Убеждаемся, что на споте достаточно для продажи (при необходимости выкупаем из Earn)
                     decimal spotAmount = await client.GetAccountBalanceAsync (asset);
                     if (spotAmount < normalizedAmount)
                     {
                         decimal needToRedeem = normalizedAmount - spotAmount;
                         Log ($"🔄 Выкупаю {needToRedeem} {asset} из Earn...");
                         bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
-                        if (!redeemed) continue;
+                        if (!redeemed)
+                        {
+                            Log ($"⚠️ Не удалось выкупить {asset}, пробую следующий...");
+                            continue;
+                        }
                         await Task.Delay (3000);
                     }
 
@@ -92,7 +115,6 @@ namespace BinanceBotWpf.Models
                     if (order != null)
                     {
                         Log ($"✅ Успешно! Продано {normalizedAmount} {asset}, USDC пополнен.");
-                        // Проверяем, достигли ли цели
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                         if (currentUsdc >= targetUsdc) return;
                     }
@@ -101,16 +123,10 @@ namespace BinanceBotWpf.Models
                         Log ($"❌ Ошибка при продаже {asset}. Пробую следующий...");
                     }
                 }
-                Log ("❌ Не удалось продать ни один актив для пополнения USDC.");
+
+                Log ("❌ Не удалось продать ни один актив для пополнения USDC (все активы слишком малы или неликвидны).");
             }
             catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
-        }
-
-        private int GetDecimalPlaces(decimal value)
-        {
-            string s = value.ToString (CultureInfo.InvariantCulture);
-            int idx = s.IndexOf ('.');
-            return idx == -1 ? 0 : s.Length - idx - 1;
         }
 
         private async Task<Dictionary<string, (decimal TotalAmount, decimal TotalValue)>> GetAllBalancesAsync(BinanceClient client)

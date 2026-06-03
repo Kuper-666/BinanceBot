@@ -4,8 +4,6 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using CsvHelper;
-using System.Globalization;
 using System.Collections.Generic;
 
 namespace BinanceBotWpf.Services
@@ -67,14 +65,32 @@ namespace BinanceBotWpf.Services
             catch { return true; }
         }
 
-        // Обучение из готовых признаков (история ордеров)
+        /// <summary>
+        /// Обучение модели на готовых признаках (например, из истории ордеров).
+        /// </summary>
+        /// <param name="features">Список: (FastSma, SlowSma, Rsi, Volume, Volatility, IsProfitable)</param>
+        /// <param name="logger">Делегат для логирования</param>
         public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal Volume, decimal Volatility, bool IsProfitable)> features, Action<string> logger)
         {
             await Task.Run (() =>
             {
                 try
                 {
+                    // Проверка: должны быть и положительные, и отрицательные примеры
+                    if (!features.Any (f => f.IsProfitable) || !features.Any (f => !f.IsProfitable))
+                    {
+                        logger?.Invoke ("⚠️ В данных нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
+                        return;
+                    }
+
+                    if (features.Count < 10)
+                    {
+                        logger?.Invoke ($"⚠️ Недостаточно примеров для обучения: {features.Count} (минимум 10)");
+                        return;
+                    }
+
                     logger?.Invoke ($"🤖 Запуск обучения ML на {features.Count} примерах...");
+
                     var mlContext = new MLContext (seed: 42);
                     var dataWithLabel = features.Select (m => new
                     {
@@ -120,11 +136,11 @@ namespace BinanceBotWpf.Services
             });
         }
 
-        // Прежний метод RetrainAsync (из CSV логов, можно оставить)
+        // Если нужен старый метод RetrainAsync (из CSV) – можно оставить, но он не используется
         public async Task RetrainAsync(string logsDir, Action<string> logger)
         {
-            // ... (код из предыдущих версий, можно оставить как есть, но он не будет использоваться, если используем историю ордеров)
             await Task.Delay (1); // заглушка
+            logger?.Invoke ("⚠️ RetrainAsync (CSV) не реализован, используйте RetrainFromFeaturesAsync");
         }
     }
 
