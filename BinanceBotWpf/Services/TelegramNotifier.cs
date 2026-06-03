@@ -23,9 +23,6 @@ namespace BinanceBotWpf.Services
             _enabled = !string.IsNullOrEmpty (botToken) && !string.IsNullOrEmpty (chatId);
         }
 
-        /// <summary>
-        /// Клавиатура с кнопками (reply keyboard)
-        /// </summary>
         public ReplyKeyboardMarkup GetMainKeyboard()
         {
             return new ReplyKeyboardMarkup (new[]
@@ -33,7 +30,8 @@ namespace BinanceBotWpf.Services
                 new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
                 new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
                 new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
-                new KeyboardButton[] { "📈 График PnL", "❓ Помощь" }
+                new KeyboardButton[] { "📈 График PnL", "❓ Помощь" },
+                new KeyboardButton[] { "🔄 Конвертировать", "🧹 Пыль в BNB" }
             })
             {
                 ResizeKeyboard = true,
@@ -41,9 +39,6 @@ namespace BinanceBotWpf.Services
             };
         }
 
-        /// <summary>
-        /// Отправить приветственное сообщение с клавиатурой
-        /// </summary>
         public async Task SendWelcomeMessageAsync(string chatId)
         {
             if (!_enabled) return;
@@ -77,7 +72,6 @@ namespace BinanceBotWpf.Services
             _commandHandler = onCommandReceived;
             _cts = new CancellationTokenSource ();
             _ = Task.Run (() => ListenLoop (_cts.Token));
-            // Отправляем приветствие после запуска (для основного чата)
             _ = Task.Run (async () => { await Task.Delay (2000); await SendWelcomeMessageAsync (_chatId); });
         }
 
@@ -97,13 +91,11 @@ namespace BinanceBotWpf.Services
                     foreach (var update in updates)
                     {
                         offset = update.Id + 1;
-                        // Обработка нажатий на Inline-кнопки (если используем)
                         if (update.CallbackQuery != null)
                         {
                             await HandleCallbackQuery (update.CallbackQuery);
                             continue;
                         }
-                        // Обработка текстовых сообщений (включая reply-кнопки)
                         if (update.Message?.Text != null)
                         {
                             string text = update.Message.Text.Trim ();
@@ -130,7 +122,6 @@ namespace BinanceBotWpf.Services
             var chatId = callbackQuery.Message.Chat.Id.ToString ();
             var data = callbackQuery.Data;
             await _botClient.AnswerCallbackQuery (callbackQuery.Id);
-            // Преобразуем callback в команду
             string command = data switch
             {
                 "status" => "/status",

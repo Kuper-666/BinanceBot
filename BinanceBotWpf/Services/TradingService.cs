@@ -6,9 +6,9 @@ using System.Threading.Tasks;
 using System.Collections.Generic;
 using System.Linq;
 using System.Collections.Concurrent;
+using System.Globalization;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
-using System.Globalization;
 
 namespace BinanceBotWpf.Services
 {
@@ -66,21 +66,15 @@ namespace BinanceBotWpf.Services
             _balanceManager = new BalanceManager (client, earn, _rebalancer, null);
         }
 
-        // ========== Логирование ошибок в Telegram ==========
         private async Task LogErrorToTelegram(string error, bool sendToTelegram = true)
         {
-            // Логируем в UI
             _ui?.AddLog ($"❌ {error}");
-
-            // Сохраняем в список последних ошибок
             lock (_recentErrors)
             {
                 _recentErrors.Insert (0, $"{DateTime.Now:HH:mm:ss} - {error}");
                 if (_recentErrors.Count > MaxErrors)
                     _recentErrors.RemoveAt (_recentErrors.Count - 1);
             }
-
-            // Отправляем в Telegram, если включен
             if (sendToTelegram && _telegram != null)
                 await _telegram.SendErrorNotification (error);
         }
@@ -212,7 +206,6 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        // ==================== СБОР ИСТОРИИ ОРДЕРОВ И ОБУЧЕНИЕ ====================
         private async Task OrderHistoryCollectorLoop()
         {
             while (_isRunning)
@@ -313,7 +306,6 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        // ==================== АНАЛИЗ, ПОКУПКА, ПРОДАЖА ====================
         private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi,
             decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume)>> AnalyzePairsAsync(List<string> pairs)
         {
@@ -356,7 +348,7 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
+            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 5)
                 return currentSpotBalance;
@@ -396,7 +388,6 @@ namespace BinanceBotWpf.Services
             var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
             if (order != null)
             {
-                // Даём время на зачисление монет на спот
                 await Task.Delay (1000);
 
                 decimal stopPrice = sig.Price * ( 1 - _ui.StopLossPercent );
@@ -411,7 +402,6 @@ namespace BinanceBotWpf.Services
                 }
                 else
                 {
-                    // Повторная попытка через 1 секунду
                     await Task.Delay (1000);
                     ocoOrder = await _client.PlaceOcoOrder (sig.Symbol, qty, stopPrice, limitPrice);
                     if (ocoOrder != null)
@@ -558,20 +548,23 @@ namespace BinanceBotWpf.Services
             try
             {
                 var dustList = await _client.GetDustAssetsAsync ();
-                var assetId = dustList?.FirstOrDefault (d => d["asset"].ToString () == asset)?["assetId"].ToString ();
-                if (!string.IsNullOrEmpty (assetId))
+                if (dustList == null || dustList.Count == 0)
                 {
-                    _ui?.AddLog ($"🔄 Добавляю {asset} в конвертацию пыли в BNB.");
-                    bool success = await _client.ConvertDustToBnbAsync (new List<string> { assetId });
-                    if (success)
-                        _ui?.AddLog ($"✅ {asset} конвертирован в BNB.");
-                    else
-                        _ui?.AddLog ($"⚠️ Не удалось конвертировать {asset} в BNB.");
+                    _ui?.AddLog ($"⚠️ Нет доступных активов для конвертации пыли.");
+                    return;
                 }
+                var dustItem = dustList.FirstOrDefault (d => d["asset"].ToString () == asset);
+                if (dustItem == null)
+                {
+                    _ui?.AddLog ($"⚠️ Актив {asset} не найден в списке пыли.");
+                    return;
+                }
+                string assetId = dustItem["assetId"].ToString ();
+                bool success = await _client.ConvertDustToBnbAsync (new List<string> { assetId });
+                if (success)
+                    _ui?.AddLog ($"✅ {asset} успешно конвертирован в BNB.");
                 else
-                {
-                    _ui?.AddLog ($"⚠️ Актив {asset} не найден в списке допустимых для конвертации пыли.");
-                }
+                    _ui?.AddLog ($"⚠️ Не удалось конвертировать {asset} в BNB.");
             }
             catch (Exception ex)
             {
@@ -650,7 +643,6 @@ namespace BinanceBotWpf.Services
                     if (_telegram != null && _ui?.TotalTrades > 0)
                         await _telegram.SendDailyReport (_ui.TotalPnL, _ui.WinRate, _ui.TotalTrades, _ui.WinningTrades, _ui.LosingTrades);
 
-                    // Бэкап ML-модели и настроек стратегии
                     await BackupSettingsAndModel ();
                 }
             }
@@ -699,10 +691,7 @@ namespace BinanceBotWpf.Services
                         File.Delete (file);
                 }
             }
-            catch (Exception ex)
-            {
-                _ui?.AddLog ($"Ошибка ротации логов: {ex.Message}");
-            }
+            catch (Exception ex) { _ui?.AddLog ($"Ошибка ротации логов: {ex.Message}"); }
         }
 
         private void ArchiveLogs()
@@ -722,10 +711,7 @@ namespace BinanceBotWpf.Services
                 foreach (var file in files) File.Delete (file);
                 _ui?.AddLog ($"📦 Логи заархивированы: {zipPath}");
             }
-            catch (Exception ex)
-            {
-                _ui?.AddLog ($"❌ Ошибка архивации: {ex.Message}");
-            }
+            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка архивации: {ex.Message}"); }
         }
 
         private async Task UpdatePairsLoop()
@@ -891,10 +877,12 @@ namespace BinanceBotWpf.Services
                 case "/status":
                     await _telegram.SendMessageAsync (GetStatusText (), chatId);
                     break;
+
                 case "/balance":
                     decimal bal = _wallet.GetTotalBalance ("USDC");
                     await _telegram.SendMessageAsync ($"💰 Баланс USDC: {bal:F2} (спот + Earn)", chatId);
                     break;
+
                 case "/stop":
                     if (_isRunning)
                     {
@@ -904,6 +892,7 @@ namespace BinanceBotWpf.Services
                     else
                         await _telegram.SendMessageAsync ("Бот уже остановлен.", chatId);
                     break;
+
                 case "/start":
                     if (!_isRunning && _ui != null)
                     {
@@ -915,14 +904,17 @@ namespace BinanceBotWpf.Services
                     else
                         await _telegram.SendMessageAsync ("Бот уже запущен.", chatId);
                     break;
+
                 case "/export":
                     _ui?.ExportData ();
                     await _telegram.SendMessageAsync ("📁 Данные экспортированы в папку Export.", chatId);
                     break;
+
                 case "/retrain":
                     await _telegram.SendMessageAsync ("🔄 Запускаю переобучение ML модели...", chatId);
                     _ = Task.Run (FetchAndRetrainFromOrderHistoryAsync);
                     break;
+
                 case "/pnl":
                     await _telegram.SendMessageAsync (
                         $"📈 Общий PnL: {( _ui?.TotalPnL ?? 0 ):F2} USDC\n" +
@@ -930,6 +922,7 @@ namespace BinanceBotWpf.Services
                         $"📊 Всего сделок: {( _ui?.TotalTrades ?? 0 )} (✅{_ui?.WinningTrades ?? 0} / ❌{_ui?.LosingTrades ?? 0})",
                         chatId);
                     break;
+
                 case "/update":
                     await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
                     var updater = new UpdateManager (msg => _ui?.AddLog (msg));
@@ -937,11 +930,13 @@ namespace BinanceBotWpf.Services
                     if (!updated)
                         await _telegram.SendMessageAsync ("✅ Обновлений не найдено или ошибка.", chatId);
                     break;
+
                 case "/dust":
                     await _telegram.SendMessageAsync ("🧹 Запускаю конвертацию пыли в BNB...", chatId);
                     await _client.ConvertDustToBnbAsync (null);
                     await _telegram.SendMessageAsync ("✅ Конвертация пыли выполнена (или запущена).", chatId);
                     break;
+
                 case "/errors":
                     string errors;
                     lock (_recentErrors)
@@ -950,6 +945,29 @@ namespace BinanceBotWpf.Services
                     }
                     await _telegram.SendMessageAsync ($"📋 <b>Последние ошибки ({_recentErrors.Count}):</b>\n{errors}", chatId);
                     break;
+
+                case "/convert":
+                    var parts = command.Split (' ');
+                    if (parts.Length != 4)
+                    {
+                        await _telegram.SendMessageAsync ("❗ Использование: /convert FROM TO AMOUNT\nПример: /convert USDC USDT 10", chatId);
+                        break;
+                    }
+                    string fromAsset = parts[1].ToUpper ();
+                    string toAsset = parts[2].ToUpper ();
+                    if (!decimal.TryParse (parts[3], NumberStyles.Any, CultureInfo.InvariantCulture, out decimal convertAmount))
+                    {
+                        await _telegram.SendMessageAsync ("❌ Ошибка: сумма должна быть числом (точка как разделитель).", chatId);
+                        break;
+                    }
+                    await _telegram.SendMessageAsync ($"🔄 Конвертирую {convertAmount} {fromAsset} → {toAsset}...", chatId);
+                    bool convertSuccess = await _client.ConvertAssetAsync (fromAsset, toAsset, convertAmount);
+                    if (convertSuccess)
+                        await _telegram.SendMessageAsync ($"✅ Конвертация {convertAmount} {fromAsset} → {toAsset} успешно выполнена!", chatId);
+                    else
+                        await _telegram.SendMessageAsync ($"❌ Не удалось конвертировать {convertAmount} {fromAsset} → {toAsset}. Проверьте баланс и права API.", chatId);
+                    break;
+
                 case "/help":
                     string help = "🤖 *Команды и кнопки Telegram бота:*\n\n" +
                                   "• /status – состояние бота\n" +
@@ -962,10 +980,12 @@ namespace BinanceBotWpf.Services
                                   "• /update – проверить обновления\n" +
                                   "• /dust – конвертировать пыль в BNB\n" +
                                   "• /errors – показать последние ошибки\n" +
+                                  "• /convert FROM TO AMOUNT – конвертировать активы\n" +
                                   "• /help – эта справка\n\n" +
                                   "📱 Используйте кнопки внизу экрана для быстрого доступа";
                     await _telegram.SendMessageAsync (help, chatId);
                     break;
+
                 default:
                     await _telegram.SendMessageAsync ("Неизвестная команда. /help", chatId);
                     break;

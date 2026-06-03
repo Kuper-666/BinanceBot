@@ -465,5 +465,75 @@ namespace BinanceBotWpf.Models
             }
             return 0.0001m; // значение по умолчанию для USDC пар
         }
+
+        // Получить информацию о поддерживаемых активах и точности округления
+        public async Task<JObject> GetConvertAssetInfoAsync()
+        {
+            long timestamp = GetTimestamp ();
+            string query = $"timestamp={timestamp}";
+            string signature = CreateSignature (query);
+            var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/convert/assetInfo?{query}&signature={signature}");
+            var response = await SendWithRetryAsync (request);
+            string body = await response.Content.ReadAsStringAsync ();
+            if (response.IsSuccessStatusCode) return JObject.Parse (body);
+            Log ($"GetConvertAssetInfo error: {body}");
+            return null;
+        }
+
+        // Получить котировку для конвертации
+        public async Task<JObject> GetConvertQuoteAsync(string fromAsset, string toAsset, decimal amount)
+        {
+            long timestamp = GetTimestamp ();
+            string query = $"fromAsset={fromAsset}&toAsset={toAsset}&amount={amount.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string signature = CreateSignature (query);
+            var request = new HttpRequestMessage (HttpMethod.Post, $"/sapi/v1/convert/getQuote?{query}&signature={signature}");
+            var response = await SendWithRetryAsync (request);
+            string body = await response.Content.ReadAsStringAsync ();
+            if (response.IsSuccessStatusCode) return JObject.Parse (body);
+            Log ($"GetConvertQuote error: {body}");
+            return null;
+        }
+
+        // Принять котировку (выполнить конвертацию)
+        public async Task<JObject> AcceptConvertQuoteAsync(string quoteId)
+        {
+            long timestamp = GetTimestamp ();
+            string query = $"quoteId={quoteId}&timestamp={timestamp}";
+            string signature = CreateSignature (query);
+            var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+            var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/convert/acceptQuote") { Content = content };
+            var response = await SendWithRetryAsync (request);
+            string body = await response.Content.ReadAsStringAsync ();
+            if (response.IsSuccessStatusCode) return JObject.Parse (body);
+            Log ($"AcceptConvertQuote error: {body}");
+            return null;
+        }
+
+        public async Task<bool> ConvertAssetAsync(string fromAsset, string toAsset, decimal amount)
+        {
+            try
+            {
+                // Получаем котировку
+                var quote = await GetConvertQuoteAsync (fromAsset, toAsset, amount);
+                if (quote == null) return false;
+
+                string quoteId = quote["quoteId"]?.ToString ();
+                if (string.IsNullOrEmpty (quoteId)) return false;
+
+                // Принимаем котировку
+                var result = await AcceptConvertQuoteAsync (quoteId);
+                if (result != null)
+                {
+                    Log ($"✅ Конвертация {amount} {fromAsset} → {toAsset} выполнена: {result}");
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception ex)
+            {
+                Log ($"❌ Ошибка конвертации: {ex.Message}");
+                return false;
+            }
+        }
     }
 }
