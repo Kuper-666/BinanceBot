@@ -1,7 +1,9 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net.Http;
 using System.Reflection;
 using System.Threading.Tasks;
@@ -21,20 +23,58 @@ namespace BinanceBotWpf.Services
         public UpdateManager(Action<string> logger)
         {
             _logger = logger;
-            _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceTradingBot");
+            _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceTradingBot/1.0");
+            _httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
         }
 
         public async Task<bool> CheckAndUpdateAsync(bool silent = false)
         {
+            string token = Environment.GetEnvironmentVariable ("GH_TOKEN");
+            if (!string.IsNullOrEmpty (token))
+                _httpClient.DefaultRequestHeaders.Add ("Authorization", $"Bearer {token}");
             try
             {
                 _logger ("🔍 Проверка обновлений...");
-                string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases/latest";
-                string json = await _httpClient.GetStringAsync (apiUrl);
-                var release = JObject.Parse (json);
-                string latestTag = release["tag_name"]?.ToString ()?.TrimStart ('v') ?? "0.0.0";
+
+                // Получаем все релизы (вместо одного /latest)
+                string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases";
+                _logger ($"📡 Запрос к GitHub API: {apiUrl}");
+
+                using var response = await _httpClient.GetAsync (apiUrl);
+                _logger ($"📡 HTTP статус: {response.StatusCode}");
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    var errorBody = await response.Content.ReadAsStringAsync ();
+                    _logger ($"❌ GitHub API вернул ошибку: {errorBody}");
+                    return false;
+                }
+
+                string json = await response.Content.ReadAsStringAsync ();
+                var releases = JArray.Parse (json);
+
+                if (releases.Count == 0)
+                {
+                    _logger ("⚠️ Релизы не найдены в репозитории.");
+                    return false;
+                }
+
+                // Находим последний релиз по дате публикации
+                var latestRelease = releases
+                    .OrderByDescending (r => r["published_at"]?.Value<DateTime> () ?? DateTime.MinValue)
+                    .FirstOrDefault ();
+
+                if (latestRelease == null)
+                {
+                    _logger ("⚠️ Не удалось определить последний релиз.");
+                    return false;
+                }
+
+                string latestTag = latestRelease["tag_name"]?.ToString ()?.TrimStart ('v') ?? "0.0.0";
                 Version latestVersion = new Version (latestTag);
-                string downloadUrl = release["assets"]?[0]?["browser_download_url"]?.ToString ();
+                string downloadUrl = latestRelease["assets"]?[0]?["browser_download_url"]?.ToString ();
+
+                _logger ($"📦 Текущая версия: {CurrentVersion}, последняя: {latestVersion}");
 
                 if (latestVersion > CurrentVersion && !string.IsNullOrEmpty (downloadUrl))
                 {
