@@ -356,7 +356,7 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 5)
                 return currentSpotBalance;
@@ -396,6 +396,9 @@ namespace BinanceBotWpf.Services
             var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
             if (order != null)
             {
+                // Даём время на зачисление монет на спот
+                await Task.Delay (1000);
+
                 decimal stopPrice = sig.Price * ( 1 - _ui.StopLossPercent );
                 decimal limitPrice = sig.Price * ( 1 + _ui.TakeProfitPercent );
                 long ocoOrderListId = 0;
@@ -408,7 +411,18 @@ namespace BinanceBotWpf.Services
                 }
                 else
                 {
-                    _ui?.AddLog ($"⚠️ Не удалось разместить OCO-ордер для {sig.Symbol}: {_client.LastOrderError}. Защита локальная.");
+                    // Повторная попытка через 1 секунду
+                    await Task.Delay (1000);
+                    ocoOrder = await _client.PlaceOcoOrder (sig.Symbol, qty, stopPrice, limitPrice);
+                    if (ocoOrder != null)
+                    {
+                        ocoOrderListId = (long)ocoOrder["orderListId"];
+                        _ui?.AddLog ($"✅ OCO-ордер размещён со второй попытки (ID={ocoOrderListId}) | SL={stopPrice:F4}, TP={limitPrice:F4}");
+                    }
+                    else
+                    {
+                        _ui?.AddLog ($"⚠️ Не удалось разместить OCO-ордер для {sig.Symbol}: {_client.LastOrderError}. Защита локальная.");
+                    }
                 }
 
                 var pos = new OpenPosition
