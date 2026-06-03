@@ -395,6 +395,12 @@ namespace BinanceBotWpf.Services
             if (qty <= 0) return currentSpotBalance;
 
             decimal required = qty * sig.Price;
+            // Минимальная сумма сделки (Binance Spot обычно 10 USDC, но для некоторых пар может быть 5 или 20)
+            if (required < 10)
+            {
+                _ui?.AddLog ($"⚠️ Сумма сделки {required:F2} USDC меньше минимальной 10, пропускаем {sig.Symbol}");
+                return currentSpotBalance;
+            }
             if (required > currentSpotBalance) return currentSpotBalance;
 
             _ui?.AddLog ($"📊 ATR: {atr:F4}, скорректированный риск: {adjustedRisk:P2}, объём: {sig.Volume:F0}");
