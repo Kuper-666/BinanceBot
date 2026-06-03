@@ -13,21 +13,37 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_TOKEN }}
+          fetch-depth: 0
 
       - name: Setup .NET
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
-      - name: Get version
+      - name: Get and increment version
         id: get_version
         shell: pwsh
         run: |
           $csproj = "BinanceBotWpf/BinanceBotWpf.csproj"
           [xml]$xml = Get-Content $csproj
-          $version = $xml.Project.PropertyGroup.VersionPrefix
-          if (-not $version) { $version = "1.0.0" }
-          echo "VERSION=$version" >> $env:GITHUB_OUTPUT
+          $current = $xml.Project.PropertyGroup.VersionPrefix
+          if (-not $current) { $current = "1.0.0" }
+          $parts = $current -split '\.'
+          $newVersion = "$($parts[0]).$($parts[1]).$([int]$parts[2] + 1)"
+          Write-Host "New version: $newVersion"
+          $xml.Project.PropertyGroup.VersionPrefix = $newVersion
+          $xml.Save($csproj)
+          echo "VERSION=$newVersion" >> $env:GITHUB_OUTPUT
+
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add BinanceBotWpf/BinanceBotWpf.csproj
+          git commit -m "Bump version to ${{ steps.get_version.outputs.VERSION }}" || echo "No changes"
+          git push
 
       - name: Restore
         run: dotnet restore BinanceBotWpf/BinanceBotWpf.csproj
