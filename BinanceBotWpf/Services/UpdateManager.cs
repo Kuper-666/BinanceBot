@@ -29,14 +29,9 @@ namespace BinanceBotWpf.Services
 
         public async Task<bool> CheckAndUpdateAsync(bool silent = false)
         {
-            string token = Environment.GetEnvironmentVariable ("GH_TOKEN");
-            if (!string.IsNullOrEmpty (token))
-                _httpClient.DefaultRequestHeaders.Add ("Authorization", $"Bearer {token}");
             try
             {
                 _logger ("🔍 Проверка обновлений...");
-
-                // Получаем все релизы (вместо одного /latest)
                 string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases";
                 _logger ($"📡 Запрос к GitHub API: {apiUrl}");
 
@@ -52,37 +47,42 @@ namespace BinanceBotWpf.Services
 
                 string json = await response.Content.ReadAsStringAsync ();
                 var releases = JArray.Parse (json);
-
                 if (releases.Count == 0)
                 {
-                    _logger ("⚠️ Релизы не найдены в репозитории.");
+                    _logger ("⚠️ Релизы не найдены.");
                     return false;
                 }
 
-                // Находим последний релиз по дате публикации
-                var latestRelease = releases
+                // Сортируем по дате публикации (новые сверху)
+                var sortedReleases = releases
                     .OrderByDescending (r => r["published_at"]?.Value<DateTime> () ?? DateTime.MinValue)
-                    .FirstOrDefault ();
+                    .ToList ();
+                var latestRelease = sortedReleases.First ();
+                string latestTag = latestRelease["tag_name"]?.ToString () ?? "v0.0.0";
+                string latestVersionStr = latestTag.TrimStart ('v');
+                Version latestVersion = new Version (latestVersionStr);
 
-                if (latestRelease == null)
+                // Получаем текущую версию из сборки
+                Version currentVersion = Assembly.GetExecutingAssembly ().GetName ().Version;
+                _logger ($"📦 Текущая версия сборки: {currentVersion}, последняя: {latestVersion}");
+
+                // Для сравнения преобразуем текущую версию в формат X.Y.Z (отбрасываем revision)
+                var currentSimple = new Version (currentVersion.Major, currentVersion.Minor, currentVersion.Build >= 0 ? currentVersion.Build : 0);
+                if (latestVersion > currentSimple)
                 {
-                    _logger ("⚠️ Не удалось определить последний релиз.");
-                    return false;
-                }
-
-                string latestTag = latestRelease["tag_name"]?.ToString ()?.TrimStart ('v') ?? "0.0.0";
-                Version latestVersion = new Version (latestTag);
-                string downloadUrl = latestRelease["assets"]?[0]?["browser_download_url"]?.ToString ();
-
-                _logger ($"📦 Текущая версия: {CurrentVersion}, последняя: {latestVersion}");
-
-                if (latestVersion > CurrentVersion && !string.IsNullOrEmpty (downloadUrl))
-                {
-                    _logger ($"✨ Новая версия: {latestVersion} (текущая: {CurrentVersion})");
-                    if (silent || MessageBox.Show ($"Доступна версия {latestVersion}. Обновить сейчас?",
-                                                  "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                    string downloadUrl = latestRelease["assets"]?[0]?["browser_download_url"]?.ToString ();
+                    if (!string.IsNullOrEmpty (downloadUrl))
                     {
-                        return await DownloadAndInstall (downloadUrl, latestTag);
+                        _logger ($"✨ Новая версия: {latestVersion} (текущая: {currentSimple})");
+                        if (silent || MessageBox.Show ($"Доступна версия {latestVersion}. Обновить сейчас?",
+                                                      "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
+                        {
+                            return await DownloadAndInstall (downloadUrl, latestTag);
+                        }
+                    }
+                    else
+                    {
+                        _logger ("⚠️ Не найден архив для скачивания.");
                     }
                 }
                 else
