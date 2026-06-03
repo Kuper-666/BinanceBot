@@ -1,5 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -53,20 +52,15 @@ namespace BinanceBotWpf.Services
                     return false;
                 }
 
-                // Сортируем по дате публикации (новые сверху)
-                var sortedReleases = releases
-                    .OrderByDescending (r => r["published_at"]?.Value<DateTime> () ?? DateTime.MinValue)
-                    .ToList ();
+                var sortedReleases = releases.OrderByDescending (r => r["published_at"]?.Value<DateTime> () ?? DateTime.MinValue).ToList ();
                 var latestRelease = sortedReleases.First ();
                 string latestTag = latestRelease["tag_name"]?.ToString () ?? "v0.0.0";
                 string latestVersionStr = latestTag.TrimStart ('v');
                 Version latestVersion = new Version (latestVersionStr);
 
-                // Получаем текущую версию из сборки
                 Version currentVersion = Assembly.GetExecutingAssembly ().GetName ().Version;
                 _logger ($"📦 Текущая версия сборки: {currentVersion}, последняя: {latestVersion}");
 
-                // Для сравнения преобразуем текущую версию в формат X.Y.Z (отбрасываем revision)
                 var currentSimple = new Version (currentVersion.Major, currentVersion.Minor, currentVersion.Build >= 0 ? currentVersion.Build : 0);
                 if (latestVersion > currentSimple)
                 {
