@@ -21,6 +21,7 @@ namespace BinanceBotWpf.Services
         private readonly MlModelManager _mlManager;
         private readonly DataLogger _dataLogger;
         private readonly BalanceManager _balanceManager;
+        private AirdropNotifier _airdropNotifier;
         private MainWindowViewModel _ui;
         private bool _isRunning;
 
@@ -43,7 +44,6 @@ namespace BinanceBotWpf.Services
         private readonly TimeSpan _ordersFetchInterval = TimeSpan.FromHours (4);
         private readonly string _telegramBotToken;
         private readonly string _telegramChatId;
-        private AirdropNotifier _airdropNotifier;
 
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
                               decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
@@ -52,6 +52,8 @@ namespace BinanceBotWpf.Services
             _wallet = wallet;
             _earn = earn;
             _rebalancer = rebalancer ?? new BalanceRebalancer (new object (), 0.1m);
+            _telegramBotToken = telegramBotToken;
+            _telegramChatId = telegramChatId;
             string dataDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data");
             string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
             _positionManager = new PositionManager (Path.Combine (dataDir, "open_positions.json"), null);
@@ -98,6 +100,7 @@ namespace BinanceBotWpf.Services
                     _telegram.StartListening (HandleTelegramCommand);
                     logger ("✅ Telegram уведомления включены");
                     logger ("📡 Команды Telegram активированы (/help для списка)");
+                    _airdropNotifier = new AirdropNotifier (_telegram, logger);
                 }
                 catch (Exception ex)
                 {
@@ -108,9 +111,6 @@ namespace BinanceBotWpf.Services
             {
                 logger ("⚠️ Telegram не настроен. Уведомления отключены.");
             }
-
-            _airdropNotifier = new AirdropNotifier (_telegram, logger);
-            logger ("✅ Запущен модуль уведомлений об аирдропах.");
         }
 
         public async Task StartTradingAsync(MainWindowViewModel vm)
@@ -642,11 +642,11 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public void StopTrading() => _isRunning = false;
-
         private async Task HandleTelegramCommand(string command, string chatId)
         {
             string cmd = command.Trim ();
+            _ui?.AddLog ($"📨 Получена команда: '{cmd}'");
+
             // Преобразование текста reply-кнопок в системные команды
             switch (cmd)
             {
@@ -720,6 +720,13 @@ namespace BinanceBotWpf.Services
                         $"📊 Всего сделок: {( _ui?.TotalTrades ?? 0 )} (✅{_ui?.WinningTrades ?? 0} / ❌{_ui?.LosingTrades ?? 0})",
                         chatId);
                     break;
+                case "/update":
+                    await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
+                    var updater = new UpdateManager (msg => _ui?.AddLog (msg));
+                    bool updated = await updater.CheckAndUpdateAsync (silent: false);
+                    if (!updated)
+                        await _telegram.SendMessageAsync ("✅ Обновлений не найдено или ошибка.", chatId);
+                    break;
                 case "/help":
                     string help = "🤖 *Команды и кнопки Telegram бота:*\n\n" +
                                   "• /status – состояние бота\n" +
@@ -729,6 +736,7 @@ namespace BinanceBotWpf.Services
                                   "• /export – экспорт логов\n" +
                                   "• /retrain – переобучить ML\n" +
                                   "• /pnl – сводная статистика PnL\n" +
+                                  "• /update – проверить обновления\n" +
                                   "• /help – эта справка\n\n" +
                                   "📱 Используйте кнопки внизу экрана для быстрого доступа";
                     await _telegram.SendMessageAsync (help, chatId);
@@ -746,5 +754,7 @@ namespace BinanceBotWpf.Services
             int positions = _positionManager.Count;
             return $"🤖 Статус: {status}\n💰 USDC: {balance:F2}\n📊 Открыто позиций: {positions}";
         }
+
+        public void StopTrading() => _isRunning = false;
     }
 }
