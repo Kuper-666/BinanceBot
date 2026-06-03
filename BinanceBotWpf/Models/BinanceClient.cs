@@ -552,5 +552,28 @@ namespace BinanceBotWpf.Models
             }
             return anySuccess;
         }
+
+        public async Task<decimal> GetATRAsync(string symbol, int period = 14)
+        {
+            try
+            {
+                var klines = await GetKlinesAsync (symbol, "5m", period + 1);
+                if (klines == null || klines.Count < period) return 0;
+                decimal atr = 0;
+                for (int i = 1; i <= period; i++)
+                {
+                    decimal tr = Math.Max (klines[i].High - klines[i].Low,
+                        Math.Max (Math.Abs (klines[i].High - klines[i - 1].Close),
+                                 Math.Abs (klines[i].Low - klines[i - 1].Close)));
+                    atr += tr;
+                }
+                return atr / period;
+            }
+            catch (Exception ex)
+            {
+                Log ($"GetATRAsync error: {ex.Message}");
+                return 0;
+            }
+        }
     }
 }

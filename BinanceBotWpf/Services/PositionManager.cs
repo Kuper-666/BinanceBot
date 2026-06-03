@@ -97,5 +97,7 @@ namespace BinanceBotWpf.Services
         public decimal TakeProfitPrice { get; set; }
         public decimal HighestPrice { get; set; }
         public long OcoOrderListId { get; set; }
+        public decimal InitialTakeProfitPrice { get; set; }
+        public decimal HighestPriceSinceOpen { get; set; }
     }
 }

@@ -314,12 +314,10 @@ namespace BinanceBotWpf.Services
             if (data == null || data.Count < period || period <= 0) return 0.02m;
             var last = data.TakeLast (period).ToList ();
             decimal avg = last.Average ();
-            // Защита от некорректных данных (avg == 0 или огромные значения, похожие на объём)
-            if (avg == 0 || avg > 1_000_000m) return 0.02m;
+            if (avg == 0 || avg > 1_000_000m) return 0.02m; // защита
             decimal sumSq = last.Select (x => ( x - avg ) * ( x - avg )).Sum ();
             decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / period ));
             decimal volatility = stdDev / avg;
-            // Если волатильность выходит за пределы 0.1%..100%, возвращаем 2% по умолчанию
             if (volatility > 1.0m || volatility < 0.001m) return 0.02m;
             return Math.Min (0.30m, Math.Max (0.005m, volatility));
         }
@@ -328,7 +326,7 @@ namespace BinanceBotWpf.Services
         /// Анализ пар и формирование сигналов с отладочным выводом.
         /// </summary>
         private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume)>> AnalyzePairsAsync(List<string> pairs)
+     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume)>> AnalyzePairsAsync(List<string> pairs)
         {
             var results = new ConcurrentBag<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal)> ();
             await Parallel.ForEachAsync (pairs, async (sym, ct) =>
@@ -338,16 +336,26 @@ namespace BinanceBotWpf.Services
                     var klines = await GetKlinesCachedAsync (sym, "5m", 50);
                     if (klines?.Count < Math.Max (_ui.FastSma, _ui.SlowSma) + 2) return;
                     var closes = klines.Select (k => k.Close).ToList ();
+                    var volumes = klines.Select (k => k.Volume).ToList ();
                     decimal price = closes.Last ();
+                    decimal volume = volumes.Last ();
+                    decimal avgVolume = volumes.TakeLast (20).Average ();
+
+                    // Фильтр по объёму
+                    if (volume < avgVolume * 0.8m)
+                    {
+                        _ui?.AddLog ($"⏸️ {sym}: объём {volume:F0} < {avgVolume:F0} (80%) – игнорируем");
+                        return;
+                    }
+
                     var signal = _strategy.AnalyzePairWithWallet (sym, closes, _ui.FastSma, _ui.SlowSma, price);
                     decimal rsi = CalculateRsi (closes);
                     decimal fastSma = CalculateSma (closes, _ui.FastSma);
                     decimal slowSma = CalculateSma (closes, _ui.SlowSma);
                     decimal volatility = CalculateVolatility (closes, 20);
-                    decimal volume = klines.Last ().Volume;
 
-                    // ОТЛАДОЧНЫЙ ВЫВОД (можно закомментировать после настройки)
-                    _ui?.AddLog ($"🔍 {sym}: цена={price:F4}, волатильность={volatility:P2}, RSI={rsi:F1}, сигнал={signal.Action}");
+                    // Отладка первых трёх цен
+                    _ui?.AddLog ($"DEBUG {sym}: closes[0..2] = {string.Join (", ", closes.Take (3))}, avg={closes.Average ():F2}");
 
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), _positionManager.TryGet (sym, out _), signal.Action, fastSma, slowSma);
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume));
@@ -361,33 +369,26 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
         {
-            if (currentSpotBalance < 5)
+            if (currentSpotBalance < 10)
                 return currentSpotBalance;
 
             decimal totalBalance = _wallet.GetTotalBalance ("USDC");
 
-            decimal volatility = sig.Volatility;
-            volatility = Math.Min (0.30m, Math.Max (0.005m, volatility));
+            // === Динамический риск на основе волатильности ===
+            decimal volatility = Math.Clamp (sig.Volatility, 0.005m, 0.30m);
             decimal baseRisk = _ui.MaxRiskPercent;
             decimal riskMultiplier = Math.Max (0.2m, 1 - ( volatility - 0.02m ) * 10);
-            decimal adjustedRisk = baseRisk * riskMultiplier;
-            adjustedRisk = Math.Clamp (adjustedRisk, 0.05m, 0.25m);
+            decimal adjustedRisk = Math.Clamp (baseRisk * riskMultiplier, 0.05m, 0.25m);
 
-            decimal spend = totalBalance * adjustedRisk;
-            _ui?.AddLog ($"📊 Волатильность: {volatility:P2}, скорректированный риск: {adjustedRisk:P2}");
+            // === Расчёт размера позиции через ATR ===
+            decimal atr = await _client.GetATRAsync (sig.Symbol, 14);
+            if (atr <= 0) atr = sig.Price * 0.02m; // запасной вариант (2% от цены)
+            decimal riskAmount = totalBalance * adjustedRisk;
+            decimal positionSize = riskAmount / atr; // размер в единицах актива (риск на ATR)
+            decimal rawQty = positionSize / sig.Price;
 
-            if (spend > currentSpotBalance) spend = currentSpotBalance;
-            if (spend < 10) return currentSpotBalance;
-
-            if (!_mlManager.IsProfitable (sig.FastSma, sig.SlowSma, sig.Rsi, sig.Volume, sig.Volatility))
-            {
-                _ui?.AddLog ($"⏸️ ML отклонила покупку {sig.Symbol}");
-                return currentSpotBalance;
-            }
-
-            decimal rawQty = spend / sig.Price;
             decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
             decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
             qty = Math.Round (qty, 8);
@@ -395,82 +396,91 @@ namespace BinanceBotWpf.Services
 
             decimal required = qty * sig.Price;
             if (required > currentSpotBalance) return currentSpotBalance;
-            if (required < 10) return currentSpotBalance;
 
+            _ui?.AddLog ($"📊 ATR: {atr:F4}, скорректированный риск: {adjustedRisk:P2}, объём: {sig.Volume:F0}");
             _ui?.AddLog ($"💵 Попытка купить {qty} {sig.Symbol} по {sig.Price:F4}, сумма ~{required:F2} USDC (доступно {currentSpotBalance:F2})");
 
+            // === Проверка ML ===
+            if (!_mlManager.IsProfitable (sig.FastSma, sig.SlowSma, sig.Rsi, sig.Volume, sig.Volatility))
+            {
+                _ui?.AddLog ($"⏸️ ML отклонила покупку {sig.Symbol}");
+                return currentSpotBalance;
+            }
+
+            // === Размещение рыночного ордера ===
             var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
-            if (order != null)
+            if (order == null)
+            {
+                await LogErrorToTelegram ($"ExecuteBuy {sig.Symbol}: {_client.LastOrderError}");
+                return currentSpotBalance;
+            }
+
+            // === Ожидание появления монет на споте ===
+            string asset = sig.Symbol.Replace ("USDC", "");
+            for (int i = 0; i < 5; i++)
             {
                 await Task.Delay (1000);
+                decimal balance = await _client.GetAccountBalanceAsync (asset);
+                if (balance >= qty - 0.000001m) break;
+            }
 
-                decimal stopPrice = sig.Price * ( 1 - _ui.StopLossPercent );
-                decimal limitPrice = sig.Price * ( 1 + _ui.TakeProfitPercent );
-                long ocoOrderListId = 0;
+            // === Уровни SL/TP ===
+            decimal stopPrice = sig.Price * ( 1 - _ui.StopLossPercent );
+            decimal limitPrice = sig.Price * ( 1 + _ui.TakeProfitPercent );
+            long ocoOrderListId = 0;
 
-                var ocoOrder = await _client.PlaceOcoOrder (sig.Symbol, qty, stopPrice, limitPrice);
-                if (ocoOrder != null)
-                {
-                    ocoOrderListId = (long)ocoOrder["orderListId"];
-                    _ui?.AddLog ($"✅ OCO-ордер размещён (ID={ocoOrderListId}) | SL={stopPrice:F4}, TP={limitPrice:F4}");
-                }
-                else
-                {
-                    await Task.Delay (1000);
-                    ocoOrder = await _client.PlaceOcoOrder (sig.Symbol, qty, stopPrice, limitPrice);
-                    if (ocoOrder != null)
-                    {
-                        ocoOrderListId = (long)ocoOrder["orderListId"];
-                        _ui?.AddLog ($"✅ OCO-ордер размещён со второй попытки (ID={ocoOrderListId}) | SL={stopPrice:F4}, TP={limitPrice:F4}");
-                    }
-                    else
-                    {
-                        _ui?.AddLog ($"⚠️ Не удалось разместить OCO-ордер для {sig.Symbol}: {_client.LastOrderError}. Защита локальная.");
-                    }
-                }
-
-                var pos = new OpenPosition
-                {
-                    Symbol = sig.Symbol,
-                    Quantity = qty,
-                    EntryPrice = sig.Price,
-                    OpenTime = DateTime.UtcNow,
-                    StopLossPrice = stopPrice,
-                    TakeProfitPrice = limitPrice,
-                    HighestPrice = sig.Price,
-                    OcoOrderListId = ocoOrderListId
-                };
-                _positionManager.AddOrUpdate (sig.Symbol, pos);
-                decimal newBalance = currentSpotBalance - required;
-                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price:F4} | Остаток USDC на споте: {newBalance:F2}");
-                _ui?.UpdateWalletDisplay (_wallet.GetTotalBalance ("USDC").ToString ("F2"));
-                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                _dataLogger.LogTrade (new TradeLog
-                {
-                    Symbol = sig.Symbol,
-                    EntryPrice = sig.Price,
-                    ExitPrice = sig.Price,
-                    Quantity = qty,
-                    Action = "BUY_OPEN",
-                    CloseTime = DateTime.UtcNow,
-                    Reason = "SMA Buy"
-                });
-                return newBalance;
+            // === OCO-ордер с повторными попытками ===
+            var ocoOrder = await _client.PlaceOcoOrder (sig.Symbol, qty, stopPrice, limitPrice);
+            if (ocoOrder != null)
+            {
+                ocoOrderListId = (long)ocoOrder["orderListId"];
+                _ui?.AddLog ($"✅ OCO-ордер размещён (ID={ocoOrderListId}) | SL={stopPrice:F4}, TP={limitPrice:F4}");
             }
             else
             {
-                if (_client.LastOrderError?.Contains ("This symbol is not permitted") == true)
+                await Task.Delay (1000);
+                ocoOrder = await _client.PlaceOcoOrder (sig.Symbol, qty, stopPrice, limitPrice);
+                if (ocoOrder != null)
                 {
-                    _ui?.AddLog ($"⚠️ Символ {sig.Symbol} не разрешён для торговли, исключаю из списка");
-                    lock (_pairsLock) { _activePairs.Remove (sig.Symbol); }
-                    _blacklistedSymbols.Add (sig.Symbol);
+                    ocoOrderListId = (long)ocoOrder["orderListId"];
+                    _ui?.AddLog ($"✅ OCO-ордер со второй попытки (ID={ocoOrderListId}) | SL={stopPrice:F4}, TP={limitPrice:F4}");
                 }
                 else
                 {
-                    await LogErrorToTelegram ($"ExecuteBuy {sig.Symbol}: {_client.LastOrderError}");
+                    _ui?.AddLog ($"⚠️ Не удалось разместить OCO-ордер для {sig.Symbol}: {_client.LastOrderError}. Защита локальная.");
                 }
-                return currentSpotBalance;
             }
+
+            // === Сохранение позиции ===
+            var pos = new OpenPosition
+            {
+                Symbol = sig.Symbol,
+                Quantity = qty,
+                EntryPrice = sig.Price,
+                OpenTime = DateTime.UtcNow,
+                StopLossPrice = stopPrice,
+                TakeProfitPrice = limitPrice,
+                HighestPrice = sig.Price,
+                HighestPriceSinceOpen = sig.Price,
+                InitialTakeProfitPrice = limitPrice,
+                OcoOrderListId = ocoOrderListId
+            };
+            _positionManager.AddOrUpdate (sig.Symbol, pos);
+            decimal newBalance = currentSpotBalance - required;
+            _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price:F4} | Остаток USDC на споте: {newBalance:F2}");
+            _ui?.UpdateWalletDisplay (_wallet.GetTotalBalance ("USDC").ToString ("F2"));
+            _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+            _dataLogger.LogTrade (new TradeLog
+            {
+                Symbol = sig.Symbol,
+                EntryPrice = sig.Price,
+                ExitPrice = sig.Price,
+                Quantity = qty,
+                Action = "BUY_OPEN",
+                CloseTime = DateTime.UtcNow,
+                Reason = "SMA Buy"
+            });
+            return newBalance;
         }
 
         private async Task ExecuteSell((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
@@ -594,12 +604,62 @@ namespace BinanceBotWpf.Services
                 if (!_positionManager.TryGet (sym, out var pos)) continue;
                 decimal price = await GetCurrentPrice (sym);
                 if (price <= 0) continue;
+
+                // === Трейлинг-стоп (существующий) ===
                 if (price > pos.HighestPrice)
                 {
                     pos.HighestPrice = price;
                     decimal newSl = pos.HighestPrice * ( 1 - _ui.TrailingStopPercent );
                     if (newSl > pos.StopLossPrice) pos.StopLossPrice = newSl;
                 }
+
+                // === Трейлинг-тейк-профит (новый) ===
+                if (price > pos.HighestPriceSinceOpen)
+                {
+                    pos.HighestPriceSinceOpen = price;
+                    decimal profitPercent = ( price - pos.EntryPrice ) / pos.EntryPrice;
+                    if (profitPercent > 0.02m) // если прибыль > 2%
+                    {
+                        decimal newTP = price * ( 1 + _ui.TakeProfitPercent );
+                        if (newTP > pos.TakeProfitPrice)
+                        {
+                            pos.TakeProfitPrice = newTP;
+                            _ui?.AddLog ($"📈 Трейлинг TP для {sym}: повышен до {newTP:F4}");
+                            // Опционально: обновить OCO-ордер (отменить старый и выставить новый)
+                            await UpdateOcoOrder (sym, pos);
+                        }
+                    }
+                }
+
+                // === Частичный тейк-профит (при +5% от входа) ===
+                if (price >= pos.EntryPrice * 1.05m && pos.Quantity > 0)
+                {
+                    decimal stepSize = await _client.GetStepSizeAsync (sym);
+                    decimal closeQty = Math.Floor (pos.Quantity / 2 / stepSize) * stepSize;
+                    if (closeQty > 0.000001m)
+                    {
+                        var order = await _client.PlaceOrder (sym, "SELL", "MARKET", closeQty);
+                        if (order != null)
+                        {
+                            _ui?.AddLog ($"🎯 Частичная фиксация: продано {closeQty} {sym} по {price:F4} (+5%)");
+                            pos.Quantity -= closeQty;
+                            if (pos.Quantity <= 0)
+                            {
+                                toClose.Add (sym);
+                            }
+                            else
+                            {
+                                // Перемещаем стоп-лосс в безубыток
+                                pos.StopLossPrice = pos.EntryPrice;
+                                _ui?.AddLog ($"🛡️ Стоп-лосс для {sym} перемещён в безубыток: {pos.StopLossPrice:F4}");
+                            }
+                            // Обновляем OCO-ордер (если нужно)
+                            await UpdateOcoOrder (sym, pos);
+                        }
+                    }
+                }
+
+                // === Проверка условий полного закрытия ===
                 if (price <= pos.StopLossPrice || price >= pos.TakeProfitPrice || DateTime.UtcNow - pos.OpenTime > TimeSpan.FromHours (2))
                     toClose.Add (sym);
             }
@@ -607,6 +667,26 @@ namespace BinanceBotWpf.Services
             {
                 decimal price = await GetCurrentPrice (sym);
                 await ExecuteSell ((sym, TradeAction.Sell, price, 0, 0, 0, 0, 0));
+            }
+        }
+
+        private async Task UpdateOcoOrder(string symbol, OpenPosition pos)
+        {
+            if (pos.OcoOrderListId != 0)
+            {
+                bool cancelled = await _client.CancelOcoOrder (symbol, pos.OcoOrderListId);
+                if (cancelled)
+                    _ui?.AddLog ($"🔄 Отменён старый OCO-ордер {pos.OcoOrderListId} для {symbol}");
+            }
+            var newOco = await _client.PlaceOcoOrder (symbol, pos.Quantity, pos.StopLossPrice, pos.TakeProfitPrice);
+            if (newOco != null)
+            {
+                pos.OcoOrderListId = (long)newOco["orderListId"];
+                _ui?.AddLog ($"🔄 Новый OCO-ордер размещён (ID={pos.OcoOrderListId}) | SL={pos.StopLossPrice:F4}, TP={pos.TakeProfitPrice:F4}");
+            }
+            else
+            {
+                _ui?.AddLog ($"⚠️ Не удалось обновить OCO-ордер для {symbol}: {_client.LastOrderError}");
             }
         }
 
