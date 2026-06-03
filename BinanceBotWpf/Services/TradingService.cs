@@ -298,25 +298,37 @@ namespace BinanceBotWpf.Services
             return results.ToList ();
         }
 
+        private decimal CalculateVolatility(List<decimal> data, int period)
+        {
+            if (data == null || data.Count < period || period <= 0) return 0.02m;
+            var last = data.TakeLast (period).ToList ();
+            decimal avg = last.Average ();
+            if (avg == 0) return 0.02m;
+            decimal sumSq = last.Select (x => ( x - avg ) * ( x - avg )).Sum ();
+            decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / period ));
+            decimal volatility = stdDev / avg;
+            return Math.Min (0.30m, Math.Max (0.005m, volatility));
+        }
+
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
+            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 5)
                 return currentSpotBalance;
 
             decimal totalBalance = _wallet.GetTotalBalance ("USDC");
 
-            // ===== ДИНАМИЧЕСКИЙ РИСК НА ОСНОВЕ ВОЛАТИЛЬНОСТИ =====
-            decimal volatility = sig.Volatility; // значение от 0 до 0.2 обычно
+            // Динамический риск на основе волатильности (с ограничением)
+            decimal volatility = sig.Volatility;
+            volatility = Math.Min (0.30m, Math.Max (0.005m, volatility)); // 0.5% - 30%
+
             decimal baseRisk = _ui.MaxRiskPercent;
-            // Коэффициент риска: при волатильности 2% -> 1, при 5% -> 0.5, при 10% -> 0
             decimal riskMultiplier = Math.Max (0.2m, 1 - ( volatility - 0.02m ) * 10);
             decimal adjustedRisk = baseRisk * riskMultiplier;
             adjustedRisk = Math.Clamp (adjustedRisk, 0.05m, 0.25m);
 
             decimal spend = totalBalance * adjustedRisk;
             _ui?.AddLog ($"📊 Волатильность: {volatility:P2}, скорректированный риск: {adjustedRisk:P2}");
-            // ===================================================
 
             if (spend > currentSpotBalance) spend = currentSpotBalance;
             if (spend < 10) return currentSpotBalance;
@@ -409,7 +421,6 @@ namespace BinanceBotWpf.Services
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
             decimal qtyToSell = pos.Quantity;
 
-            // Корректировка, если на споте не хватает
             if (spotBalance < qtyToSell - 0.000001m && spotBalance > 0)
             {
                 decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
@@ -432,7 +443,6 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
-            // Отмена OCO-ордера, если есть
             if (pos.OcoOrderListId != 0)
             {
                 bool cancelled = await _client.CancelOcoOrder (sig.Symbol, pos.OcoOrderListId);
@@ -470,7 +480,6 @@ namespace BinanceBotWpf.Services
             }
             else
             {
-                // Если ошибка из-за маленького лота – конвертируем в пыль
                 if (_client.LastOrderError?.Contains ("Lot size") == true ||
                     _client.LastOrderError?.Contains ("minimum notional") == true ||
                     _client.LastOrderError?.Contains ("quantity below") == true)
@@ -547,14 +556,6 @@ namespace BinanceBotWpf.Services
 
         private decimal CalculateSma(List<decimal> data, int period) => data.Skip (data.Count - period).Average ();
         private decimal CalculateRsi(List<decimal> closes) => TechnicalAnalysis.RSI (closes, 14).LastOrDefault () ?? 50;
-        private decimal CalculateVolatility(List<decimal> data, int period)
-        {
-            if (data.Count < period) return 0;
-            var last = data.TakeLast (period).ToList ();
-            decimal avg = last.Average ();
-            decimal sumSq = last.Select (x => ( x - avg ) * ( x - avg )).Sum ();
-            return (decimal)Math.Sqrt ((double)( sumSq / period ));
-        }
 
         private async Task<List<BinanceKline>> GetKlinesCachedAsync(string symbol, string interval, int limit)
         {
@@ -571,16 +572,6 @@ namespace BinanceBotWpf.Services
         // ==================== ФОНОВЫЕ ЦИКЛЫ ====================
         private async Task BalanceLoop()
         {
-            // Внутри if (DateTime.UtcNow.Date != _lastReportDate) после архивации логов:
-            string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
-            string settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
-            string backupDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Backups");
-            if (!Directory.Exists (backupDir)) Directory.CreateDirectory (backupDir);
-            string dateStamp = DateTime.Now.ToString ("yyyyMMdd");
-            if (File.Exists (modelPath))
-                File.Copy (modelPath, Path.Combine (backupDir, $"trading_model_{dateStamp}.zip"), true);
-            if (File.Exists (settingsPath))
-                File.Copy (settingsPath, Path.Combine (backupDir, $"strategy_settings_{dateStamp}.json"), true);
             while (_isRunning)
             {
                 await Task.Delay (60000);
@@ -846,13 +837,6 @@ namespace BinanceBotWpf.Services
             decimal balance = _wallet.GetTotalBalance ("USDC");
             int positions = _positionManager.Count;
             return $"🤖 Статус: {status}\n💰 USDC: {balance:F2}\n📊 Открыто позиций: {positions}";
-        }
-
-        private async Task LogErrorToTelegram(string error)
-        {
-            if (_telegram != null)
-                await _telegram.SendErrorNotification (error);
-            _ui?.AddLog ($"❌ {error}");
         }
 
         public void StopTrading() => _isRunning = false;
