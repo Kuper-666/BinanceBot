@@ -33,7 +33,11 @@ jobs:
           $parts = $current -split '\.'
           $newVersion = "$($parts[0]).$($parts[1]).$([int]$parts[2] + 1)"
           Write-Host "New version: $newVersion"
+          # Обновляем все версионные поля
           $xml.Project.PropertyGroup.VersionPrefix = $newVersion
+          $xml.Project.PropertyGroup.Version = $newVersion
+          $xml.Project.PropertyGroup.AssemblyVersion = "$newVersion.0"
+          $xml.Project.PropertyGroup.FileVersion = "$newVersion.0"
           $xml.Save($csproj)
           echo "VERSION=$newVersion" >> $env:GITHUB_OUTPUT
 
