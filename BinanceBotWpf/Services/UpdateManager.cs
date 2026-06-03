@@ -52,7 +52,10 @@ namespace BinanceBotWpf.Services
                     return false;
                 }
 
-                var sortedReleases = releases.OrderByDescending (r => r["published_at"]?.Value<DateTime> () ?? DateTime.MinValue).ToList ();
+                // Сортируем релизы по дате публикации
+                var sortedReleases = releases
+                    .OrderByDescending (r => r["published_at"]?.Value<DateTime> () ?? DateTime.MinValue)
+                    .ToList ();
                 var latestRelease = sortedReleases.First ();
                 string latestTag = latestRelease["tag_name"]?.ToString () ?? "v0.0.0";
                 string latestVersionStr = latestTag.TrimStart ('v');
@@ -109,6 +112,7 @@ namespace BinanceBotWpf.Services
                 ZipFile.ExtractToDirectory (tempZip, extractPath);
                 _logger ("📦 Файлы распакованы.");
 
+                // Определяем пути (исправление для single-file)
                 string currentExe = Environment.ProcessPath ?? Assembly.GetExecutingAssembly ().Location;
                 if (string.IsNullOrEmpty (currentExe))
                     currentExe = Path.Combine (AppContext.BaseDirectory, "BinanceBotWpf.exe");
@@ -117,8 +121,6 @@ namespace BinanceBotWpf.Services
                 string scriptPath = CreateUpdateScript (extractPath, appDir, backupDir, currentExe);
 
                 _logger ("🔄 Запуск обновления... Бот будет закрыт.");
-
-                // Запускаем скрипт обновления
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -132,7 +134,7 @@ namespace BinanceBotWpf.Services
                 process.Start ();
 
                 // Даём скрипту время на запуск
-                await Task.Delay (1500);
+                await Task.Delay (2000);
 
                 // Принудительно завершаем текущий процесс
                 Environment.Exit (0);

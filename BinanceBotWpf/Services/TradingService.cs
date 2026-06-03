@@ -1,5 +1,6 @@
 ﻿using System;
 using System.IO;
+using System.IO.Compression;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -44,6 +45,10 @@ namespace BinanceBotWpf.Services
         private readonly string _telegramBotToken;
         private readonly string _telegramChatId;
 
+        // Список последних ошибок для команды /errors
+        private readonly List<string> _recentErrors = new ();
+        private const int MaxErrors = 20;
+
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
                               decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
         {
@@ -59,6 +64,25 @@ namespace BinanceBotWpf.Services
             _mlManager = new MlModelManager (Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip"), null);
             _dataLogger = new DataLogger (logsDir, null);
             _balanceManager = new BalanceManager (client, earn, _rebalancer, null);
+        }
+
+        // ========== Логирование ошибок в Telegram ==========
+        private async Task LogErrorToTelegram(string error, bool sendToTelegram = true)
+        {
+            // Логируем в UI
+            _ui?.AddLog ($"❌ {error}");
+
+            // Сохраняем в список последних ошибок
+            lock (_recentErrors)
+            {
+                _recentErrors.Insert (0, $"{DateTime.Now:HH:mm:ss} - {error}");
+                if (_recentErrors.Count > MaxErrors)
+                    _recentErrors.RemoveAt (_recentErrors.Count - 1);
+            }
+
+            // Отправляем в Telegram, если включен
+            if (sendToTelegram && _telegram != null)
+                await _telegram.SendErrorNotification (error);
         }
 
         public void SetLogger(Action<string> logger)
@@ -138,14 +162,29 @@ namespace BinanceBotWpf.Services
 
         private async Task LoadPositions()
         {
-            await _positionManager.LoadAsync (_client, GetCurrentPrice, p => _ui.StopLossPercent, p => _ui.TakeProfitPercent);
-            _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+            try
+            {
+                await _positionManager.LoadAsync (_client, GetCurrentPrice, p => _ui.StopLossPercent, p => _ui.TakeProfitPercent);
+                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+            }
+            catch (Exception ex)
+            {
+                await LogErrorToTelegram ($"LoadPositions: {ex.Message}");
+            }
         }
 
         private async Task<decimal> GetCurrentPrice(string sym)
         {
-            var k = await _client.GetKlinesAsync (sym, "5m", 1);
-            return k?.Last ().Close ?? 0;
+            try
+            {
+                var k = await _client.GetKlinesAsync (sym, "5m", 1);
+                return k?.Last ().Close ?? 0;
+            }
+            catch (Exception ex)
+            {
+                await LogErrorToTelegram ($"GetCurrentPrice {sym}: {ex.Message}");
+                return 0;
+            }
         }
 
         private async Task UpdatePairs()
@@ -167,7 +206,10 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ("⚠️ Не найдено активных пар (чёрный список/фильтр)");
                 }
             }
-            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка обновления пар: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                await LogErrorToTelegram ($"UpdatePairs: {ex.Message}");
+            }
         }
 
         // ==================== СБОР ИСТОРИИ ОРДЕРОВ И ОБУЧЕНИЕ ====================
@@ -267,7 +309,7 @@ namespace BinanceBotWpf.Services
             }
             catch (Exception ex)
             {
-                _ui?.AddLog ($"❌ Ошибка сбора истории ордеров: {ex.Message}");
+                await LogErrorToTelegram ($"FetchAndRetrainFromOrderHistoryAsync: {ex.Message}");
             }
         }
 
@@ -293,7 +335,10 @@ namespace BinanceBotWpf.Services
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), _positionManager.TryGet (sym, out _), signal.Action, fastSma, slowSma);
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume));
                 }
-                catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка анализа {sym}: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    await LogErrorToTelegram ($"AnalyzePairsAsync {sym}: {ex.Message}");
+                }
             });
             return results.ToList ();
         }
@@ -318,10 +363,8 @@ namespace BinanceBotWpf.Services
 
             decimal totalBalance = _wallet.GetTotalBalance ("USDC");
 
-            // Динамический риск на основе волатильности (с ограничением)
             decimal volatility = sig.Volatility;
-            volatility = Math.Min (0.30m, Math.Max (0.005m, volatility)); // 0.5% - 30%
-
+            volatility = Math.Min (0.30m, Math.Max (0.005m, volatility));
             decimal baseRisk = _ui.MaxRiskPercent;
             decimal riskMultiplier = Math.Max (0.2m, 1 - ( volatility - 0.02m ) * 10);
             decimal adjustedRisk = baseRisk * riskMultiplier;
@@ -331,7 +374,7 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ($"📊 Волатильность: {volatility:P2}, скорректированный риск: {adjustedRisk:P2}");
 
             if (spend > currentSpotBalance) spend = currentSpotBalance;
-            if (spend < 10) return currentSpotBalance;
+            if (spend < 5) return currentSpotBalance;
 
             if (!_mlManager.IsProfitable (sig.FastSma, sig.SlowSma, sig.Rsi, sig.Volume, sig.Volatility))
             {
@@ -406,7 +449,7 @@ namespace BinanceBotWpf.Services
                 }
                 else
                 {
-                    _ui?.AddLog ($"❌ Ошибка ордера BUY {sig.Symbol}: {_client.LastOrderError}");
+                    await LogErrorToTelegram ($"ExecuteBuy {sig.Symbol}: {_client.LastOrderError}");
                 }
                 return currentSpotBalance;
             }
@@ -491,7 +534,7 @@ namespace BinanceBotWpf.Services
                 }
                 else
                 {
-                    _ui?.AddLog ($"❌ Не удалось продать {sig.Symbol}: {_client.LastOrderError}");
+                    await LogErrorToTelegram ($"ExecuteSell {sig.Symbol}: {_client.LastOrderError}");
                 }
             }
         }
@@ -518,7 +561,7 @@ namespace BinanceBotWpf.Services
             }
             catch (Exception ex)
             {
-                _ui?.AddLog ($"❌ Ошибка конвертации {asset}: {ex.Message}");
+                await LogErrorToTelegram ($"ConvertDustAssetAsync {asset}: {ex.Message}");
             }
         }
 
@@ -592,7 +635,82 @@ namespace BinanceBotWpf.Services
                     _lastReportDate = DateTime.UtcNow.Date;
                     if (_telegram != null && _ui?.TotalTrades > 0)
                         await _telegram.SendDailyReport (_ui.TotalPnL, _ui.WinRate, _ui.TotalTrades, _ui.WinningTrades, _ui.LosingTrades);
+
+                    // Бэкап ML-модели и настроек стратегии
+                    await BackupSettingsAndModel ();
                 }
+            }
+        }
+
+        private async Task BackupSettingsAndModel()
+        {
+            try
+            {
+                string backupDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Backups");
+                if (!Directory.Exists (backupDir)) Directory.CreateDirectory (backupDir);
+                string dateStamp = DateTime.Now.ToString ("yyyyMMdd");
+                string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
+                string settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
+                string modelBackup = Path.Combine (backupDir, $"trading_model_{dateStamp}.zip");
+                string settingsBackup = Path.Combine (backupDir, $"strategy_settings_{dateStamp}.json");
+                if (File.Exists (modelPath)) File.Copy (modelPath, modelBackup, true);
+                if (File.Exists (settingsPath)) File.Copy (settingsPath, settingsBackup, true);
+                var cutoff = DateTime.Now.AddDays (-7);
+                foreach (var file in Directory.GetFiles (backupDir, "trading_model_*.zip"))
+                {
+                    if (File.GetCreationTime (file) < cutoff) File.Delete (file);
+                }
+                foreach (var file in Directory.GetFiles (backupDir, "strategy_settings_*.json"))
+                {
+                    if (File.GetCreationTime (file) < cutoff) File.Delete (file);
+                }
+            }
+            catch (Exception ex)
+            {
+                await LogErrorToTelegram ($"BackupSettingsAndModel: {ex.Message}");
+            }
+        }
+
+        private void RotateLogs()
+        {
+            try
+            {
+                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                if (!Directory.Exists (logsDir)) return;
+                var cutoff = DateTime.Now.AddDays (-30);
+                foreach (var file in Directory.GetFiles (logsDir))
+                {
+                    var info = new FileInfo (file);
+                    if (info.CreationTime < cutoff || info.LastWriteTime < cutoff)
+                        File.Delete (file);
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"Ошибка ротации логов: {ex.Message}");
+            }
+        }
+
+        private void ArchiveLogs()
+        {
+            try
+            {
+                string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
+                if (!Directory.Exists (logsDir)) return;
+                var files = Directory.GetFiles (logsDir);
+                if (files.Length == 0) return;
+
+                string archiveDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Archives");
+                if (!Directory.Exists (archiveDir)) Directory.CreateDirectory (archiveDir);
+                string zipName = $"logs_{DateTime.Now:yyyyMMdd_HHmmss}.zip";
+                string zipPath = Path.Combine (archiveDir, zipName);
+                ZipFile.CreateFromDirectory (logsDir, zipPath);
+                foreach (var file in files) File.Delete (file);
+                _ui?.AddLog ($"📦 Логи заархивированы: {zipPath}");
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка архивации: {ex.Message}");
             }
         }
 
@@ -715,7 +833,7 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    _ui?.AddLog ($"❌ Ошибка TradingLoop: {ex.Message}");
+                    await LogErrorToTelegram ($"TradingLoop: {ex.Message}");
                     await Task.Delay (10000);
                 }
             }
@@ -810,6 +928,14 @@ namespace BinanceBotWpf.Services
                     await _client.ConvertDustToBnbAsync (null);
                     await _telegram.SendMessageAsync ("✅ Конвертация пыли выполнена (или запущена).", chatId);
                     break;
+                case "/errors":
+                    string errors;
+                    lock (_recentErrors)
+                    {
+                        errors = _recentErrors.Count == 0 ? "✅ Нет ошибок" : string.Join ("\n", _recentErrors);
+                    }
+                    await _telegram.SendMessageAsync ($"📋 <b>Последние ошибки ({_recentErrors.Count}):</b>\n{errors}", chatId);
+                    break;
                 case "/help":
                     string help = "🤖 *Команды и кнопки Telegram бота:*\n\n" +
                                   "• /status – состояние бота\n" +
@@ -821,6 +947,7 @@ namespace BinanceBotWpf.Services
                                   "• /pnl – сводная статистика PnL\n" +
                                   "• /update – проверить обновления\n" +
                                   "• /dust – конвертировать пыль в BNB\n" +
+                                  "• /errors – показать последние ошибки\n" +
                                   "• /help – эта справка\n\n" +
                                   "📱 Используйте кнопки внизу экрана для быстрого доступа";
                     await _telegram.SendMessageAsync (help, chatId);
