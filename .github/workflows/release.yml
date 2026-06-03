@@ -3,6 +3,8 @@ name: Build and Release
 on:
   push:
     branches: [ "master" ]
+    paths-ignore:
+      - 'BinanceBotWpf/BinanceBotWpf.csproj'   # Не запускать при изменении .csproj (коммит версии)
   workflow_dispatch:
 
 permissions:
@@ -17,12 +19,24 @@ jobs:
           token: ${{ secrets.GH_TOKEN }}
           fetch-depth: 0
 
+      - name: Skip if version bump commit
+        id: skip
+        run: |
+          if git log -1 --pretty=%B | grep -q "Bump version to"; then
+            echo "skip=true" >> $GITHUB_OUTPUT
+          else
+            echo "skip=false" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
+
       - name: Setup .NET
+        if: steps.skip.outputs.skip == 'false'
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
 
       - name: Get and increment version
+        if: steps.skip.outputs.skip == 'false'
         id: get_version
         shell: pwsh
         run: |
@@ -38,6 +52,7 @@ jobs:
           echo "VERSION=$newVersion" >> $env:GITHUB_OUTPUT
 
       - name: Commit version bump
+        if: steps.skip.outputs.skip == 'false'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -46,15 +61,19 @@ jobs:
           git push
 
       - name: Restore
+        if: steps.skip.outputs.skip == 'false'
         run: dotnet restore BinanceBotWpf/BinanceBotWpf.csproj
 
       - name: Publish
+        if: steps.skip.outputs.skip == 'false'
         run: dotnet publish BinanceBotWpf/BinanceBotWpf.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false -o ./publish
 
       - name: Create ZIP
+        if: steps.skip.outputs.skip == 'false'
         run: Compress-Archive -Path .\publish\* -DestinationPath BinanceBot_v${{ steps.get_version.outputs.VERSION }}.zip
 
       - name: Create Release
+        if: steps.skip.outputs.skip == 'false'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.get_version.outputs.VERSION }}
