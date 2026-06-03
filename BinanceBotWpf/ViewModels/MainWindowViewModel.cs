@@ -169,6 +169,23 @@ namespace BinanceBotWpf.ViewModels
             // Мониторинг акций
             _stockMonitor = new StockPriceMonitor (AddLog);
             _ = Task.Run (StocksLoop);
+
+            // ========== АВТОМАТИЧЕСКАЯ ПРОВЕРКА ОБНОВЛЕНИЙ ==========
+            _ = Task.Run (async () =>
+            {
+                await Task.Delay (5000);
+                try
+                {
+                    var updater = new UpdateManager (AddLog);
+                    bool updated = await updater.CheckAndUpdateAsync (silent: false);
+                    if (updated)
+                        AddLog ("✅ Обновление установлено, приложение будет перезапущено.");
+                }
+                catch (Exception ex)
+                {
+                    AddLog ($"❌ Ошибка проверки обновлений: {ex.Message}");
+                }
+            });
         }
 
         // ========== Сохранение настроек ==========

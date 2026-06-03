@@ -12,9 +12,8 @@ namespace BinanceBotWpf.Services
 {
     public class UpdateManager
     {
-        // ⚙️ НАСТРОЙТЕ ЭТИ ПАРАМЕТРЫ (ваши данные на GitHub)
-        private const string GitHubOwner = "Kuper-666";      // Замените на ваш логин
-        private const string GitHubRepo = "BinanceBot";    // Замените на название репозитория
+        private const string GitHubOwner = "Kuper-666";
+        private const string GitHubRepo = "BinanceBot";
         private static readonly Version CurrentVersion = Assembly.GetExecutingAssembly ().GetName ().Version ?? new Version ("1.0.0");
         private readonly HttpClient _httpClient = new HttpClient ();
         private readonly Action<string> _logger;
@@ -25,11 +24,6 @@ namespace BinanceBotWpf.Services
             _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceTradingBot");
         }
 
-        /// <summary>
-        /// Проверяет наличие новой версии и, если есть, предлагает обновиться.
-        /// </summary>
-        /// <param name="silent">Если true, не показывает диалог подтверждения, а обновляется молча</param>
-        /// <returns>true, если обновление было скачано и установлено</returns>
         public async Task<bool> CheckAndUpdateAsync(bool silent = false)
         {
             try
