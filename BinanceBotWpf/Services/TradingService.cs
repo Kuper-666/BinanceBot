@@ -306,6 +306,27 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        /// <summary>
+        /// Расчёт относительной волатильности (стандартное отклонение / средняя цена).
+        /// </summary>
+        private decimal CalculateVolatility(List<decimal> data, int period)
+        {
+            if (data == null || data.Count < period || period <= 0) return 0.02m;
+            var last = data.TakeLast (period).ToList ();
+            decimal avg = last.Average ();
+            // Защита от некорректных данных (avg == 0 или огромные значения, похожие на объём)
+            if (avg == 0 || avg > 1_000_000m) return 0.02m;
+            decimal sumSq = last.Select (x => ( x - avg ) * ( x - avg )).Sum ();
+            decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / period ));
+            decimal volatility = stdDev / avg;
+            // Если волатильность выходит за пределы 0.1%..100%, возвращаем 2% по умолчанию
+            if (volatility > 1.0m || volatility < 0.001m) return 0.02m;
+            return Math.Min (0.30m, Math.Max (0.005m, volatility));
+        }
+
+        /// <summary>
+        /// Анализ пар и формирование сигналов с отладочным выводом.
+        /// </summary>
         private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi,
             decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume)>> AnalyzePairsAsync(List<string> pairs)
         {
@@ -324,6 +345,10 @@ namespace BinanceBotWpf.Services
                     decimal slowSma = CalculateSma (closes, _ui.SlowSma);
                     decimal volatility = CalculateVolatility (closes, 20);
                     decimal volume = klines.Last ().Volume;
+
+                    // ОТЛАДОЧНЫЙ ВЫВОД (можно закомментировать после настройки)
+                    _ui?.AddLog ($"🔍 {sym}: цена={price:F4}, волатильность={volatility:P2}, RSI={rsi:F1}, сигнал={signal.Action}");
+
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), _positionManager.TryGet (sym, out _), signal.Action, fastSma, slowSma);
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume));
                 }
@@ -333,18 +358,6 @@ namespace BinanceBotWpf.Services
                 }
             });
             return results.ToList ();
-        }
-
-        private decimal CalculateVolatility(List<decimal> data, int period)
-        {
-            if (data == null || data.Count < period || period <= 0) return 0.02m;
-            var last = data.TakeLast (period).ToList ();
-            decimal avg = last.Average ();
-            if (avg == 0) return 0.02m;
-            decimal sumSq = last.Select (x => ( x - avg ) * ( x - avg )).Sum ();
-            decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / period ));
-            decimal volatility = stdDev / avg;
-            return Math.Min (0.30m, Math.Max (0.005m, volatility));
         }
 
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
@@ -366,7 +379,7 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ($"📊 Волатильность: {volatility:P2}, скорректированный риск: {adjustedRisk:P2}");
 
             if (spend > currentSpotBalance) spend = currentSpotBalance;
-            if (spend < 5) return currentSpotBalance;
+            if (spend < 10) return currentSpotBalance;
 
             if (!_mlManager.IsProfitable (sig.FastSma, sig.SlowSma, sig.Rsi, sig.Volume, sig.Volatility))
             {
@@ -382,6 +395,7 @@ namespace BinanceBotWpf.Services
 
             decimal required = qty * sig.Price;
             if (required > currentSpotBalance) return currentSpotBalance;
+            if (required < 10) return currentSpotBalance;
 
             _ui?.AddLog ($"💵 Попытка купить {qty} {sig.Symbol} по {sig.Price:F4}, сумма ~{required:F2} USDC (доступно {currentSpotBalance:F2})");
 

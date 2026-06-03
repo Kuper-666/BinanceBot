@@ -535,5 +535,22 @@ namespace BinanceBotWpf.Models
                 return false;
             }
         }
+
+        public async Task<bool> ConvertDustToUsdcAsync()
+        {
+            var dust = await GetDustAssetsAsync ();
+            if (dust == null || dust.Count == 0) return false;
+            bool anySuccess = false;
+            foreach (var item in dust)
+            {
+                string asset = item["asset"].ToString ();
+                decimal free = decimal.Parse (item["free"].ToString (), CultureInfo.InvariantCulture);
+                if (free <= 0) continue;
+                bool ok = await ConvertAssetAsync (asset, "USDC", free);
+                if (ok) anySuccess = true;
+                await Task.Delay (1000);
+            }
+            return anySuccess;
+        }
     }
 }
