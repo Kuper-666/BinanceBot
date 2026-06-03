@@ -326,7 +326,7 @@ namespace BinanceBotWpf.Services
         /// Анализ пар и формирование сигналов с отладочным выводом.
         /// </summary>
         private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume)>> AnalyzePairsAsync(List<string> pairs)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume)>> AnalyzePairsAsync(List<string> pairs)
         {
             var results = new ConcurrentBag<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal)> ();
             await Parallel.ForEachAsync (pairs, async (sym, ct) =>
@@ -341,10 +341,10 @@ namespace BinanceBotWpf.Services
                     decimal volume = volumes.Last ();
                     decimal avgVolume = volumes.TakeLast (20).Average ();
 
-                    // Фильтр по объёму
+                    // Фильтр по объёму (опционально) – можно закомментировать, если не нужен
                     if (volume < avgVolume * 0.8m)
                     {
-                        _ui?.AddLog ($"⏸️ {sym}: объём {volume:F0} < {avgVolume:F0} (80%) – игнорируем");
+                        // Не логируем отфильтрованные пары
                         return;
                     }
 
@@ -354,10 +354,10 @@ namespace BinanceBotWpf.Services
                     decimal slowSma = CalculateSma (closes, _ui.SlowSma);
                     decimal volatility = CalculateVolatility (closes, 20);
 
-                    // Отладка первых трёх цен
-                    _ui?.AddLog ($"DEBUG {sym}: closes[0..2] = {string.Join (", ", closes.Take (3))}, avg={closes.Average ():F2}");
-
+                    // Обновляем UI (цветовую индикацию)
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), _positionManager.TryGet (sym, out _), signal.Action, fastSma, slowSma);
+
+                    // Добавляем результат, если сигнал не Hold (опционально)
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume));
                 }
                 catch (Exception ex)
