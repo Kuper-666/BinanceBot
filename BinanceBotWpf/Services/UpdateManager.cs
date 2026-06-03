@@ -109,8 +109,10 @@ namespace BinanceBotWpf.Services
                 ZipFile.ExtractToDirectory (tempZip, extractPath);
                 _logger ("📦 Файлы распакованы.");
 
-                string currentExe = Assembly.GetExecutingAssembly ().Location;
-                string appDir = Path.GetDirectoryName (currentExe);
+                string currentExe = Environment.ProcessPath ?? Assembly.GetExecutingAssembly ().Location;
+                if (string.IsNullOrEmpty (currentExe))
+                    currentExe = Path.Combine (AppContext.BaseDirectory, "BinanceBotWpf.exe");
+                string appDir = Path.GetDirectoryName (currentExe) ?? AppContext.BaseDirectory;
                 string backupDir = Path.Combine (appDir, "Backup_" + DateTime.Now.ToString ("yyyyMMdd_HHmmss"));
                 string scriptPath = CreateUpdateScript (extractPath, appDir, backupDir, currentExe);
 
