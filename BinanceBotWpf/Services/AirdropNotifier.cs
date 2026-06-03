@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 
 namespace BinanceBotWpf.Services
 {
@@ -22,8 +22,6 @@ namespace BinanceBotWpf.Services
             _logger = logger;
             _httpClient = new HttpClient ();
             _processedIds = new HashSet<string> ();
-
-            // Запускаем проверку каждые 6 часов
             _timer = new Timer (CheckForUpdates, null, TimeSpan.Zero, TimeSpan.FromHours (6));
         }
 
@@ -41,21 +39,66 @@ namespace BinanceBotWpf.Services
 
         private async Task FetchAndNotifyNewAirdrops()
         {
-            // RSS-лента анонсов Binance (более стабильный источник)
             string rssUrl = "https://www.binance.com/en/support/announcement/rss";
             try
             {
                 var response = await _httpClient.GetStringAsync (rssUrl);
-                // Парсинг RSS (упрощённо – можно регулярными выражениями, но для простоты пропускаем)
-                // В реальном проекте лучше использовать XmlDocument или SyndicationFeed.
-                // Пока просто логируем, что RSS получен.
-                _logger?.Invoke ("✅ RSS анонсов Binance получен (парсинг не реализован).");
-                // Здесь нужна реализация парсинга RSS.
+                var doc = XDocument.Parse (response);
+                var items = doc.Descendants ("item");
+
+                foreach (var item in items)
+                {
+                    var title = item.Element ("title")?.Value;
+                    var pubDate = item.Element ("pubDate")?.Value;
+                    var link = item.Element ("link")?.Value;
+                    var id = link ?? title; // уникальный идентификатор
+
+                    if (_processedIds.Contains (id)) continue;
+
+                    if (IsRelevantAirdrop (title))
+                    {
+                        var message = FormatTelegramMessage (title, pubDate, link);
+                        await _telegram.SendMessageAsync (message);
+                        _processedIds.Add (id);
+                        _logger?.Invoke ($"✉️ Отправлено уведомление об аирдропе: {title}");
+                        await Task.Delay (1000);
+                    }
+                    else
+                    {
+                        // Помечаем как обработанные даже нерелевантные, чтобы не проверять их снова
+                        _processedIds.Add (id);
+                    }
+                }
+
+                if (_isFirstRun)
+                {
+                    _logger?.Invoke ("✅ Модуль уведомлений об аирдропах запущен.");
+                    _isFirstRun = false;
+                }
             }
             catch (Exception ex)
             {
                 _logger?.Invoke ($"⚠️ Не удалось загрузить RSS аирдропов: {ex.Message}");
             }
+        }
+
+        private bool IsRelevantAirdrop(string title)
+        {
+            if (string.IsNullOrEmpty (title)) return false;
+            var lowerTitle = title.ToLower ();
+            return lowerTitle.Contains ("launchpool") ||
+                   lowerTitle.Contains ("megadrop") ||
+                   lowerTitle.Contains ("hodler airdrop") ||
+                   lowerTitle.Contains ("simple earn") ||
+                   lowerTitle.Contains ("staking");
+        }
+
+        private string FormatTelegramMessage(string title, string pubDate, string link)
+        {
+            return $"🎁 <b>Новый аирдроп на Binance!</b>\n\n" +
+                   $"📢 {title}\n" +
+                   $"📅 Анонсирован: {pubDate}\n\n" +
+                   $"🔗 Подробности: {link}";
         }
     }
 }

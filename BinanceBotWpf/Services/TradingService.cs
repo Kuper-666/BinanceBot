@@ -299,14 +299,25 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 5)
                 return currentSpotBalance;
 
             decimal totalBalance = _wallet.GetTotalBalance ("USDC");
-            decimal riskAmount = totalBalance * _ui.MaxRiskPercent;
-            decimal spend = Math.Max (10m, riskAmount);
+
+            // ===== ДИНАМИЧЕСКИЙ РИСК НА ОСНОВЕ ВОЛАТИЛЬНОСТИ =====
+            decimal volatility = sig.Volatility; // значение от 0 до 0.2 обычно
+            decimal baseRisk = _ui.MaxRiskPercent;
+            // Коэффициент риска: при волатильности 2% -> 1, при 5% -> 0.5, при 10% -> 0
+            decimal riskMultiplier = Math.Max (0.2m, 1 - ( volatility - 0.02m ) * 10);
+            decimal adjustedRisk = baseRisk * riskMultiplier;
+            adjustedRisk = Math.Clamp (adjustedRisk, 0.05m, 0.25m);
+
+            decimal spend = totalBalance * adjustedRisk;
+            _ui?.AddLog ($"📊 Волатильность: {volatility:P2}, скорректированный риск: {adjustedRisk:P2}");
+            // ===================================================
+
             if (spend > currentSpotBalance) spend = currentSpotBalance;
             if (spend < 10) return currentSpotBalance;
 
@@ -560,6 +571,16 @@ namespace BinanceBotWpf.Services
         // ==================== ФОНОВЫЕ ЦИКЛЫ ====================
         private async Task BalanceLoop()
         {
+            // Внутри if (DateTime.UtcNow.Date != _lastReportDate) после архивации логов:
+            string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
+            string settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
+            string backupDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Backups");
+            if (!Directory.Exists (backupDir)) Directory.CreateDirectory (backupDir);
+            string dateStamp = DateTime.Now.ToString ("yyyyMMdd");
+            if (File.Exists (modelPath))
+                File.Copy (modelPath, Path.Combine (backupDir, $"trading_model_{dateStamp}.zip"), true);
+            if (File.Exists (settingsPath))
+                File.Copy (settingsPath, Path.Combine (backupDir, $"strategy_settings_{dateStamp}.json"), true);
             while (_isRunning)
             {
                 await Task.Delay (60000);
@@ -825,6 +846,13 @@ namespace BinanceBotWpf.Services
             decimal balance = _wallet.GetTotalBalance ("USDC");
             int positions = _positionManager.Count;
             return $"🤖 Статус: {status}\n💰 USDC: {balance:F2}\n📊 Открыто позиций: {positions}";
+        }
+
+        private async Task LogErrorToTelegram(string error)
+        {
+            if (_telegram != null)
+                await _telegram.SendErrorNotification (error);
+            _ui?.AddLog ($"❌ {error}");
         }
 
         public void StopTrading() => _isRunning = false;
