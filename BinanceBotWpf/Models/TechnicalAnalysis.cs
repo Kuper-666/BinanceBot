@@ -150,5 +150,27 @@ namespace BinanceBotWpf.Models
             decimal sumSq = values.Select (v => ( v - avg ) * ( v - avg )).Sum ();
             return (decimal)Math.Sqrt ((double)( sumSq / values.Count ));
         }
+
+        /// <summary>Расчёт On-Balance Volume (OBV) для списка свечей.</summary>
+        public static List<decimal> OBV(List<BinanceKline> klines)
+        {
+            var obv = new List<decimal> ();
+            if (klines == null || klines.Count == 0) return obv;
+            decimal currentObv = 0;
+            for (int i = 0; i < klines.Count; i++)
+            {
+                if (i == 0) currentObv = klines[i].Volume;
+                else
+                {
+                    if (klines[i].Close > klines[i - 1].Close)
+                        currentObv += klines[i].Volume;
+                    else if (klines[i].Close < klines[i - 1].Close)
+                        currentObv -= klines[i].Volume;
+                    // если цена не изменилась – OBV не меняется
+                }
+                obv.Add (currentObv);
+            }
+            return obv;
+        }
     }
 }

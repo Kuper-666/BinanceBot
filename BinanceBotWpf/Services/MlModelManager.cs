@@ -105,7 +105,7 @@ namespace BinanceBotWpf.Services
                     var testData = split.TestSet;
 
                     var pipeline = mlContext.Transforms.Concatenate ("Features",
-                            "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth")
+                                    "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth", "Obv")
                         .Append (mlContext.BinaryClassification.Trainers.FastTree (
                             numberOfTrees: 100,
                             numberOfLeaves: 20,
@@ -149,6 +149,7 @@ namespace BinanceBotWpf.Services
         public float Atr { get; set; }
         public float MacdHistogram { get; set; }
         public float BbWidth { get; set; }
+        public float Obv { get; set; }
     }
 
     public class ModelOutput

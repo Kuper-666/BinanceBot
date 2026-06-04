@@ -484,6 +484,10 @@ namespace BinanceBotWpf.Services
                     if (klines?.Count < Math.Max (_ui.FastSma, _ui.SlowSma) + 2) return;
                     var closes = klines.Select (k => k.Close).ToList ();
                     var volumes = klines.Select (k => k.Volume).ToList ();
+                    var obvValues = TechnicalAnalysis.OBV (klines);
+                    decimal obvLast = obvValues.Last ();
+                    // Для нормализации (OBV может быть огромным) используем логарифм
+                    decimal obvNormalized = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
                     decimal price = closes.Last ();
                     decimal volume = volumes.Last ();
                     decimal avgVolume = volumes.TakeLast (20).Average ();
