@@ -315,28 +315,43 @@ namespace BinanceBotWpf.Models
             return new JArray ();
         }
 
-        public async Task<bool> ConvertDustToBnbAsync(List<string> assetIds)
+        public async Task<bool> ConvertDustToUsdcAsync(List<string> assetIds = null)
         {
-            if (assetIds == null || assetIds.Count == 0) return false;
             try
             {
-                string assets = string.Join (",", assetIds);
-                long timestamp = GetTimestamp ();
-                string query = $"asset={assets}&timestamp={timestamp}";
-                string signature = CreateSignature (query);
-                var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
-                var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/asset/dust") { Content = content };
-                var response = await SendWithRetryAsync (request);
-                string json = await response.Content.ReadAsStringAsync ();
-                if (response.IsSuccessStatusCode)
+                if (assetIds == null || assetIds.Count == 0)
                 {
-                    Log ($"Dust conversion success: {json}");
+                    var dust = await GetDustAssetsAsync ();
+                    if (dust == null || dust.Count == 0) return false;
+                    assetIds = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
+                    if (assetIds.Count == 0) return false;
+                }
+                // Сначала конвертируем пыль в BNB
+                bool dustConverted = await ConvertDustToBnbAsync (assetIds);
+                if (!dustConverted) return false;
+
+                // Продаём полученный BNB за USDC
+                decimal bnbBalance = await GetAccountBalanceAsync ("BNB");
+                if (bnbBalance < 0.001m) return true;
+                var klines = await GetKlinesAsync ("BNBUSDC", "5m", 1);
+                if (klines == null || klines.Count == 0) return false;
+                decimal price = klines.Last ().Close;
+                decimal step = await GetStepSizeAsync ("BNBUSDC");
+                decimal qty = Math.Floor (bnbBalance / step) * step;
+                if (qty <= 0) return false;
+                var order = await PlaceOrder ("BNBUSDC", "SELL", "MARKET", qty);
+                if (order != null)
+                {
+                    Log ($"✅ Продано {qty} BNB за USDC");
                     return true;
                 }
-                Log ($"Dust conversion error: {json}");
+                return false;
             }
-            catch (Exception ex) { Log ($"ConvertDustToBnb exception: {ex.Message}"); }
-            return false;
+            catch (Exception ex)
+            {
+                Log ($"ConvertDustToUsdcAsync error: {ex.Message}");
+                return false;
+            }
         }
 
         public async Task<JArray> GetFlexibleProductsAsync(string asset)
@@ -536,53 +551,43 @@ namespace BinanceBotWpf.Models
             }
         }
 
-        public async Task<bool> ConvertDustToUsdcAsync(List<string> assetIds = null)
+        /// <summary>
+        /// Конвертация актива в USDC (рыночная продажа)
+        /// </summary>
+        /// <summary>
+        /// Конвертация пыли (dust) в BNB (стандартный метод Binance)
+        /// </summary>
+        public async Task<bool> ConvertDustToBnbAsync(List<string> assetIds)
         {
+            if (assetIds == null || assetIds.Count == 0) return false;
             try
             {
-                // Получаем список пыли, если не передан
-                if (assetIds == null || assetIds.Count == 0)
+                string assets = string.Join (",", assetIds);
+                long timestamp = GetTimestamp ();
+                string query = $"asset={assets}&timestamp={timestamp}";
+                string signature = CreateSignature (query);
+                var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/asset/dust") { Content = content };
+                var response = await SendWithRetryAsync (request);
+                string json = await response.Content.ReadAsStringAsync ();
+                if (response.IsSuccessStatusCode)
                 {
-                    var dust = await GetDustAssetsAsync ();
-                    if (dust == null || dust.Count == 0) return false;
-                    assetIds = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
-                    if (assetIds.Count == 0) return false;
-                }
-
-                // Пыль можно конвертировать только в BNB через старый эндпоинт.
-                // Для конвертации в USDC нужен эндпоинт /sapi/v1/asset/convert-dust (не поддерживается)
-                // Поэтому оставляем конвертацию в BNB, но затем BNB можно продать за USDC.
-                // Реализуем двухшаговую конвертацию: dust -> BNB, затем BNB -> USDC (если BNB > 0.001)
-
-                bool dustConverted = await ConvertDustToBnbAsync (assetIds);
-                if (!dustConverted) return false;
-
-                // Проверяем баланс BNB
-                decimal bnbBalance = await GetAccountBalanceAsync ("BNB");
-                if (bnbBalance < 0.001m) return true; // слишком мало, не продаём
-
-                // Продаём BNB за USDC
-                var klines = await GetKlinesAsync ("BNBUSDC", "5m", 1);
-                if (klines == null || klines.Count == 0) return false;
-                decimal price = klines.Last ().Close;
-                decimal step = await GetStepSizeAsync ("BNBUSDC");
-                decimal qty = Math.Floor (bnbBalance / step) * step;
-                if (qty <= 0) return false;
-
-                var order = await PlaceOrder ("BNBUSDC", "SELL", "MARKET", qty);
-                if (order != null)
-                {
-                    Log ($"✅ Продано {qty} BNB за USDC");
+                    Log ($"Dust conversion to BNB success: {json}");
                     return true;
                 }
+                Log ($"Dust conversion to BNB error: {json}");
                 return false;
             }
             catch (Exception ex)
             {
-                Log ($"ConvertDustToUsdcAsync error: {ex.Message}");
+                Log ($"ConvertDustToBnbAsync exception: {ex.Message}");
                 return false;
             }
         }
+
+        /// <summary>
+        /// Конвертация пыли в USDC (через BNB, затем продажа BNB)
+        /// </summary>
 
         public async Task<decimal> GetATRAsync(string symbol, int period = 14)
         {

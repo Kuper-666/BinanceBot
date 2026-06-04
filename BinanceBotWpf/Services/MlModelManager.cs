@@ -148,8 +148,10 @@ namespace BinanceBotWpf.Services
         public float FastSma { get; set; }
         public float SlowSma { get; set; }
         public float Rsi { get; set; }
-        public float Volume { get; set; }
-        public float Volatility { get; set; }
+        public float Volume { get; set; }        // старый признак (объём)
+        public float Volatility { get; set; }    // старый признак (волатильность)
+        public float VolumeRatio { get; set; }   // новый признак (объём/средний объём)
+        public float Atr { get; set; }           // новый признак (средний истинный диапазон)
     }
 
     public class ModelOutput

@@ -850,20 +850,20 @@ namespace BinanceBotWpf.Services
         {
             while (_isRunning)
             {
-                await Task.Delay (24 * 3600000).ConfigureAwait (false);
+                await Task.Delay (24 * 3600000);
                 if (!_isRunning) break;
                 try
                 {
-                    var dust = await _client.GetDustAssetsAsync ().ConfigureAwait (false);
+                    var dust = await _client.GetDustAssetsAsync ();
                     if (dust == null || dust.Count == 0) continue;
                     var ids = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
                     if (ids.Count == 0) continue;
-                    _ui?.AddLog ($"🧹 Конвертирую пыль ({ids.Count} активов) в BNB...");
-                    await _client.ConvertDustToBnbAsync (ids).ConfigureAwait (false);
+                    _ui?.AddLog ($"🧹 Конвертирую пыль ({ids.Count} активов) в USDC...");
+                    await _client.ConvertDustToUsdcAsync (ids);
                 }
                 catch (Exception ex)
                 {
-                    await LogErrorToTelegram ($"DustLoop: {ex.Message}").ConfigureAwait (false);
+                    await LogErrorToTelegram ($"DustLoop: {ex.Message}");
                 }
             }
         }
