@@ -44,6 +44,18 @@ namespace BinanceBotWpf.Services
         private readonly TimeSpan _ordersFetchInterval = TimeSpan.FromHours (4);
         private readonly string _telegramBotToken;
         private readonly string _telegramChatId;
+        private AirdropNotifier _airdropNotifier;
+
+        private bool _balanceLoopEnabled = true;
+        private bool _pairsLoopEnabled = true;
+        private bool _earnLoopEnabled = true;
+        private bool _dustLoopEnabled = true;
+        private bool _autoRetrainLoopEnabled = true;
+        private bool _orderHistoryLoopEnabled = true;
+        private bool _tradingLoopEnabled = true;
+
+        private decimal _totalProfitSum = 0;
+        private decimal _totalLossSum = 0;
 
         // Список последних ошибок для команды /errors
         private readonly List<string> _recentErrors = new ();
@@ -117,6 +129,7 @@ namespace BinanceBotWpf.Services
                     _telegram.StartListening (HandleTelegramCommand);
                     logger ("✅ Telegram уведомления включены");
                     logger ("📡 Команды Telegram активированы (/help для списка)");
+                    _airdropNotifier = new AirdropNotifier (_telegram, logger); // добавьте эту строку
                 }
                 catch (Exception ex)
                 {
@@ -981,6 +994,9 @@ namespace BinanceBotWpf.Services
                 case "❓ Помощь":
                     cmd = "/help";
                     break;
+                case "/chart":
+                    await _telegram.SendMessageAsync ("📊 Функция графика временно недоступна. Используйте /performance для статистики.", chatId);
+                    break;
             }
 
             switch (cmd)
@@ -1109,6 +1125,59 @@ namespace BinanceBotWpf.Services
             decimal balance = _wallet.GetTotalBalance ("USDC");
             int positions = _positionManager.Count;
             return $"🤖 Статус: {status}\n💰 USDC: {balance:F2}\n📊 Открыто позиций: {positions}";
+        }
+        private async Task SendPnlChartAsync(string chatId)
+        {
+            await _telegram.SendMessageAsync ("📊 Функция отправки графика временно недоступна. Используйте /performance для статистики.", chatId);
+        }
+
+        private string GetPerformanceStats()
+        {
+            var totalTrades = _ui.TotalTrades;
+            if (totalTrades == 0) return "Нет сделок для статистики.";
+
+            var wins = _ui.WinningTrades;
+            var losses = _ui.LosingTrades;
+            var totalPnL = _ui.TotalPnL;
+            var winRate = wins * 100.0m / totalTrades;
+
+            // Вычисляем среднюю прибыль/убыток из истории
+            decimal avgWin = 0, avgLoss = 0;
+            if (wins > 0) avgWin = _ui.TradesHistory.Where (t => t.PnL > 0).Average (t => t.PnL);
+            if (losses > 0) avgLoss = Math.Abs (_ui.TradesHistory.Where (t => t.PnL < 0).Average (t => t.PnL));
+            var profitFactor = avgLoss > 0 ? avgWin / avgLoss : 0;
+            var maxDrawdown = _ui.MaxDrawdownDisplay;
+
+            return $"📊 <b>Статистика торговли</b>\n" +
+                   $"📈 Общий PnL: {totalPnL:F2} USDC\n" +
+                   $"🎯 Win Rate: {winRate:F1}% ({wins}/{totalTrades})\n" +
+                   $"📉 Макс. просадка: {maxDrawdown}\n" +
+                   $"💰 Средняя прибыль: {avgWin:F2} USDC\n" +
+                   $"💸 Средний убыток: {avgLoss:F2} USDC\n" +
+                   $"⚖️ Фактор прибыли: {profitFactor:F2}";
+        }
+        private void StopAllLoops()
+        {
+            _balanceLoopEnabled = false;
+            _pairsLoopEnabled = false;
+            _earnLoopEnabled = false;
+            _dustLoopEnabled = false;
+            _autoRetrainLoopEnabled = false;
+            _orderHistoryLoopEnabled = false;
+            _tradingLoopEnabled = false;
+            _ui?.AddLog ("⏸️ Все циклы остановлены");
+        }
+
+        private void StartAllLoops()
+        {
+            _balanceLoopEnabled = true;
+            _pairsLoopEnabled = true;
+            _earnLoopEnabled = true;
+            _dustLoopEnabled = true;
+            _autoRetrainLoopEnabled = true;
+            _orderHistoryLoopEnabled = true;
+            _tradingLoopEnabled = true;
+            _ui?.AddLog ("▶️ Все циклы запущены");
         }
 
         public void StopTrading() => _isRunning = false;

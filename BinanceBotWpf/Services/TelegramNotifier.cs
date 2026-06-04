@@ -30,8 +30,7 @@ namespace BinanceBotWpf.Services
                 new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
                 new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
                 new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
-                new KeyboardButton[] { "📈 График PnL", "❓ Помощь" },
-                new KeyboardButton[] { "🔄 Конвертировать", "🧹 Пыль в BNB" }
+                new KeyboardButton[] { "📈 График PnL", "❓ Помощь" }
             })
             {
                 ResizeKeyboard = true,
@@ -75,10 +74,7 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (async () => { await Task.Delay (2000); await SendWelcomeMessageAsync (_chatId); });
         }
 
-        public void StopListening()
-        {
-            _cts?.Cancel ();
-        }
+        public void StopListening() => _cts?.Cancel ();
 
         private async Task ListenLoop(CancellationToken token)
         {
@@ -104,10 +100,7 @@ namespace BinanceBotWpf.Services
                         }
                     }
                 }
-                catch (OperationCanceledException)
-                {
-                    break;
-                }
+                catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine ($"Telegram listen error: {ex.Message}");
@@ -150,10 +143,8 @@ namespace BinanceBotWpf.Services
             await SendMessageAsync (msg);
         }
 
-        public async Task SendErrorNotification(string error)
-        {
+        public async Task SendErrorNotification(string error) =>
             await SendMessageAsync ($"⚠️ <b>Ошибка бота</b>\n<code>{error}</code>");
-        }
 
         public async Task SendDailyReport(decimal totalPnL, decimal winRate, int totalTrades, int winningTrades, int losingTrades)
         {

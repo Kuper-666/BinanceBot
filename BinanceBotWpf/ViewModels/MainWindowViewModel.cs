@@ -12,10 +12,12 @@ using System.Windows.Media;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.Models;
 using System.Collections.Generic;
+using OxyPlot;
+using OxyPlot.Series;
+using OxyPlot.Axes;
 
 namespace BinanceBotWpf.ViewModels
 {
-    // Элемент таблицы криптовалют
     public class PairAnalysisItem : INotifyPropertyChanged
     {
         private string _price;
@@ -34,7 +36,6 @@ namespace BinanceBotWpf.ViewModels
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
     }
 
-    // Элемент таблицы акций
     public class StockListItem : INotifyPropertyChanged
     {
         private decimal _price;
@@ -63,7 +64,7 @@ namespace BinanceBotWpf.ViewModels
         private string _walletBalance = "0.00";
         private bool _isRunning = false;
 
-        // Параметры стратегии (значения по умолчанию)
+        // Параметры стратегии
         private int _fastSma = 9;
         private int _slowSma = 21;
         private int _rsiBuyThreshold = 70;
@@ -94,9 +95,9 @@ namespace BinanceBotWpf.ViewModels
         private string _positionsStatusText = "0/1 нет открытых";
         private string _riskPercentDisplay = "Риск: 0%";
 
-        // График (OxyPlot)
-        private OxyPlot.PlotModel _plotModel;
-        public OxyPlot.PlotModel PlotModel
+        // График
+        private PlotModel _plotModel;
+        public PlotModel PlotModel
         {
             get => _plotModel;
             set { _plotModel = value; OnPropertyChanged (); }
@@ -107,18 +108,15 @@ namespace BinanceBotWpf.ViewModels
         public ICommand StopCommand { get; }
         public ICommand ExportDataCommand { get; }
 
-        // Коллекции для UI
         public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
         private Dictionary<string, PairAnalysisItem> _pairDict = new ();
         public ObservableCollection<StockListItem> StocksList { get; set; } = new ();
         private Dictionary<string, StockListItem> _stockDict = new ();
 
-        // Свойства для биндинга
         public string SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
         public string WalletBalance { get => _walletBalance; set { _walletBalance = value; OnPropertyChanged (); } }
         public bool IsRunning { get => _isRunning; set { _isRunning = value; OnPropertyChanged (); } }
 
-        // Настраиваемые параметры с автосохранением
         public int FastSma { get => _fastSma; set { if (_fastSma != value) { _fastSma = value; OnPropertyChanged (); SaveSettings (); } } }
         public int SlowSma { get => _slowSma; set { if (_slowSma != value) { _slowSma = value; OnPropertyChanged (); SaveSettings (); } } }
         public int RsiBuyThreshold { get => _rsiBuyThreshold; set { if (_rsiBuyThreshold != value) { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } } }
@@ -129,7 +127,6 @@ namespace BinanceBotWpf.ViewModels
         public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { if (_minBalanceForTrading != value) { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } } }
         public decimal MaxRiskPercent { get => _maxRiskPercent; set { if (_maxRiskPercent != value) { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } } }
 
-        // Статистика
         public ObservableCollection<TradeLog> TradesHistory { get => _tradesHistory; set { _tradesHistory = value; OnPropertyChanged (); } }
         public decimal TotalPnL { get => _totalPnL; set { _totalPnL = value; OnPropertyChanged (); } }
         public decimal WinRate { get => _winRate; set { _winRate = value; OnPropertyChanged (); } }
@@ -145,7 +142,6 @@ namespace BinanceBotWpf.ViewModels
         public int CurrentPositionsCount { get => _currentPositionsCount; set { _currentPositionsCount = value; OnPropertyChanged (); } }
         public int MaxPositions { get => _maxPositions; set { _maxPositions = value; OnPropertyChanged (); } }
 
-        // Путь к файлу настроек
         private readonly string _settingsPath;
         private readonly object _settingsLock = new object ();
         private bool _isLoadingSettings = false;
@@ -160,35 +156,17 @@ namespace BinanceBotWpf.ViewModels
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
 
-            // График (OxyPlot)
-            _plotModel = new OxyPlot.PlotModel { Title = "Баланс USDC", Background = OxyPlot.OxyColors.Transparent, TextColor = OxyPlot.OxyColors.White };
-            _plotModel.Axes.Add (new OxyPlot.Axes.DateTimeAxis { Position = OxyPlot.Axes.AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyPlot.OxyColors.White, AxislineColor = OxyPlot.OxyColors.White, TicklineColor = OxyPlot.OxyColors.White, TextColor = OxyPlot.OxyColors.White });
-            _plotModel.Axes.Add (new OxyPlot.Axes.LinearAxis { Position = OxyPlot.Axes.AxisPosition.Left, Title = "USDC", TitleColor = OxyPlot.OxyColors.White, AxislineColor = OxyPlot.OxyColors.White, TicklineColor = OxyPlot.OxyColors.White, TextColor = OxyPlot.OxyColors.White });
-            _plotModel.Series.Add (new OxyPlot.Series.LineSeries { Color = OxyPlot.OxyColors.LimeGreen, MarkerType = OxyPlot.MarkerType.Circle, MarkerSize = 3 });
+            // График
+            _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
+            _plotModel.Axes.Add (new DateTimeAxis { Position = AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
+            _plotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
+            _plotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
 
             // Мониторинг акций
             _stockMonitor = new StockPriceMonitor (AddLog);
             _ = Task.Run (StocksLoop);
-
-            // ========== АВТОМАТИЧЕСКАЯ ПРОВЕРКА ОБНОВЛЕНИЙ ==========
-            _ = Task.Run (async () =>
-            {
-                await Task.Delay (5000);
-                try
-                {
-                    var updater = new UpdateManager (AddLog);
-                    bool updated = await updater.CheckAndUpdateAsync (silent: false);
-                    if (updated)
-                        AddLog ("✅ Обновление установлено, приложение будет перезапущено.");
-                }
-                catch (Exception ex)
-                {
-                    AddLog ($"❌ Ошибка проверки обновлений: {ex.Message}");
-                }
-            });
         }
 
-        // ========== Сохранение настроек ==========
         private void LoadSettings()
         {
             try
@@ -244,7 +222,6 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        // ========== Основные методы ==========
         private async Task Start() { IsRunning = true; await _tradingService.StartTradingAsync (this); }
         private void Stop() { _tradingService.StopTrading (); IsRunning = false; }
 
@@ -272,16 +249,15 @@ namespace BinanceBotWpf.ViewModels
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
-                if (_plotModel.Series[0] is OxyPlot.Series.LineSeries series)
+                if (_plotModel.Series[0] is LineSeries series)
                 {
-                    series.Points.Add (new OxyPlot.DataPoint (OxyPlot.Axes.DateTimeAxis.ToDouble (time), (double)balance));
+                    series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
                     _plotModel.InvalidatePlot (true);
                 }
             });
         }
 
-        // Обновление таблицы криптовалют с цветами
         public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma)
         {
             Application.Current.Dispatcher.Invoke (() =>
@@ -318,7 +294,6 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        // Логика сигнала для акций (временная по изменению за 24ч)
         private TradeAction GetStockSignal(string symbol, decimal priceChangePercent)
         {
             if (priceChangePercent > 0.5m) return TradeAction.Buy;
@@ -326,7 +301,6 @@ namespace BinanceBotWpf.ViewModels
             return TradeAction.Hold;
         }
 
-        // Цикл обновления акций с цветами
         private async Task StocksLoop()
         {
             while (true)

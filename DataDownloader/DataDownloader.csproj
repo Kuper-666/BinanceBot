@@ -12,6 +12,7 @@
     <PackageReference Include="CsvHelper" Version="33.1.0" />
     <PackageReference Include="Microsoft.ML" Version="5.0.0" />
     <PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0" />
+    <PackageReference Include="Telegram.Bot" Version="22.10.0.1" />
   </ItemGroup>
 
 </Project>

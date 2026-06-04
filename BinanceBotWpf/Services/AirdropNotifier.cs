@@ -51,7 +51,7 @@ namespace BinanceBotWpf.Services
                     var title = item.Element ("title")?.Value;
                     var pubDate = item.Element ("pubDate")?.Value;
                     var link = item.Element ("link")?.Value;
-                    var id = link ?? title; // уникальный идентификатор
+                    var id = link ?? title;
 
                     if (_processedIds.Contains (id)) continue;
 
@@ -65,7 +65,6 @@ namespace BinanceBotWpf.Services
                     }
                     else
                     {
-                        // Помечаем как обработанные даже нерелевантные, чтобы не проверять их снова
                         _processedIds.Add (id);
                     }
                 }
