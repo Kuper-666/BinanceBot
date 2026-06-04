@@ -70,13 +70,12 @@ namespace BinanceBotWpf.Services
         /// </summary>
         /// <param name="features">Список: (FastSma, SlowSma, Rsi, Volume, Volatility, IsProfitable)</param>
         /// <param name="logger">Делегат для логирования</param>
-        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal Volume, decimal Volatility, bool IsProfitable)> features, Action<string> logger)
+        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, bool IsProfitable)> features, Action<string> logger)
         {
             await Task.Run (() =>
             {
                 try
                 {
-                    // Проверка: должны быть и положительные, и отрицательные примеры
                     if (!features.Any (f => f.IsProfitable) || !features.Any (f => !f.IsProfitable))
                     {
                         logger?.Invoke ("⚠️ В данных нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
@@ -89,7 +88,7 @@ namespace BinanceBotWpf.Services
                         return;
                     }
 
-                    logger?.Invoke ($"🤖 Запуск обучения ML на {features.Count} примерах...");
+                    logger?.Invoke ($"🤖 Запуск обучения ML на {features.Count} примерах (признаки: SMA, RSI, VolumeRatio, ATR)...");
 
                     var mlContext = new MLContext (seed: 42);
                     var dataWithLabel = features.Select (m => new
@@ -97,8 +96,8 @@ namespace BinanceBotWpf.Services
                         FastSma = (float)m.FastSma,
                         SlowSma = (float)m.SlowSma,
                         Rsi = (float)m.Rsi,
-                        Volume = (float)m.Volume,
-                        Volatility = (float)m.Volatility,
+                        VolumeRatio = (float)m.VolumeRatio,
+                        Atr = (float)m.Atr,
                         Label = m.IsProfitable
                     }).ToList ();
 
@@ -108,7 +107,7 @@ namespace BinanceBotWpf.Services
                     var testData = split.TestSet;
 
                     var pipeline = mlContext.Transforms.Concatenate ("Features",
-                            "FastSma", "SlowSma", "Rsi", "Volume", "Volatility")
+                            "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr")
                         .Append (mlContext.BinaryClassification.Trainers.FastTree (
                             numberOfTrees: 100,
                             numberOfLeaves: 20,
@@ -127,7 +126,7 @@ namespace BinanceBotWpf.Services
                     _mlContext = mlContext;
                     _mlModel = model;
                     _mlModelLoaded = true;
-                    logger?.Invoke ("✅ ML модель обновлена из истории ордеров");
+                    logger?.Invoke ("✅ ML модель обновлена с новыми признаками (объём, ATR).");
                 }
                 catch (Exception ex)
                 {

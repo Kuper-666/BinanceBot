@@ -536,21 +536,52 @@ namespace BinanceBotWpf.Models
             }
         }
 
-        public async Task<bool> ConvertDustToUsdcAsync()
+        public async Task<bool> ConvertDustToUsdcAsync(List<string> assetIds = null)
         {
-            var dust = await GetDustAssetsAsync ();
-            if (dust == null || dust.Count == 0) return false;
-            bool anySuccess = false;
-            foreach (var item in dust)
+            try
             {
-                string asset = item["asset"].ToString ();
-                decimal free = decimal.Parse (item["free"].ToString (), CultureInfo.InvariantCulture);
-                if (free <= 0) continue;
-                bool ok = await ConvertAssetAsync (asset, "USDC", free);
-                if (ok) anySuccess = true;
-                await Task.Delay (1000);
+                // Получаем список пыли, если не передан
+                if (assetIds == null || assetIds.Count == 0)
+                {
+                    var dust = await GetDustAssetsAsync ();
+                    if (dust == null || dust.Count == 0) return false;
+                    assetIds = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
+                    if (assetIds.Count == 0) return false;
+                }
+
+                // Пыль можно конвертировать только в BNB через старый эндпоинт.
+                // Для конвертации в USDC нужен эндпоинт /sapi/v1/asset/convert-dust (не поддерживается)
+                // Поэтому оставляем конвертацию в BNB, но затем BNB можно продать за USDC.
+                // Реализуем двухшаговую конвертацию: dust -> BNB, затем BNB -> USDC (если BNB > 0.001)
+
+                bool dustConverted = await ConvertDustToBnbAsync (assetIds);
+                if (!dustConverted) return false;
+
+                // Проверяем баланс BNB
+                decimal bnbBalance = await GetAccountBalanceAsync ("BNB");
+                if (bnbBalance < 0.001m) return true; // слишком мало, не продаём
+
+                // Продаём BNB за USDC
+                var klines = await GetKlinesAsync ("BNBUSDC", "5m", 1);
+                if (klines == null || klines.Count == 0) return false;
+                decimal price = klines.Last ().Close;
+                decimal step = await GetStepSizeAsync ("BNBUSDC");
+                decimal qty = Math.Floor (bnbBalance / step) * step;
+                if (qty <= 0) return false;
+
+                var order = await PlaceOrder ("BNBUSDC", "SELL", "MARKET", qty);
+                if (order != null)
+                {
+                    Log ($"✅ Продано {qty} BNB за USDC");
+                    return true;
+                }
+                return false;
             }
-            return anySuccess;
+            catch (Exception ex)
+            {
+                Log ($"ConvertDustToUsdcAsync error: {ex.Message}");
+                return false;
+            }
         }
 
         public async Task<decimal> GetATRAsync(string symbol, int period = 14)

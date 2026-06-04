@@ -273,7 +273,7 @@ namespace BinanceBotWpf.Services
                     return;
                 }
 
-                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal Volume, decimal Volatility, bool IsProfitable)> ();
+                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, bool IsProfitable)> ();
                 foreach (var trade in allClosedTrades)
                 {
                     try
@@ -281,12 +281,16 @@ namespace BinanceBotWpf.Services
                         var klines = await _client.GetKlinesAsync (trade.Symbol, "5m", 50);
                         if (klines == null || klines.Count < Math.Max (_ui.FastSma, _ui.SlowSma) + 2) continue;
                         var closes = klines.Select (k => k.Close).ToList ();
+                        var volumes = klines.Select (k => k.Volume).ToList ();
                         decimal fastSma = CalculateSma (closes, _ui.FastSma);
                         decimal slowSma = CalculateSma (closes, _ui.SlowSma);
                         decimal rsi = CalculateRsi (closes);
-                        decimal volatility = CalculateVolatility (closes, 20);
-                        decimal volume = klines.Last ().Volume;
-                        features.Add ((fastSma, slowSma, rsi, volume, volatility, trade.IsProfitable));
+                        decimal volatility = CalculateVolatility (closes, 20); // не используется, но можно добавить
+                        decimal volume = volumes.Last ();
+                        decimal avgVolume = volumes.TakeLast (20).Average ();
+                        decimal volumeRatio = avgVolume == 0 ? 1m : volume / avgVolume;
+                        decimal atr = await _client.GetATRAsync (trade.Symbol, 14);
+                        features.Add ((fastSma, slowSma, rsi, volumeRatio, atr, trade.IsProfitable));
                     }
                     catch (Exception ex) { _ui?.AddLog ($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
                 }
@@ -846,14 +850,21 @@ namespace BinanceBotWpf.Services
         {
             while (_isRunning)
             {
-                await Task.Delay (24 * 3600000);
+                await Task.Delay (24 * 3600000).ConfigureAwait (false);
                 if (!_isRunning) break;
-                var dust = await _client.GetDustAssetsAsync ();
-                if (dust == null || dust.Count == 0) continue;
-                var ids = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
-                if (ids.Count == 0) continue;
-                _ui?.AddLog ($"🧹 Конвертирую пыль ({ids.Count} активов)");
-                await _client.ConvertDustToBnbAsync (ids);
+                try
+                {
+                    var dust = await _client.GetDustAssetsAsync ().ConfigureAwait (false);
+                    if (dust == null || dust.Count == 0) continue;
+                    var ids = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
+                    if (ids.Count == 0) continue;
+                    _ui?.AddLog ($"🧹 Конвертирую пыль ({ids.Count} активов) в BNB...");
+                    await _client.ConvertDustToBnbAsync (ids).ConfigureAwait (false);
+                }
+                catch (Exception ex)
+                {
+                    await LogErrorToTelegram ($"DustLoop: {ex.Message}").ConfigureAwait (false);
+                }
             }
         }
 

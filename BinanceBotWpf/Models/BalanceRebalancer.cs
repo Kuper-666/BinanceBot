@@ -52,50 +52,30 @@ namespace BinanceBotWpf.Models
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                 if (currentUsdc >= targetUsdc) return;
 
-                // Шаг 1: сначала пробуем конвертировать мелкую пыль в BNB
-                Log ("🧹 Пробую конвертировать мелкие остатки (dust) в BNB...");
-                bool dustConverted = await client.ConvertDustToBnbAsync (null);
-                if (dustConverted)
-                {
-                    currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                    if (currentUsdc >= targetUsdc) return;
-                }
-
-                // Шаг 2: собираем все активы (спот + Earn), исключая чёрный список и USDC
                 var allBalances = await GetAllBalancesAsync (client);
-                // Оставляем только активы, которые можно продать (стоимость > 6 USDC)
-                var sellable = allBalances
-                    .Where (kv => kv.Key != "USDC" && !BlacklistedAssets.Contains (kv.Key) && !kv.Key.StartsWith ("LD"))
-                    .Select (async kv =>
-                    {
-                        string asset = kv.Key;
-                        decimal totalAmount = kv.Value.TotalAmount;
-                        string pair = asset + "USDC";
-                        var klines = await client.GetKlinesAsync (pair, "5m", 5);
-                        if (klines == null || klines.Count == 0) return (Asset: asset, Value: 0m, Amount: 0m, Price: 0m);
-                        decimal price = klines.Last ().Close;
-                        decimal estimatedValue = totalAmount * price;
-                        return (Asset: asset, Value: estimatedValue, Amount: totalAmount, Price: price);
-                    })
-                    .Select (t => t.Result)
-                    .Where (x => x.Value >= 6.0m)
-                    .OrderByDescending (x => x.Value)
-                    .ToList ();
+                var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
 
-                foreach (var item in sellable)
+                foreach (var assetEntry in sorted)
                 {
                     if (!isRunning) break;
-                    string asset = item.Asset;
-                    decimal totalAmount = item.Amount;
-                    decimal price = item.Price;
+                    string asset = assetEntry.Key;
+                    decimal totalAmount = assetEntry.Value.TotalAmount;
+                    if (totalAmount <= 0) continue;
+                    if (asset == "USDC" || BlacklistedAssets.Contains (asset) || asset.StartsWith ("LD")) continue;
+
                     string pair = asset + "USDC";
+                    var klines = await client.GetKlinesAsync (pair, "5m", 5);
+                    if (klines == null || klines.Count == 0) continue;
+                    decimal price = klines.Last ().Close;
+                    decimal estimatedValue = totalAmount * price;
+                    if (estimatedValue < 6.0m) continue;
 
                     decimal stepSize = await client.GetStepSizeAsync (pair);
                     decimal amountToSell = totalAmount;
                     decimal normalizedAmount = Math.Floor (amountToSell / stepSize) * stepSize;
                     if (normalizedAmount <= 0) continue;
 
-                    // Убеждаемся, что на споте достаточно для продажи (при необходимости выкупаем из Earn)
+                    // Проверяем спот-баланс, если надо – выкупаем из Earn
                     decimal spotAmount = await client.GetAccountBalanceAsync (asset);
                     if (spotAmount < normalizedAmount)
                     {
@@ -110,20 +90,20 @@ namespace BinanceBotWpf.Models
                         await Task.Delay (3000);
                     }
 
-                    Log ($"⚖️ Продажа {normalizedAmount} {asset} (шаг {stepSize}) ≈ {normalizedAmount * price:F2} USDC");
-                    var order = await client.PlaceOrder (pair, "SELL", "MARKET", normalizedAmount);
-                    if (order != null)
+                    // Пробуем конвертировать через Convert, если не получится – рыночная продажа
+                    Log ($"⚖️ Конвертация {normalizedAmount} {asset} → USDC");
+                    bool converted = await client.ConvertAssetAsync (asset, "USDC", normalizedAmount);
+                    if (converted)
                     {
-                        Log ($"✅ Успешно! Продано {normalizedAmount} {asset}, USDC пополнен.");
+                        Log ($"✅ Успешно! {normalizedAmount} {asset} конвертирован в USDC.");
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                         if (currentUsdc >= targetUsdc) return;
                     }
                     else
                     {
-                        Log ($"❌ Ошибка при продаже {asset}. Пробую следующий...");
+                        Log ($"❌ Не удалось конвертировать {asset}. Пробую следующий...");
                     }
                 }
-
                 Log ("❌ Не удалось продать ни один актив для пополнения USDC (все активы слишком малы или неликвидны).");
             }
             catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
