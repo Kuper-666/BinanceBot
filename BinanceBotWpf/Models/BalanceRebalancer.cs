@@ -6,45 +6,21 @@ using System.Globalization;
 
 namespace BinanceBotWpf.Models
 {
+    /// <summary>Автоматическая конвертация активов в USDC для поддержания баланса.</summary>
     public class BalanceRebalancer
     {
         private readonly object _consoleLock;
-        private readonly decimal _tradePercent;
-        private readonly decimal _maxTradePercent = 0.30m;
-        private readonly decimal _minTradePercent = 0.05m;
         private decimal _targetUsdcBalance = 5.50m;
-
         public event Action<string> OnLogGenerated;
-
-        private static readonly HashSet<string> BlacklistedAssets = new HashSet<string>
-        {
-            "RDNT", "NTRN", "LDBNB", "LDAIGENSYN", "BETH", "WBETH"
-        };
+        private static readonly HashSet<string> BlacklistedAssets = new () { "RDNT", "NTRN", "LDBNB", "LDAIGENSYN", "BETH", "WBETH" };
 
         public BalanceRebalancer(object consoleLock, decimal tradePercent, decimal targetUsdcBalance = 5.50m)
         {
             _consoleLock = consoleLock;
-            _tradePercent = tradePercent;
             _targetUsdcBalance = Math.Max (targetUsdcBalance, 5.10m);
         }
 
-        public void SetTargetUsdcBalance(decimal newTarget)
-        {
-            _targetUsdcBalance = Math.Max (newTarget, 5.10m);
-            Log ($"🎯 Целевой баланс USDC изменён на {_targetUsdcBalance:F2}");
-        }
-
-        private decimal CalculateDynamicPercent(decimal currentUsdc)
-        {
-            if (currentUsdc >= _targetUsdcBalance)
-                return _minTradePercent;
-
-            decimal deficit = _targetUsdcBalance - currentUsdc;
-            decimal ratio = Math.Min (1.0m, deficit / _targetUsdcBalance);
-            decimal dynamicPercent = _minTradePercent + ( _maxTradePercent - _minTradePercent ) * ratio;
-            return Math.Min (_maxTradePercent, dynamicPercent);
-        }
-
+        /// <summary>Продаёт активы (или конвертирует dust) для пополнения USDC до targetUsdc.</summary>
         public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, decimal targetUsdc = 15m)
         {
             try
@@ -52,9 +28,8 @@ namespace BinanceBotWpf.Models
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                 if (currentUsdc >= targetUsdc) return;
 
-                // 1. Сначала пытаемся выкупить USDC из Earn
                 decimal need = targetUsdc - currentUsdc;
-                if (need >= 1.0m) // минимальная сумма выкупа USDC
+                if (need >= 1.0m)
                 {
                     Log ($"🔄 Выкупаю {need:F2} USDC из Earn...");
                     bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync ("USDC", need);
@@ -62,15 +37,9 @@ namespace BinanceBotWpf.Models
                     {
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                         if (currentUsdc >= targetUsdc) return;
-                        Log ($"✅ Выкуп USDC подтверждён. Новый спот баланс: {currentUsdc:F2}");
-                    }
-                    else
-                    {
-                        Log ($"⚠️ Не удалось выкупить USDC из Earn. Пробую продать другие активы.");
                     }
                 }
 
-                // 2. Если USDC всё ещё мало, ищем другие активы для продажи
                 var allBalances = await GetAllBalancesAsync (client);
                 var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
 
@@ -87,47 +56,36 @@ namespace BinanceBotWpf.Models
                     if (klines == null || klines.Count == 0) continue;
                     decimal price = klines.Last ().Close;
                     decimal estimatedValue = totalAmount * price;
-                    if (estimatedValue < 6.0m) continue; // не продаём активы дешевле 6 USDC
+                    if (estimatedValue < 6.0m) continue;
 
                     decimal stepSize = await client.GetStepSizeAsync (pair);
-                    decimal amountToSell = totalAmount;
-                    decimal normalizedAmount = Math.Floor (amountToSell / stepSize) * stepSize;
+                    decimal normalizedAmount = Math.Floor (totalAmount / stepSize) * stepSize;
                     if (normalizedAmount <= 0) continue;
 
-                    // Проверяем спот-баланс, если надо – выкупаем из Earn
                     decimal spotAmount = await client.GetAccountBalanceAsync (asset);
                     if (spotAmount < normalizedAmount)
                     {
                         decimal needToRedeem = normalizedAmount - spotAmount;
                         if (needToRedeem > 0.0001m)
                         {
-                            Log ($"🔄 Выкупаю {needToRedeem} {asset} из Earn...");
                             bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
-                            if (!redeemed)
-                            {
-                                Log ($"⚠️ Не удалось выкупить {asset}, пробую следующий...");
-                                continue;
-                            }
+                            if (!redeemed) continue;
                             await Task.Delay (3000);
                         }
                     }
 
-                    Log ($"⚖️ Продажа {normalizedAmount} {asset} (шаг {stepSize}) ≈ {normalizedAmount * price:F2} USDC");
+                    Log ($"⚖️ Продажа {normalizedAmount} {asset} ≈ {normalizedAmount * price:F2} USDC");
                     var order = await client.PlaceOrder (pair, "SELL", "MARKET", normalizedAmount);
                     if (order != null)
                     {
-                        Log ($"✅ Успешно! Продано {normalizedAmount} {asset}, USDC пополнен.");
+                        Log ($"✅ Продано {normalizedAmount} {asset}");
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                         if (currentUsdc >= targetUsdc) return;
                     }
-                    else
-                    {
-                        Log ($"❌ Ошибка при продаже {asset}. Пробую следующий...");
-                    }
                 }
-                Log ("❌ Не удалось продать ни один актив для пополнения USDC (все активы слишком малы или неликвидны).");
+                Log ("❌ Не удалось пополнить USDC: нет ликвидных активов.");
             }
-            catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
+            catch (Exception ex) { Log ($"❌ Ошибка: {ex.Message}"); }
         }
 
         private async Task<Dictionary<string, (decimal TotalAmount, decimal TotalValue)>> GetAllBalancesAsync(BinanceClient client)
@@ -137,18 +95,15 @@ namespace BinanceBotWpf.Models
             {
                 var account = await client.GetAccountInfoAsync ();
                 var earnData = await client.GetFlexibleEarnBalanceAsync ();
-
                 if (account?["balances"] != null)
                 {
                     foreach (var b in account["balances"])
                     {
                         string asset = b["asset"].ToString ();
                         decimal free = decimal.Parse (b["free"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
-                        if (free > 0)
-                            result[asset] = (free, 0);
+                        if (free > 0) result[asset] = (free, 0);
                     }
                 }
-
                 if (earnData != null)
                 {
                     foreach (var item in earnData)
@@ -165,10 +120,7 @@ namespace BinanceBotWpf.Models
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                Log ($"Ошибка получения балансов: {ex.Message}");
-            }
+            catch (Exception ex) { Log ($"Ошибка получения балансов: {ex.Message}"); }
             return result;
         }
 

@@ -11,6 +11,9 @@ using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Services
 {
+    /// <summary>
+    /// Проверка и установка обновлений с GitHub Releases.
+    /// </summary>
     public class UpdateManager
     {
         private const string GitHubOwner = "Kuper-666";
@@ -26,21 +29,17 @@ namespace BinanceBotWpf.Services
             _httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
         }
 
+        /// <summary>Проверяет наличие новой версии и при необходимости обновляет.</summary>
         public async Task<bool> CheckAndUpdateAsync(bool silent = false)
         {
             try
             {
                 _logger ("🔍 Проверка обновлений...");
                 string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases";
-                _logger ($"📡 Запрос к GitHub API: {apiUrl}");
-
                 using var response = await _httpClient.GetAsync (apiUrl);
-                _logger ($"📡 HTTP статус: {response.StatusCode}");
-
                 if (!response.IsSuccessStatusCode)
                 {
-                    var errorBody = await response.Content.ReadAsStringAsync ();
-                    _logger ($"❌ GitHub API вернул ошибку: {errorBody}");
+                    _logger ($"❌ GitHub API вернул ошибку: {response.StatusCode}");
                     return false;
                 }
 
@@ -52,7 +51,6 @@ namespace BinanceBotWpf.Services
                     return false;
                 }
 
-                // Сортируем релизы по дате публикации
                 var sortedReleases = releases
                     .OrderByDescending (r => r["published_at"]?.Value<DateTime> () ?? DateTime.MinValue)
                     .ToList ();
@@ -60,10 +58,7 @@ namespace BinanceBotWpf.Services
                 string latestTag = latestRelease["tag_name"]?.ToString () ?? "v0.0.0";
                 string latestVersionStr = latestTag.TrimStart ('v');
                 Version latestVersion = new Version (latestVersionStr);
-
                 Version currentVersion = Assembly.GetExecutingAssembly ().GetName ().Version;
-                _logger ($"📦 Текущая версия сборки: {currentVersion}, последняя: {latestVersion}");
-
                 var currentSimple = new Version (currentVersion.Major, currentVersion.Minor, currentVersion.Build >= 0 ? currentVersion.Build : 0);
                 if (latestVersion > currentSimple)
                 {
@@ -77,15 +72,9 @@ namespace BinanceBotWpf.Services
                             return await DownloadAndInstall (downloadUrl, latestTag);
                         }
                     }
-                    else
-                    {
-                        _logger ("⚠️ Не найден архив для скачивания.");
-                    }
+                    else _logger ("⚠️ Не найден архив для скачивания.");
                 }
-                else
-                {
-                    _logger ("✅ Установлена актуальная версия.");
-                }
+                else _logger ("✅ Установлена актуальная версия.");
                 return false;
             }
             catch (Exception ex)
@@ -112,7 +101,6 @@ namespace BinanceBotWpf.Services
                 ZipFile.ExtractToDirectory (tempZip, extractPath);
                 _logger ("📦 Файлы распакованы.");
 
-                // Определяем пути (исправление для single-file)
                 string currentExe = Environment.ProcessPath ?? Assembly.GetExecutingAssembly ().Location;
                 if (string.IsNullOrEmpty (currentExe))
                     currentExe = Path.Combine (AppContext.BaseDirectory, "BinanceBotWpf.exe");
@@ -132,11 +120,7 @@ namespace BinanceBotWpf.Services
                     }
                 };
                 process.Start ();
-
-                // Даём скрипту время на запуск
                 await Task.Delay (2000);
-
-                // Принудительно завершаем текущий процесс
                 Environment.Exit (0);
                 return true;
             }
@@ -152,22 +136,14 @@ namespace BinanceBotWpf.Services
             string batPath = Path.Combine (Path.GetTempPath (), "UpdateBot_" + Guid.NewGuid () + ".bat");
             string batContent = $@"
 @echo off
-echo Ожидание завершения старого процесса...
 timeout /t 3 /nobreak > nul
-
 echo Создание резервной копии в {backupDir}
 xcopy ""{targetDir}"" ""{backupDir}"" /E /I /Y /Q > nul
-
-echo Остановка старого процесса...
 taskkill /f /im ""{Path.GetFileName (currentExe)}"" > nul 2>&1
-
 echo Обновление файлов...
 xcopy ""{sourceDir}\*"" ""{targetDir}"" /E /I /Y /Q > nul
-
 echo Запуск обновлённого бота...
 start "" "" ""{currentExe}""
-
-echo Очистка...
 rmdir /S /Q ""{sourceDir}""
 del ""{batPath}""
 ";

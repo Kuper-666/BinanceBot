@@ -8,6 +8,9 @@ using Telegram.Bot.Types.ReplyMarkups;
 
 namespace BinanceBotWpf.Services
 {
+    /// <summary>
+    /// Отправка уведомлений в Telegram, обработка команд, клавиатура.
+    /// </summary>
     public class TelegramNotifier
     {
         private readonly TelegramBotClient _botClient;
@@ -23,6 +26,7 @@ namespace BinanceBotWpf.Services
             _enabled = !string.IsNullOrEmpty (botToken) && !string.IsNullOrEmpty (chatId);
         }
 
+        /// <summary>Клавиатура с кнопками для быстрых команд.</summary>
         public ReplyKeyboardMarkup GetMainKeyboard()
         {
             return new ReplyKeyboardMarkup (new[]
@@ -38,6 +42,7 @@ namespace BinanceBotWpf.Services
             };
         }
 
+        /// <summary>Отправляет приветственное сообщение с клавиатурой.</summary>
         public async Task SendWelcomeMessageAsync(string chatId)
         {
             if (!_enabled) return;
@@ -56,6 +61,7 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"SendWelcomeMessage error: {ex.Message}"); }
         }
 
+        /// <summary>Отправка текстового сообщения.</summary>
         public async Task SendMessageAsync(string text, string targetChatId = null)
         {
             if (!_enabled) return;
@@ -66,14 +72,14 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Telegram send error: {ex.Message}"); }
         }
 
-        // Убираем метод SendPhotoAsync (его нет в этой версии)
-        // Вместо него оставляем заглушку, если где-то вызывается
+        /// <summary>Отправка изображения (заглушка, т.к. библиотека старая).</summary>
         public async Task SendPhotoAsync(string chatId, System.IO.Stream photoStream, string caption = null)
         {
-            // В этой версии нет поддержки отправки фото из потока, поэтому отправляем текст
+            // В текущей версии Telegram.Bot нет поддержки отправки фото из потока, поэтому отправляем текст
             await SendMessageAsync ($"📊 График временно недоступен. Используйте /performance для статистики. (caption: {caption})", chatId);
         }
 
+        /// <summary>Запуск прослушивания входящих сообщений.</summary>
         public void StartListening(Func<string, string, Task> onCommandReceived)
         {
             _commandHandler = onCommandReceived;
@@ -139,6 +145,7 @@ namespace BinanceBotWpf.Services
                 await _commandHandler?.Invoke (command, chatId);
         }
 
+        /// <summary>Уведомление о сделке.</summary>
         public async Task SendTradeNotification(string symbol, string action, decimal price, decimal quantity, decimal pnl = 0, string reason = "")
         {
             string emoji = action == "BUY" ? "🟢" : "🔴";
@@ -151,9 +158,11 @@ namespace BinanceBotWpf.Services
             await SendMessageAsync (msg);
         }
 
+        /// <summary>Уведомление об ошибке.</summary>
         public async Task SendErrorNotification(string error) =>
             await SendMessageAsync ($"⚠️ <b>Ошибка бота</b>\n<code>{error}</code>");
 
+        /// <summary>Ежедневный отчёт.</summary>
         public async Task SendDailyReport(decimal totalPnL, decimal winRate, int totalTrades, int winningTrades, int losingTrades)
         {
             string msg = $"📊 <b>Ежедневный отчёт</b>\n" +

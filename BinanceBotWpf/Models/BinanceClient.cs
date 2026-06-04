@@ -11,6 +11,9 @@ using System.Diagnostics;
 
 namespace BinanceBotWpf.Models
 {
+    /// <summary>
+    /// Клиент для взаимодействия с Binance Spot API.
+    /// </summary>
     public class BinanceClient : IDisposable
     {
         private readonly string _apiKey;
@@ -25,11 +28,7 @@ namespace BinanceBotWpf.Models
         public string LastOrderError { get; private set; }
         public bool IsTestnet => _useTestnet;
 
-        private void Log(string message)
-        {
-            OnLogGenerated?.Invoke (message);
-            Debug.WriteLine (message);
-        }
+        private void Log(string message) => OnLogGenerated?.Invoke (message);
 
         public BinanceClient(string apiKey, string apiSecret, bool useTestnet = false)
         {
@@ -62,14 +61,11 @@ namespace BinanceBotWpf.Models
             while (true)
             {
                 var response = await _httpClient.SendAsync (request);
-                if (response.IsSuccessStatusCode)
-                    return response;
-
+                if (response.IsSuccessStatusCode) return response;
                 if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
                 {
                     retryCount++;
-                    if (retryCount > maxRetries)
-                        throw new Exception ($"Rate limit превышен после {maxRetries} попыток");
+                    if (retryCount > maxRetries) throw new Exception ($"Rate limit превышен после {maxRetries} попыток");
                     await Task.Delay (delayMs);
                     delayMs *= 2;
                     continue;
@@ -78,9 +74,9 @@ namespace BinanceBotWpf.Models
             }
         }
 
+        /// <summary>Рыночный ордер (покупка/продажа).</summary>
         public async Task<JObject> PlaceOrder(string symbol, string side, string type, decimal quantity)
         {
-            var sw = Stopwatch.StartNew ();
             try
             {
                 string query = $"symbol={symbol}&side={side}&type={type}&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
@@ -107,12 +103,6 @@ namespace BinanceBotWpf.Models
                 LastOrderError = ex.Message;
                 Log ($"PlaceOrder EXCEPTION: {ex.Message}");
                 return null;
-            }
-            finally
-            {
-                sw.Stop ();
-                if (sw.ElapsedMilliseconds > 500)
-                    Log ($"⏱️ PlaceOrder {symbol} занял {sw.ElapsedMilliseconds} мс");
             }
         }
 

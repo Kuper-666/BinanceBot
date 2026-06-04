@@ -2,6 +2,7 @@
 using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -9,6 +10,7 @@ using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
 {
+    /// <summary>Управление открытыми позициями (загрузка, сохранение, добавление, удаление).</summary>
     public class PositionManager
     {
         private readonly string _positionsFilePath;
@@ -23,6 +25,7 @@ namespace BinanceBotWpf.Services
             _logger = logger;
         }
 
+        /// <summary>Загружает позиции из файла, проверяет балансы на споте и в Earn.</summary>
         public async Task LoadAsync(BinanceClient client, Func<string, Task<decimal>> getPrice, Func<decimal, decimal> getStopLossPercent, Func<decimal, decimal> getTakeProfitPercent)
         {
             if (!File.Exists (_positionsFilePath)) return;
@@ -41,12 +44,12 @@ namespace BinanceBotWpf.Services
                     var earnPositions = await client.GetFlexibleEarnBalanceAsync ();
                     var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
                     if (earnPos != null)
-                        earnBalance = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", System.Globalization.CultureInfo.InvariantCulture);
+                        earnBalance = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                     decimal totalBalance = spotBalance + earnBalance;
 
                     if (totalBalance < kv.Value.Quantity - 0.000001m)
                     {
-                        _logger?.Invoke ($"⚠️ Позиция {kv.Key} имеет недостаточно монет (баланс {totalBalance}, требуется {kv.Value.Quantity}). Удаляю.");
+                        _logger?.Invoke ($"⚠️ Позиция {kv.Key} удалена: недостаточно монет (баланс {totalBalance}, требуется {kv.Value.Quantity}).");
                         toRemove.Add (kv.Key);
                         continue;
                     }

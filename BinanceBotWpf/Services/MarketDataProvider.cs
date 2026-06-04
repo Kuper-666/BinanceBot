@@ -7,13 +7,16 @@ using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
 {
+    /// <summary>
+    /// Получение и кэширование рыночных данных, анализ пар с индикаторами.
+    /// </summary>
     public class MarketDataProvider
     {
         private readonly BinanceClient _client;
         private readonly MainWindowViewModel _ui;
         private readonly Action<string> _logger;
         private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
-        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (10);
+        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (60);
         private readonly StrategyEngine _strategy = new ();
 
         public MarketDataProvider(BinanceClient client, MainWindowViewModel ui, Action<string> logger)
@@ -25,7 +28,6 @@ namespace BinanceBotWpf.Services
 
         public async Task<List<BinanceKline>> GetKlinesCachedAsync(string symbol, string interval, int limit)
         {
-            var sw = System.Diagnostics.Stopwatch.StartNew ();
             lock (_klinesCache)
             {
                 if (_klinesCache.TryGetValue (symbol, out var cached) && DateTime.UtcNow < cached.Expiry)
@@ -33,15 +35,12 @@ namespace BinanceBotWpf.Services
             }
             var klines = await _client.GetKlinesAsync (symbol, interval, limit);
             lock (_klinesCache) { _klinesCache[symbol] = (klines, DateTime.UtcNow + _cacheDuration); }
-            sw.Stop ();
-            if (sw.ElapsedMilliseconds > 500)
-                _logger?.Invoke ($"⏱️ GetKlinesCachedAsync {symbol} занял {sw.ElapsedMilliseconds} мс");
             return klines;
         }
 
+        /// <summary>Анализ пар: SMA, RSI, MACD, Bollinger Bands, фильтр объёма.</summary>
         public async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth)>> AnalyzePairsAsync(List<string> pairs, int fastSmaPeriod, int slowSmaPeriod)
         {
-            var sw = System.Diagnostics.Stopwatch.StartNew ();
             var results = new List<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
             foreach (var sym in pairs)
             {
@@ -61,8 +60,6 @@ namespace BinanceBotWpf.Services
                     decimal fastSma = CalculateSma (closes, fastSmaPeriod);
                     decimal slowSma = CalculateSma (closes, slowSmaPeriod);
                     decimal volatility = CalculateVolatility (closes, 20);
-
-                    // MACD и Bollinger Bands
                     var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
                     decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
                     var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
@@ -71,7 +68,6 @@ namespace BinanceBotWpf.Services
                     decimal bbMiddle = bb.Middle.LastOrDefault () ?? price;
                     decimal bbWidth = ( bbUpper - bbLower ) / ( bbMiddle + 0.0001m );
 
-                    // Дополнительная фильтрация по индикаторам
                     if (signal.Action == TradeAction.Buy && ( price <= bbLower || macdHist > 0 ))
                         signal.Action = TradeAction.Buy;
                     else if (signal.Action == TradeAction.Sell && ( price >= bbUpper || macdHist < 0 ))
@@ -84,8 +80,6 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex) { _logger?.Invoke ($"❌ Ошибка анализа {sym}: {ex.Message}"); }
             }
-            sw.Stop ();
-            _logger?.Invoke ($"⏱️ Анализ {pairs.Count} пар занял {sw.ElapsedMilliseconds} мс");
             return results;
         }
 
