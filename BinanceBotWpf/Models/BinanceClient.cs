@@ -18,6 +18,7 @@ namespace BinanceBotWpf.Models
         private readonly HttpClient _httpClient;
         private long _serverTimeOffset = 0;
         private readonly bool _useTestnet;
+        public bool IsTestnet => _useTestnet;
         private JObject _exchangeInfo;
         private readonly Dictionary<string, decimal> _stepSizeCache = new ();
 

@@ -46,12 +46,7 @@ namespace BinanceBotWpf.Services
                           "Выберите действие (кнопки внизу) или введите команду:";
             try
             {
-                await _botClient.SendMessage (
-                    chatId: chatId,
-                    text: message,
-                    parseMode: ParseMode.Markdown,
-                    replyMarkup: GetMainKeyboard ()
-                );
+                await _botClient.SendMessage (chatId, message, parseMode: ParseMode.Markdown, replyMarkup: GetMainKeyboard ());
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"SendWelcomeMessage error: {ex.Message}"); }
         }
@@ -123,7 +118,7 @@ namespace BinanceBotWpf.Services
                 "export" => "/export",
                 "start_bot" => "/start",
                 "stop_bot" => "/stop",
-                "pnl_chart" => "/pnl",
+                "pnl_chart" => "/chart",
                 "help" => "/help",
                 _ => null
             };

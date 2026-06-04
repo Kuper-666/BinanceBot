@@ -59,6 +59,7 @@ namespace BinanceBotWpf.ViewModels
     public class MainWindowViewModel : INotifyPropertyChanged
     {
         private readonly TradingService _tradingService;
+        private readonly bool _isTestnet;
         private StockPriceMonitor _stockMonitor;
         private string _systemLogs = "";
         private string _walletBalance = "0.00";
@@ -146,9 +147,10 @@ namespace BinanceBotWpf.ViewModels
         private readonly object _settingsLock = new object ();
         private bool _isLoadingSettings = false;
 
-        public MainWindowViewModel(TradingService tradingService)
+        public MainWindowViewModel(TradingService tradingService, bool isTestnet = false)
         {
             _tradingService = tradingService;
+            _isTestnet = isTestnet;
             _settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
             LoadSettings ();
 
@@ -163,7 +165,7 @@ namespace BinanceBotWpf.ViewModels
             _plotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
 
             // Мониторинг акций
-            _stockMonitor = new StockPriceMonitor (AddLog);
+            _stockMonitor = new StockPriceMonitor (AddLog, _isTestnet);
             _ = Task.Run (StocksLoop);
         }
 

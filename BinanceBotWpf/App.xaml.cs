@@ -110,7 +110,7 @@ namespace BinanceBotWpf
 
             var tradingService = new TradingService (binanceClient, walletManager, earnManager, rebalancer, minUsdcBalance, telegramBotToken, telegramChatId);
 
-            var viewModel = new MainWindowViewModel (tradingService);
+            var viewModel = new MainWindowViewModel (tradingService, isTestnet);
             var mainWindow = new MainWindow (viewModel);
             mainWindow.Show ();
         }
