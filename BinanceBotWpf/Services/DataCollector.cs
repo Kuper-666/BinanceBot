@@ -68,7 +68,7 @@ namespace BinanceBotWpf.Services
                     return;
                 }
 
-                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, bool IsProfitable)> ();
+                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, bool IsProfitable)> ();
                 foreach (var trade in allClosedTrades)
                 {
                     try
@@ -83,7 +83,16 @@ namespace BinanceBotWpf.Services
                         decimal avgVolume = volumes.TakeLast (20).Average ();
                         decimal volumeRatio = volumes.Last () / avgVolume;
                         decimal atr = await _client.GetATRAsync (trade.Symbol, 14);
-                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, trade.IsProfitable));
+
+                        var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
+                        decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
+                        var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
+                        decimal bbUpper = bb.Upper.LastOrDefault () ?? closes.Last ();
+                        decimal bbLower = bb.Lower.LastOrDefault () ?? closes.Last ();
+                        decimal bbMiddle = bb.Middle.LastOrDefault () ?? closes.Last ();
+                        decimal bbWidth = ( bbUpper - bbLower ) / ( bbMiddle + 0.0001m );
+
+                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, trade.IsProfitable));
                     }
                     catch (Exception ex) { _logger?.Invoke ($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
                 }

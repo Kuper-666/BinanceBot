@@ -45,7 +45,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public bool IsProfitable(decimal fastSma, decimal slowSma, decimal rsi, decimal volume, decimal volatility)
+        public bool IsProfitable(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth)
         {
             if (!_mlModelLoaded) return true;
             try
@@ -55,8 +55,10 @@ namespace BinanceBotWpf.Services
                     FastSma = (float)fastSma,
                     SlowSma = (float)slowSma,
                     Rsi = (float)rsi,
-                    Volume = (float)volume,
-                    Volatility = (float)volatility
+                    VolumeRatio = (float)volumeRatio,
+                    Atr = (float)atr,
+                    MacdHistogram = (float)macdHist,
+                    BbWidth = (float)bbWidth
                 };
                 var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
                 var result = predEngine.Predict (input);
@@ -65,12 +67,7 @@ namespace BinanceBotWpf.Services
             catch { return true; }
         }
 
-        /// <summary>
-        /// Обучение модели на готовых признаках (например, из истории ордеров).
-        /// </summary>
-        /// <param name="features">Список: (FastSma, SlowSma, Rsi, Volume, Volatility, IsProfitable)</param>
-        /// <param name="logger">Делегат для логирования</param>
-        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, bool IsProfitable)> features, Action<string> logger)
+        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, bool IsProfitable)> features, Action<string> logger)
         {
             await Task.Run (() =>
             {
@@ -81,14 +78,13 @@ namespace BinanceBotWpf.Services
                         logger?.Invoke ("⚠️ В данных нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
                         return;
                     }
-
                     if (features.Count < 10)
                     {
-                        logger?.Invoke ($"⚠️ Недостаточно примеров для обучения: {features.Count} (минимум 10)");
+                        logger?.Invoke ($"⚠️ Недостаточно примеров для обучения: {features.Count}");
                         return;
                     }
 
-                    logger?.Invoke ($"🤖 Запуск обучения ML на {features.Count} примерах (признаки: SMA, RSI, VolumeRatio, ATR)...");
+                    logger?.Invoke ($"🤖 Запуск обучения ML на {features.Count} примерах...");
 
                     var mlContext = new MLContext (seed: 42);
                     var dataWithLabel = features.Select (m => new
@@ -98,6 +94,8 @@ namespace BinanceBotWpf.Services
                         Rsi = (float)m.Rsi,
                         VolumeRatio = (float)m.VolumeRatio,
                         Atr = (float)m.Atr,
+                        MacdHistogram = (float)m.MacdHistogram,
+                        BbWidth = (float)m.BbWidth,
                         Label = m.IsProfitable
                     }).ToList ();
 
@@ -107,7 +105,7 @@ namespace BinanceBotWpf.Services
                     var testData = split.TestSet;
 
                     var pipeline = mlContext.Transforms.Concatenate ("Features",
-                            "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr")
+                            "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth")
                         .Append (mlContext.BinaryClassification.Trainers.FastTree (
                             numberOfTrees: 100,
                             numberOfLeaves: 20,
@@ -126,7 +124,7 @@ namespace BinanceBotWpf.Services
                     _mlContext = mlContext;
                     _mlModel = model;
                     _mlModelLoaded = true;
-                    logger?.Invoke ("✅ ML модель обновлена с новыми признаками (объём, ATR).");
+                    logger?.Invoke ("✅ ML модель обновлена с новыми признаками (MACD, BB)");
                 }
                 catch (Exception ex)
                 {
@@ -135,10 +133,9 @@ namespace BinanceBotWpf.Services
             });
         }
 
-        // Если нужен старый метод RetrainAsync (из CSV) – можно оставить, но он не используется
         public async Task RetrainAsync(string logsDir, Action<string> logger)
         {
-            await Task.Delay (1); // заглушка
+            await Task.Delay (1);
             logger?.Invoke ("⚠️ RetrainAsync (CSV) не реализован, используйте RetrainFromFeaturesAsync");
         }
     }
@@ -148,10 +145,10 @@ namespace BinanceBotWpf.Services
         public float FastSma { get; set; }
         public float SlowSma { get; set; }
         public float Rsi { get; set; }
-        public float Volume { get; set; }        // старый признак (объём)
-        public float Volatility { get; set; }    // старый признак (волатильность)
-        public float VolumeRatio { get; set; }   // новый признак (объём/средний объём)
-        public float Atr { get; set; }           // новый признак (средний истинный диапазон)
+        public float VolumeRatio { get; set; }
+        public float Atr { get; set; }
+        public float MacdHistogram { get; set; }
+        public float BbWidth { get; set; }
     }
 
     public class ModelOutput

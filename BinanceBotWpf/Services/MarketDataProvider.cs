@@ -25,6 +25,7 @@ namespace BinanceBotWpf.Services
 
         public async Task<List<BinanceKline>> GetKlinesCachedAsync(string symbol, string interval, int limit)
         {
+            var sw = System.Diagnostics.Stopwatch.StartNew ();
             lock (_klinesCache)
             {
                 if (_klinesCache.TryGetValue (symbol, out var cached) && DateTime.UtcNow < cached.Expiry)
@@ -32,12 +33,16 @@ namespace BinanceBotWpf.Services
             }
             var klines = await _client.GetKlinesAsync (symbol, interval, limit);
             lock (_klinesCache) { _klinesCache[symbol] = (klines, DateTime.UtcNow + _cacheDuration); }
+            sw.Stop ();
+            if (sw.ElapsedMilliseconds > 500)
+                _logger?.Invoke ($"⏱️ GetKlinesCachedAsync {symbol} занял {sw.ElapsedMilliseconds} мс");
             return klines;
         }
 
-        public async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume)>> AnalyzePairsAsync(List<string> pairs, int fastSmaPeriod, int slowSmaPeriod)
+        public async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth)>> AnalyzePairsAsync(List<string> pairs, int fastSmaPeriod, int slowSmaPeriod)
         {
-            var results = new List<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
+            var sw = System.Diagnostics.Stopwatch.StartNew ();
+            var results = new List<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
             foreach (var sym in pairs)
             {
                 try
@@ -49,18 +54,38 @@ namespace BinanceBotWpf.Services
                     decimal price = closes.Last ();
                     decimal volume = volumes.Last ();
                     decimal avgVolume = volumes.TakeLast (20).Average ();
-                    if (volume < avgVolume * 0.8m) continue; // фильтр объёма
+                    if (volume < avgVolume * 0.8m) continue;
 
                     var signal = _strategy.AnalyzePairWithWallet (sym, closes, fastSmaPeriod, slowSmaPeriod, price);
                     decimal rsi = CalculateRsi (closes);
                     decimal fastSma = CalculateSma (closes, fastSmaPeriod);
                     decimal slowSma = CalculateSma (closes, slowSmaPeriod);
                     decimal volatility = CalculateVolatility (closes, 20);
-                    results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume));
+
+                    // MACD и Bollinger Bands
+                    var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
+                    decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
+                    var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
+                    decimal bbUpper = bb.Upper.LastOrDefault () ?? price;
+                    decimal bbLower = bb.Lower.LastOrDefault () ?? price;
+                    decimal bbMiddle = bb.Middle.LastOrDefault () ?? price;
+                    decimal bbWidth = ( bbUpper - bbLower ) / ( bbMiddle + 0.0001m );
+
+                    // Дополнительная фильтрация по индикаторам
+                    if (signal.Action == TradeAction.Buy && ( price <= bbLower || macdHist > 0 ))
+                        signal.Action = TradeAction.Buy;
+                    else if (signal.Action == TradeAction.Sell && ( price >= bbUpper || macdHist < 0 ))
+                        signal.Action = TradeAction.Sell;
+                    else
+                        signal.Action = TradeAction.Hold;
+
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma);
+                    results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth));
                 }
                 catch (Exception ex) { _logger?.Invoke ($"❌ Ошибка анализа {sym}: {ex.Message}"); }
             }
+            sw.Stop ();
+            _logger?.Invoke ($"⏱️ Анализ {pairs.Count} пар занял {sw.ElapsedMilliseconds} мс");
             return results;
         }
 

@@ -4,6 +4,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
+using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Services
 {
@@ -22,6 +23,7 @@ namespace BinanceBotWpf.Services
             _logger = logger;
             _httpClient = new HttpClient ();
             _processedIds = new HashSet<string> ();
+            // Проверка каждые 6 часов
             _timer = new Timer (CheckForUpdates, null, TimeSpan.Zero, TimeSpan.FromHours (6));
         }
 
@@ -38,6 +40,14 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task FetchAndNotifyNewAirdrops()
+        {
+            // 1. Парсим RSS ленту
+            await ParseRssAsync ();
+            // 2. Дополнительно проверяем через API (если доступно)
+            await ParseApiAsync ();
+        }
+
+        private async Task ParseRssAsync()
         {
             string rssUrl = "https://www.binance.com/en/support/announcement/rss";
             try
@@ -60,7 +70,7 @@ namespace BinanceBotWpf.Services
                         var message = FormatTelegramMessage (title, pubDate, link);
                         await _telegram.SendMessageAsync (message);
                         _processedIds.Add (id);
-                        _logger?.Invoke ($"✉️ Отправлено уведомление об аирдропе: {title}");
+                        _logger?.Invoke ($"✉️ Отправлено уведомление об аирдропе (RSS): {title}");
                         await Task.Delay (1000);
                     }
                     else
@@ -68,16 +78,56 @@ namespace BinanceBotWpf.Services
                         _processedIds.Add (id);
                     }
                 }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke ($"⚠️ Ошибка RSS аирдропов: {ex.Message}");
+            }
+        }
 
-                if (_isFirstRun)
+        private async Task ParseApiAsync()
+        {
+            // Альтернативный API-эндпоинт (неофициальный, может работать)
+            string apiUrl = "https://www.binance.com/bapi/apex/v1/public/apex/cms/article/list?type=1&catalogId=48&pageNo=1&pageSize=20";
+            try
+            {
+                var response = await _httpClient.GetStringAsync (apiUrl);
+                var json = JObject.Parse (response);
+                var articles = json["data"]?["articles"] as JArray;
+                if (articles == null) return;
+
+                foreach (var article in articles)
                 {
-                    _logger?.Invoke ("✅ Модуль уведомлений об аирдропах запущен.");
-                    _isFirstRun = false;
+                    var title = article["title"]?.ToString ();
+                    var releaseDate = article["releaseDate"]?.ToString ();
+                    var code = article["code"]?.ToString ();
+                    if (string.IsNullOrEmpty (code)) continue;
+
+                    if (_processedIds.Contains (code)) continue;
+
+                    if (IsRelevantAirdrop (title))
+                    {
+                        var message = FormatTelegramMessage (title, releaseDate, $"https://www.binance.com/en/support/announcement/{code}");
+                        await _telegram.SendMessageAsync (message);
+                        _processedIds.Add (code);
+                        _logger?.Invoke ($"✉️ Отправлено уведомление об аирдропе (API): {title}");
+                        await Task.Delay (1000);
+                    }
+                    else
+                    {
+                        _processedIds.Add (code);
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger?.Invoke ($"⚠️ Не удалось загрузить RSS аирдропов: {ex.Message}");
+                _logger?.Invoke ($"⚠️ Ошибка API аирдропов: {ex.Message}");
+            }
+
+            if (_isFirstRun)
+            {
+                _logger?.Invoke ("✅ Модуль уведомлений об аирдропах запущен.");
+                _isFirstRun = false;
             }
         }
 
@@ -89,7 +139,10 @@ namespace BinanceBotWpf.Services
                    lowerTitle.Contains ("megadrop") ||
                    lowerTitle.Contains ("hodler airdrop") ||
                    lowerTitle.Contains ("simple earn") ||
-                   lowerTitle.Contains ("staking");
+                   lowerTitle.Contains ("staking") ||
+                   lowerTitle.Contains ("airdrop") ||
+                   lowerTitle.Contains ("new token") ||
+                   lowerTitle.Contains ("token distribution");
         }
 
         private string FormatTelegramMessage(string title, string pubDate, string link)
