@@ -52,6 +52,25 @@ namespace BinanceBotWpf.Models
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                 if (currentUsdc >= targetUsdc) return;
 
+                // 1. Сначала пытаемся выкупить USDC из Earn
+                decimal need = targetUsdc - currentUsdc;
+                if (need >= 1.0m) // минимальная сумма выкупа USDC
+                {
+                    Log ($"🔄 Выкупаю {need:F2} USDC из Earn...");
+                    bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync ("USDC", need);
+                    if (redeemed)
+                    {
+                        currentUsdc = await client.GetAccountBalanceAsync ("USDC");
+                        if (currentUsdc >= targetUsdc) return;
+                        Log ($"✅ Выкуп USDC подтверждён. Новый спот баланс: {currentUsdc:F2}");
+                    }
+                    else
+                    {
+                        Log ($"⚠️ Не удалось выкупить USDC из Earn. Пробую продать другие активы.");
+                    }
+                }
+
+                // 2. Если USDC всё ещё мало, ищем другие активы для продажи
                 var allBalances = await GetAllBalancesAsync (client);
                 var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
 
@@ -68,7 +87,7 @@ namespace BinanceBotWpf.Models
                     if (klines == null || klines.Count == 0) continue;
                     decimal price = klines.Last ().Close;
                     decimal estimatedValue = totalAmount * price;
-                    if (estimatedValue < 6.0m) continue;
+                    if (estimatedValue < 6.0m) continue; // не продаём активы дешевле 6 USDC
 
                     decimal stepSize = await client.GetStepSizeAsync (pair);
                     decimal amountToSell = totalAmount;
@@ -80,28 +99,30 @@ namespace BinanceBotWpf.Models
                     if (spotAmount < normalizedAmount)
                     {
                         decimal needToRedeem = normalizedAmount - spotAmount;
-                        Log ($"🔄 Выкупаю {needToRedeem} {asset} из Earn...");
-                        bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
-                        if (!redeemed)
+                        if (needToRedeem > 0.0001m)
                         {
-                            Log ($"⚠️ Не удалось выкупить {asset}, пробую следующий...");
-                            continue;
+                            Log ($"🔄 Выкупаю {needToRedeem} {asset} из Earn...");
+                            bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
+                            if (!redeemed)
+                            {
+                                Log ($"⚠️ Не удалось выкупить {asset}, пробую следующий...");
+                                continue;
+                            }
+                            await Task.Delay (3000);
                         }
-                        await Task.Delay (3000);
                     }
 
-                    // Пробуем конвертировать через Convert, если не получится – рыночная продажа
-                    Log ($"⚖️ Конвертация {normalizedAmount} {asset} → USDC");
-                    bool converted = await client.ConvertAssetAsync (asset, "USDC", normalizedAmount);
-                    if (converted)
+                    Log ($"⚖️ Продажа {normalizedAmount} {asset} (шаг {stepSize}) ≈ {normalizedAmount * price:F2} USDC");
+                    var order = await client.PlaceOrder (pair, "SELL", "MARKET", normalizedAmount);
+                    if (order != null)
                     {
-                        Log ($"✅ Успешно! {normalizedAmount} {asset} конвертирован в USDC.");
+                        Log ($"✅ Успешно! Продано {normalizedAmount} {asset}, USDC пополнен.");
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                         if (currentUsdc >= targetUsdc) return;
                     }
                     else
                     {
-                        Log ($"❌ Не удалось конвертировать {asset}. Пробую следующий...");
+                        Log ($"❌ Ошибка при продаже {asset}. Пробую следующий...");
                     }
                 }
                 Log ("❌ Не удалось продать ни один актив для пополнения USDC (все активы слишком малы или неликвидны).");
