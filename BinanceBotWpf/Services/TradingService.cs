@@ -35,7 +35,7 @@ namespace BinanceBotWpf.Services
         private decimal _lastLoggedBalance = -1;
         private DateTime _lastReportDate = DateTime.MinValue;
         private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
-        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (10);
+        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (60);
         private DateTime _lastRebalanceAttempt = DateTime.MinValue;
         private readonly TimeSpan _rebalanceCooldown = TimeSpan.FromMinutes (2);
         private DateTime _lastLowBalanceLog = DateTime.MinValue;
@@ -192,7 +192,7 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 30);
+                var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 15);
                 newPairs = newPairs
                     .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("LD"))
                     .Where (p => !_blacklistedSymbols.Contains (p))
@@ -482,19 +482,19 @@ namespace BinanceBotWpf.Services
         // ==================== АНАЛИЗ СИГНАЛОВ ====================
         private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth)>> AnalyzePairsAsync(List<string> pairs)
         {
-            var results = new List<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
-            foreach (var sym in pairs)
+            var results = new ConcurrentBag<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
+            await Parallel.ForEachAsync (pairs, async (sym, ct) =>
             {
                 try
                 {
                     var klines = await GetKlinesCachedAsync (sym, "5m", 50);
-                    if (klines?.Count < Math.Max (_ui.FastSma, _ui.SlowSma) + 2) continue;
+                    if (klines?.Count < Math.Max (_ui.FastSma, _ui.SlowSma) + 2) return;
                     var closes = klines.Select (k => k.Close).ToList ();
                     var volumes = klines.Select (k => k.Volume).ToList ();
                     decimal price = closes.Last ();
                     decimal volume = volumes.Last ();
                     decimal avgVolume = volumes.TakeLast (20).Average ();
-                    if (volume < avgVolume * 0.8m) continue;
+                    if (volume < avgVolume * 0.8m) return;
 
                     var signal = _strategy.AnalyzePairWithWallet (sym, closes, _ui.FastSma, _ui.SlowSma, price);
                     decimal rsi = CalculateRsi (closes);
@@ -520,12 +520,13 @@ namespace BinanceBotWpf.Services
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth));
                 }
                 catch (Exception ex) { await LogErrorToTelegram ($"AnalyzePairsAsync {sym}: {ex.Message}"); }
-            }
-            return results;
+            });
+            return results.ToList ();
         }
 
-        // ==================== ПОКУПКА ====================
-        private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth) sig, decimal currentSpotBalance)
+        private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
+    decimal MacdHistogram, decimal BbWidth) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 10) return currentSpotBalance;
 
@@ -861,7 +862,7 @@ namespace BinanceBotWpf.Services
                         }
                     }
 
-                    await Task.Delay (10000);
+                    await Task.Delay (30000);
                 }
                 catch (Exception ex)
                 {
