@@ -359,6 +359,9 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        /// <summary>
+        /// Сбор истории ордеров из API Binance и переобучение ML-модели на основе закрытых позиций.
+        /// </summary>
         private async Task FetchAndRetrainFromOrderHistoryAsync()
         {
             try
@@ -368,7 +371,11 @@ namespace BinanceBotWpf.Services
 
                 List<string> pairsToFetch;
                 lock (_pairsLock) { pairsToFetch = new List<string> (_activePairs); }
-                if (pairsToFetch.Count == 0) return;
+                if (pairsToFetch.Count == 0)
+                {
+                    _ui?.AddLog ("⚠️ Нет активных пар для загрузки истории ордеров");
+                    return;
+                }
 
                 var allClosedTrades = new List<(DateTime CloseTime, string Symbol, decimal EntryPrice, decimal ExitPrice, decimal Quantity, bool IsProfitable)> ();
                 foreach (var sym in pairsToFetch)
@@ -386,7 +393,9 @@ namespace BinanceBotWpf.Services
                     {
                         var buy = buys[buyIdx];
                         var sell = sells[sellIdx];
-                        if ((long)sell["time"] < (long)buy["time"]) { sellIdx++; continue; }
+                        long buyTime = (long)buy["time"];
+                        long sellTime = (long)sell["time"];
+                        if (sellTime < buyTime) { sellIdx++; continue; }
 
                         decimal buyQty = decimal.Parse (buy["executedQty"].ToString (), CultureInfo.InvariantCulture);
                         decimal sellQty = decimal.Parse (sell["executedQty"].ToString (), CultureInfo.InvariantCulture);
@@ -396,17 +405,20 @@ namespace BinanceBotWpf.Services
                             decimal entryPrice = decimal.Parse (buy["price"].ToString (), CultureInfo.InvariantCulture);
                             decimal exitPrice = decimal.Parse (sell["price"].ToString (), CultureInfo.InvariantCulture);
                             bool profitable = exitPrice > entryPrice;
-                            allClosedTrades.Add ((DateTimeOffset.FromUnixTimeMilliseconds ((long)sell["time"]).DateTime, sym, entryPrice, exitPrice, qty, profitable));
+                            allClosedTrades.Add ((DateTimeOffset.FromUnixTimeMilliseconds (sellTime).DateTime, sym, entryPrice, exitPrice, qty, profitable));
                         }
                         if (buyQty <= sellQty) buyIdx++;
                         if (sellQty <= buyQty) sellIdx++;
                     }
                 }
 
-                _ui?.AddLog ($"📊 Найдено {allClosedTrades.Count} закрытых позиций");
+                int profitableCount = allClosedTrades.Count (t => t.IsProfitable);
+                int unprofitableCount = allClosedTrades.Count (t => !t.IsProfitable);
+                _ui?.AddLog ($"📊 Найдено {allClosedTrades.Count} закрытых позиций (прибыльных: {profitableCount}, убыточных: {unprofitableCount})");
+
                 if (allClosedTrades.Count < 30)
                 {
-                    _ui?.AddLog ($"⚠️ Недостаточно сделок ({allClosedTrades.Count}) для обучения");
+                    _ui?.AddLog ($"⚠️ Недостаточно сделок ({allClosedTrades.Count}) для обучения, требуется 30.");
                     return;
                 }
 
@@ -437,11 +449,19 @@ namespace BinanceBotWpf.Services
                     catch (Exception ex) { _ui?.AddLog ($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
                 }
 
-                if (features.Count < 20) return;
+                if (features.Count < 20)
+                {
+                    _ui?.AddLog ($"⚠️ Недостаточно признаков для обучения ({features.Count})");
+                    return;
+                }
+
                 await _mlManager.RetrainFromFeaturesAsync (features, _ui.AddLog);
                 _lastOrdersFetch = DateTime.UtcNow;
             }
-            catch (Exception ex) { await LogErrorToTelegram ($"FetchAndRetrainFromOrderHistoryAsync: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                await LogErrorToTelegram ($"FetchAndRetrainFromOrderHistoryAsync: {ex.Message}");
+            }
         }
 
         private decimal CalculateSma(List<decimal> data, int period) => data.Skip (data.Count - period).Average ();
@@ -561,12 +581,25 @@ namespace BinanceBotWpf.Services
 
         // ==================== ПРОДАЖА ====================
         /// <summary>Закрывает позицию рыночным ордером, отменяет OCO-ордер.</summary>
-        private async Task ExecuteSell((string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth) sig)
+        private async Task ExecuteSell((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
+    decimal MacdHistogram, decimal BbWidth) sig)
         {
             if (!_positionManager.TryGet (sig.Symbol, out var pos)) return;
             string asset = sig.Symbol.Replace ("USDC", "");
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
+
+            // Если монет нет на споте – удаляем позицию и выходим
+            if (spotBalance < 0.000001m)
+            {
+                _ui?.AddLog ($"⚠️ Нет {asset} на споте для продажи {sig.Symbol}. Удаляю позицию.");
+                _positionManager.Remove (sig.Symbol);
+                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                return;
+            }
+
             decimal qtyToSell = pos.Quantity;
+            // Если на споте меньше, чем нужно – корректируем
             if (spotBalance < qtyToSell - 0.000001m && spotBalance > 0)
             {
                 decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
@@ -578,8 +611,9 @@ namespace BinanceBotWpf.Services
                     _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
                     return;
                 }
-                _ui?.AddLog ($"⚠️ Корректировка продажи {sig.Symbol}: продаю {qtyToSell} вместо {pos.Quantity}");
+                _ui?.AddLog ($"⚠️ Корректировка продажи {sig.Symbol}: продаю {qtyToSell} вместо {pos.Quantity} (доступно {spotBalance})");
             }
+
             if (qtyToSell <= 0)
             {
                 _positionManager.Remove (sig.Symbol);
@@ -587,6 +621,7 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
+            // Отмена OCO-ордера, если есть
             if (pos.OcoOrderListId != 0)
             {
                 bool cancelled = await _client.CancelOcoOrder (sig.Symbol, pos.OcoOrderListId);
