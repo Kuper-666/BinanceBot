@@ -45,7 +45,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public bool IsProfitable(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth)
+        public bool IsProfitable(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth, decimal obv)
         {
             if (!_mlModelLoaded) return true;
             try
@@ -58,7 +58,8 @@ namespace BinanceBotWpf.Services
                     VolumeRatio = (float)volumeRatio,
                     Atr = (float)atr,
                     MacdHistogram = (float)macdHist,
-                    BbWidth = (float)bbWidth
+                    BbWidth = (float)bbWidth,
+                    Obv = (float)obv
                 };
                 var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
                 var result = predEngine.Predict (input);
@@ -67,7 +68,7 @@ namespace BinanceBotWpf.Services
             catch { return true; }
         }
 
-        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, bool IsProfitable)> features, Action<string> logger)
+        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> features, Action<string> logger)
         {
             await Task.Run (() =>
             {
@@ -96,6 +97,7 @@ namespace BinanceBotWpf.Services
                         Atr = (float)m.Atr,
                         MacdHistogram = (float)m.MacdHistogram,
                         BbWidth = (float)m.BbWidth,
+                        Obv = (float)m.Obv,
                         Label = m.IsProfitable
                     }).ToList ();
 
@@ -105,7 +107,7 @@ namespace BinanceBotWpf.Services
                     var testData = split.TestSet;
 
                     var pipeline = mlContext.Transforms.Concatenate ("Features",
-                                    "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth", "Obv")
+                            "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth", "Obv")
                         .Append (mlContext.BinaryClassification.Trainers.FastTree (
                             numberOfTrees: 100,
                             numberOfLeaves: 20,
@@ -124,7 +126,7 @@ namespace BinanceBotWpf.Services
                     _mlContext = mlContext;
                     _mlModel = model;
                     _mlModelLoaded = true;
-                    logger?.Invoke ("✅ ML модель обновлена с новыми признаками (MACD, BB)");
+                    logger?.Invoke ("✅ ML модель обновлена с новыми признаками (включая OBV)");
                 }
                 catch (Exception ex)
                 {

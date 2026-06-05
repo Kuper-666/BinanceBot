@@ -362,6 +362,9 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Сбор истории ордеров из API Binance и переобучение ML-модели на основе закрытых позиций.
         /// </summary>
+        /// <summary>
+        /// Сбор истории ордеров и переобучение ML-модели.
+        /// </summary>
         private async Task FetchAndRetrainFromOrderHistoryAsync()
         {
             try
@@ -422,7 +425,13 @@ namespace BinanceBotWpf.Services
                     return;
                 }
 
-                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, bool IsProfitable)> ();
+                if (profitableCount == 0 || unprofitableCount == 0)
+                {
+                    _ui?.AddLog ($"⚠️ Нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
+                    return;
+                }
+
+                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> ();
                 foreach (var trade in allClosedTrades)
                 {
                     try
@@ -444,7 +453,13 @@ namespace BinanceBotWpf.Services
                         decimal bbLower = bb.Lower.LastOrDefault () ?? closes.Last ();
                         decimal bbMiddle = bb.Middle.LastOrDefault () ?? closes.Last ();
                         decimal bbWidth = ( bbUpper - bbLower ) / ( bbMiddle + 0.0001m );
-                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, trade.IsProfitable));
+
+                        // OBV (On-Balance Volume)
+                        var obvValues = TechnicalAnalysis.OBV (klines);
+                        decimal obvLast = obvValues.Last ();
+                        decimal obvNormalized = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
+
+                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, obvNormalized, trade.IsProfitable));
                     }
                     catch (Exception ex) { _ui?.AddLog ($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
                 }
@@ -493,9 +508,9 @@ namespace BinanceBotWpf.Services
 
         // ==================== АНАЛИЗ СИГНАЛОВ ====================
         /// <summary>Анализирует все пары: рассчитывает SMA, RSI, MACD, Bollinger Bands, фильтрует по объёму и возвращает сигналы.</summary>
-        private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth)>> AnalyzePairsAsync(List<string> pairs)
+        private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth, decimal Obv)>> AnalyzePairsAsync(List<string> pairs)
         {
-            var results = new ConcurrentBag<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
+            var results = new ConcurrentBag<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
             await Parallel.ForEachAsync (pairs, async (sym, ct) =>
             {
                 try
@@ -506,12 +521,11 @@ namespace BinanceBotWpf.Services
                     var volumes = klines.Select (k => k.Volume).ToList ();
                     var obvValues = TechnicalAnalysis.OBV (klines);
                     decimal obvLast = obvValues.Last ();
-                    // Для нормализации (OBV может быть огромным) используем логарифм
                     decimal obvNormalized = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
                     decimal price = closes.Last ();
                     decimal volume = volumes.Last ();
                     decimal avgVolume = volumes.TakeLast (20).Average ();
-                    if (volume < avgVolume * 0.8m) return; // фильтр по объёму
+                    if (volume < avgVolume * 0.8m) return;
 
                     var signal = _strategy.AnalyzePairWithWallet (sym, closes, _ui.FastSma, _ui.SlowSma, price);
                     decimal rsi = CalculateRsi (closes);
@@ -534,7 +548,7 @@ namespace BinanceBotWpf.Services
                         signal.Action = TradeAction.Hold;
 
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), _positionManager.TryGet (sym, out _), signal.Action, fastSma, slowSma);
-                    results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth));
+                    results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth, obvNormalized));
                 }
                 catch (Exception ex) { await LogErrorToTelegram ($"AnalyzePairsAsync {sym}: {ex.Message}"); }
             });
@@ -544,11 +558,11 @@ namespace BinanceBotWpf.Services
         // ==================== ПОКУПКА ====================
         /// <summary>Выполняет рыночную покупку на фиксированную сумму 10 USDC (упрощённая версия для накопления истории).</summary>
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
-            decimal MacdHistogram, decimal BbWidth) sig, decimal currentSpotBalance)
+     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
+     decimal MacdHistogram, decimal BbWidth, decimal Obv) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 10) return currentSpotBalance;
-            decimal spend = 10; // фиксированная сумма
+            decimal spend = 10;
             decimal rawQty = spend / sig.Price;
             decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
             decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
@@ -583,13 +597,12 @@ namespace BinanceBotWpf.Services
         /// <summary>Закрывает позицию рыночным ордером, отменяет OCO-ордер.</summary>
         private async Task ExecuteSell((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
-    decimal MacdHistogram, decimal BbWidth) sig)
+    decimal MacdHistogram, decimal BbWidth, decimal Obv) sig)
         {
             if (!_positionManager.TryGet (sig.Symbol, out var pos)) return;
             string asset = sig.Symbol.Replace ("USDC", "");
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
 
-            // Если монет нет на споте – удаляем позицию и выходим
             if (spotBalance < 0.000001m)
             {
                 _ui?.AddLog ($"⚠️ Нет {asset} на споте для продажи {sig.Symbol}. Удаляю позицию.");
@@ -599,7 +612,6 @@ namespace BinanceBotWpf.Services
             }
 
             decimal qtyToSell = pos.Quantity;
-            // Если на споте меньше, чем нужно – корректируем
             if (spotBalance < qtyToSell - 0.000001m && spotBalance > 0)
             {
                 decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
@@ -621,7 +633,6 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
-            // Отмена OCO-ордера, если есть
             if (pos.OcoOrderListId != 0)
             {
                 bool cancelled = await _client.CancelOcoOrder (sig.Symbol, pos.OcoOrderListId);
@@ -754,7 +765,7 @@ namespace BinanceBotWpf.Services
             foreach (var sym in toClose)
             {
                 decimal price = await GetCurrentPrice (sym);
-                await ExecuteSell ((sym, TradeAction.Sell, price, 0, 0, 0, 0, 0, 0, 0, 0));
+                await ExecuteSell ((sym, TradeAction.Sell, price, 0, 0, 0, 0, 0, 0, 0, 0, 0));
             }
         }
 
