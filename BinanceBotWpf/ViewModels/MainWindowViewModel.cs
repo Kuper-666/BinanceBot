@@ -167,6 +167,9 @@ namespace BinanceBotWpf.ViewModels
             // Мониторинг акций
             _stockMonitor = new StockPriceMonitor (AddLog, _isTestnet);
             _ = Task.Run (StocksLoop);
+
+            // Запускаем цикл обновления UI через WebSocket (если TradingService поддерживает)
+            _ = Task.Run (StartUiUpdateLoop);
         }
 
         private void LoadSettings()
@@ -255,7 +258,7 @@ namespace BinanceBotWpf.ViewModels
                 {
                     series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
-                    // Обновляем график реже (каждые 10 точек)
+                    // Обновляем график не чаще чем каждые 10 точек
                     if (series.Points.Count % 10 == 0)
                         _plotModel.InvalidatePlot (true);
                 }
@@ -357,12 +360,40 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
+        /// <summary>
+        /// Цикл обновления таблицы криптовалют из WebSocket (между основными циклами анализа).
+        /// </summary>
+        private async Task StartUiUpdateLoop()
+        {
+            while (true)
+            {
+                try
+                {
+                    await Application.Current.Dispatcher.InvokeAsync (() =>
+                    {
+                        foreach (var pairItem in PairsList)
+                        {
+                            decimal price = _tradingService.GetCurrentPriceForSymbol (pairItem.Pair);
+                            if (price > 0)
+                                pairItem.Price = price.ToString ("F4");
+                        }
+                    });
+                    await Task.Delay (1000); // обновляем раз в секунду
+                }
+                catch (Exception ex)
+                {
+                    AddLog ($"❌ Ошибка обновления UI: {ex.Message}");
+                    await Task.Delay (5000);
+                }
+            }
+        }
+
         public void AddLog(string message)
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
                 SystemLogs += $"{DateTime.Now:HH:mm:ss} - {message}\n";
-                // Ограничиваем до 500 строк
+                // Ограничиваем лог до ~500 строк
                 if (SystemLogs.Length > 50000)
                 {
                     var idx = SystemLogs.IndexOf ('\n', SystemLogs.Length / 2);

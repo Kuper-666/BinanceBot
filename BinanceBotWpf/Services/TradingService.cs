@@ -1,14 +1,15 @@
-﻿using System;
+﻿using BinanceBotWpf.Models;
+using BinanceBotWpf.ViewModels;
+using Microsoft.Extensions.Logging;
+using System;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Collections.Generic;
-using System.Linq;
-using System.Collections.Concurrent;
-using BinanceBotWpf.Models;
-using BinanceBotWpf.ViewModels;
-using System.Globalization;
 
 namespace BinanceBotWpf.Services
 {
@@ -53,6 +54,7 @@ namespace BinanceBotWpf.Services
         private const int MaxErrors = 20;
         private decimal _totalProfitSum = 0;
         private decimal _totalLossSum = 0;
+        private WebSocketPriceManager _webSocketManager;
 
         private bool _balanceLoopEnabled = true;
         private bool _pairsLoopEnabled = true;
@@ -93,12 +95,15 @@ namespace BinanceBotWpf.Services
         }
 
         /// <summary>Настройка логирования для всех менеджеров и инициализация Telegram.</summary>
-        public void SetLogger(Action<string> logger)
+        /// <summary>
+        /// Настройка логирования для всех менеджеров, инициализация Telegram и WebSocket.
+        /// </summary>
+        public void SetLogger(Action<string> logAction)
         {
-            _wallet.OnLogGenerated += logger;
-            _earn.OnLogGenerated += logger;
-            _rebalancer.OnLogGenerated += logger;
-            _client.OnLogGenerated += logger;
+            _wallet.OnLogGenerated += logAction;
+            _earn.OnLogGenerated += logAction;
+            _rebalancer.OnLogGenerated += logAction;
+            _client.OnLogGenerated += logAction;
 
             string tgToken = _telegramBotToken;
             string tgChatId = _telegramChatId;
@@ -127,19 +132,27 @@ namespace BinanceBotWpf.Services
                 {
                     _telegram = new TelegramNotifier (tgToken, tgChatId);
                     _telegram.StartListening (HandleTelegramCommand);
-                    logger ("✅ Telegram уведомления включены");
-                    logger ("📡 Команды Telegram активированы (/help для списка)");
+                    logAction ("✅ Telegram уведомления включены");
+                    logAction ("📡 Команды Telegram активированы (/help для списка)");
                 }
                 catch (Exception ex)
                 {
-                    logger ($"❌ Ошибка инициализации Telegram: {ex.Message}");
+                    logAction ($"❌ Ошибка инициализации Telegram: {ex.Message}");
                 }
             }
             else
             {
-                logger ("⚠️ Telegram не настроен. Уведомления отключены.");
+                logAction ("⚠️ Telegram не настроен. Уведомления отключены.");
+            }
+
+            // Инициализация WebSocketPriceManager
+            if (_webSocketManager == null)
+            {
+                _webSocketManager = new WebSocketPriceManager (logAction);
+                logAction ("✅ WebSocket менеджер инициализирован");
             }
         }
+
 
         /// <summary>Запуск всех циклов бота.</summary>
         public async Task StartTradingAsync(MainWindowViewModel vm)
@@ -187,19 +200,28 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 5); // только 5 пар
+                var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 20);
                 newPairs = newPairs
                     .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("LD"))
                     .Where (p => !_blacklistedSymbols.Contains (p))
                     .ToList ();
+
                 if (newPairs.Count > 0)
                 {
                     lock (_pairsLock) { _activePairs = newPairs; }
+
+                    // Подписываемся на новые пары через WebSocket
+                    var newSymbols = newPairs.Except (_webSocketManager.GetSubscribedSymbols ()).ToArray ();
+                    if (newSymbols.Any ())
+                    {
+                        await _webSocketManager.SubscribeToSymbolsAsync (newSymbols);
+                    }
+
                     _ui?.AddLog ($"📊 Список пар обновлён: {string.Join (", ", _activePairs.Take (5))}...");
                 }
                 else
                 {
-                    _ui?.AddLog ("⚠️ Не найдено активных пар");
+                    _ui?.AddLog ("⚠️ Не найдено активных пар (чёрный список/фильтр)");
                 }
             }
             catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка обновления пар: {ex.Message}"); }
@@ -1033,8 +1055,16 @@ namespace BinanceBotWpf.Services
             _tradingLoopEnabled = true;
             _ui?.AddLog ("▶️ Все циклы запущены");
         }
+        /// <summary>
+        /// Возвращает текущую цену символа из WebSocket (или 0, если не подписан).
+        /// </summary>
+        public decimal GetCurrentPriceForSymbol(string symbol) => _webSocketManager?.GetCurrentPrice (symbol) ?? 0;
 
         /// <summary>Остановка всех циклов и завершение работы.</summary>
-        public void StopTrading() => _isRunning = false;
+        public void StopTrading()
+        {
+            _isRunning = false;
+            _webSocketManager?.Dispose (); // Закрываем WebSocket
+        }
     }
 }
