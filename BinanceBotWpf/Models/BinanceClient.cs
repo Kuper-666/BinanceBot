@@ -360,7 +360,8 @@ namespace BinanceBotWpf.Models
                         High = decimal.Parse (item[2].ToString (), CultureInfo.InvariantCulture),
                         Low = decimal.Parse (item[3].ToString (), CultureInfo.InvariantCulture),
                         Close = decimal.Parse (item[4].ToString (), CultureInfo.InvariantCulture),
-                        Volume = decimal.Parse (item[5].ToString (), CultureInfo.InvariantCulture)
+                        Volume = decimal.Parse (item[5].ToString (), CultureInfo.InvariantCulture),
+                        OpenTime = DateTimeOffset.FromUnixTimeMilliseconds ((long)item[0]).DateTime
                     }).ToList ();
                 }
                 return new List<BinanceKline> ();

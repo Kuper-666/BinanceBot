@@ -935,6 +935,49 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        private async Task OptimizeStrategyWithPython()
+        {
+            try
+            {
+                _ui?.AddLog ("🐍 Запуск Python-оптимизатора...");
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "python",
+                    Arguments = "optimize_strategy.py",
+                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var process = Process.Start (psi);
+                if (process == null)
+                {
+                    _ui?.AddLog ("❌ Не удалось запустить Python. Проверьте, что python установлен и доступен в PATH.");
+                    return;
+                }
+                string output = await process.StandardOutput.ReadToEndAsync ();
+                string error = await process.StandardError.ReadToEndAsync ();
+                await process.WaitForExitAsync ();
+                if (!string.IsNullOrEmpty (output)) _ui?.AddLog (output);
+                if (!string.IsNullOrEmpty (error)) _ui?.AddLog ($"⚠️ Python stderr: {error}");
+                if (process.ExitCode == 0)
+                {
+                    _ui?.AddLog ("✅ Оптимизация завершена. Используйте /reload для применения новых настроек.");
+                    if (_telegram != null)
+                        await _telegram.SendMessageAsync ("✅ Оптимизация завершена. Новые параметры в strategy_settings.json. Отправьте /reload для применения.", _telegram.GetChatId ());
+                }
+                else
+                {
+                    _ui?.AddLog ($"❌ Оптимизация не удалась. Код ошибки: {process.ExitCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка при запуске Python: {ex.Message}");
+            }
+        }
+
         private async Task ExportKlinesToCsv()
         {
             string exportDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Export", "Klines");

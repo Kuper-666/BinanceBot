@@ -50,7 +50,9 @@ def backtest(df, fast, slow, rsi_period, rsi_buy, rsi_sell, stop_loss=0.02, take
     return total_return
 
 def optimize():
-    csv_files = glob.glob('Export/Klines/*_5m.csv')
+    df = pd.read_csv(file, names=['open','high','low','close','volume'], skiprows=1)
+    df['timestamp'] = pd.date_range(start='2024-01-01', periods=len(df), freq='5min')
+    df.set_index('timestamp', inplace=True)
     if not csv_files:
         print("NO_DATA")
         return

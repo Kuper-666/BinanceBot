@@ -449,9 +449,16 @@ namespace BinanceBotWpf.ViewModels
         public void ReloadSettings()
         {
             LoadSettings ();
-            // Обновить UI, если нужно
+            // Обновляем UI
             OnPropertyChanged (nameof (FastSma));
             OnPropertyChanged (nameof (SlowSma));
+            OnPropertyChanged (nameof (RsiBuyThreshold));
+            OnPropertyChanged (nameof (RsiSellThreshold));
+            OnPropertyChanged (nameof (StopLossPercent));
+            OnPropertyChanged (nameof (TakeProfitPercent));
+            OnPropertyChanged (nameof (TrailingStopPercent));
+            OnPropertyChanged (nameof (MinBalanceForTrading));
+            OnPropertyChanged (nameof (MaxRiskPercent));
         }
 
         public void UpdateRiskDisplay(decimal riskPercent) => Application.Current.Dispatcher.Invoke (() => RiskPercentDisplay = $"Риск: {riskPercent * 100:F0}%");

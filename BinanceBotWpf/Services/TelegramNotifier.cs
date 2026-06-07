@@ -18,6 +18,7 @@ namespace BinanceBotWpf.Services
         private readonly bool _enabled;
         private Func<string, string, Task> _commandHandler;
         private CancellationTokenSource _cts;
+        public string GetChatId() => _chatId;
 
         public TelegramNotifier(string botToken, string chatId)
         {
