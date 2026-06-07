@@ -923,6 +923,9 @@ namespace BinanceBotWpf.Services
                     StartAllLoops ();
                     await _telegram.SendMessageAsync ("▶️ Все циклы запущены.", chatId);
                     break;
+                case "/reload_settings":
+                    await _telegram.SendMessageAsync ("📁 Для применения новых настроек из strategy_settings.json перезапустите бота (СТОП → ЗАПУСК).", chatId);
+                    break;
                 case "/help":
                     string help = "🤖 *Команды:*\n/status – состояние\n/balance – баланс\n/stop – стоп торговли\n/start – старт\n/export – экспорт\n/retrain – переобучить ML\n/pnl – статистика PnL\n/update – обновление\n/dust – конвертация пыли\n/errors – ошибки\n/performance – детальная статистика\n/stop_all – остановить все циклы\n/start_all – запустить все циклы\n/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);

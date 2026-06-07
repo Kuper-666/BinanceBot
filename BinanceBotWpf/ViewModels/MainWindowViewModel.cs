@@ -446,6 +446,11 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
+        public void ReloadSettings()
+        {
+            LoadSettings ();
+        }
+
         public void UpdateRiskDisplay(decimal riskPercent) => Application.Current.Dispatcher.Invoke (() => RiskPercentDisplay = $"Риск: {riskPercent * 100:F0}%");
 
         public event PropertyChangedEventHandler PropertyChanged;

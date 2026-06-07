@@ -1,4 +1,6 @@
-﻿public class BinanceKline
+﻿using System;
+
+public class BinanceKline
 {
     public DateTime OpenTime { get; set; }
     public decimal Open { get; set; }
