@@ -68,7 +68,7 @@ namespace BinanceBotWpf.Services
                     return;
                 }
 
-                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, bool IsProfitable)> ();
+                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> ();
                 foreach (var trade in allClosedTrades)
                 {
                     try
@@ -83,7 +83,6 @@ namespace BinanceBotWpf.Services
                         decimal avgVolume = volumes.TakeLast (20).Average ();
                         decimal volumeRatio = volumes.Last () / avgVolume;
                         decimal atr = await _client.GetATRAsync (trade.Symbol, 14);
-
                         var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
                         decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
                         var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
@@ -92,12 +91,22 @@ namespace BinanceBotWpf.Services
                         decimal bbMiddle = bb.Middle.LastOrDefault () ?? closes.Last ();
                         decimal bbWidth = ( bbUpper - bbLower ) / ( bbMiddle + 0.0001m );
 
-                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, trade.IsProfitable));
+                        // OBV
+                        var obvValues = TechnicalAnalysis.OBV (klines);
+                        decimal obvLast = obvValues.Last ();
+                        decimal obvNormalized = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
+
+                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, obvNormalized, trade.IsProfitable));
                     }
                     catch (Exception ex) { _logger?.Invoke ($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
                 }
 
-                if (features.Count < 20) return;
+                if (features.Count < 20)
+                {
+                    _logger?.Invoke ($"⚠️ Недостаточно признаков для обучения ({features.Count})");
+                    return;
+                }
+
                 await _mlManager.RetrainFromFeaturesAsync (features, _logger);
             }
             catch (Exception ex)

@@ -66,7 +66,7 @@ namespace BinanceBotWpf.Services
 
         /// <summary>Конструктор сервиса торговли.</summary>
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
-                              decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
+                      decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
         {
             _client = client;
             _wallet = wallet;
@@ -80,6 +80,7 @@ namespace BinanceBotWpf.Services
             _mlManager = new MlModelManager (Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip"), null);
             _dataLogger = new DataLogger (logsDir, null);
             _balanceManager = new BalanceManager (client, earn, _rebalancer, null);
+            // _webSocketManager будет инициализирован в SetLogger, когда появится logger
         }
 
         private async Task LogErrorToTelegram(string error, bool sendToTelegram = true)
