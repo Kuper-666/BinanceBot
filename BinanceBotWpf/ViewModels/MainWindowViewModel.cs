@@ -255,7 +255,9 @@ namespace BinanceBotWpf.ViewModels
                 {
                     series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
-                    _plotModel.InvalidatePlot (true);
+                    // Обновляем график реже (каждые 10 точек)
+                    if (series.Points.Count % 10 == 0)
+                        _plotModel.InvalidatePlot (true);
                 }
             });
         }
@@ -355,7 +357,19 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        public void AddLog(string message) => Application.Current.Dispatcher.Invoke (() => SystemLogs += $"{DateTime.Now:HH:mm:ss} - {message}\n");
+        public void AddLog(string message)
+        {
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                SystemLogs += $"{DateTime.Now:HH:mm:ss} - {message}\n";
+                // Ограничиваем до 500 строк
+                if (SystemLogs.Length > 50000)
+                {
+                    var idx = SystemLogs.IndexOf ('\n', SystemLogs.Length / 2);
+                    if (idx > 0) SystemLogs = SystemLogs.Substring (idx + 1);
+                }
+            });
+        }
 
         public void AddTradeToHistory(TradeLog trade)
         {

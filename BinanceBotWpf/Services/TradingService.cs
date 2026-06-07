@@ -38,7 +38,9 @@ namespace BinanceBotWpf.Services
         private decimal _lastLoggedBalance = -1;
         private DateTime _lastReportDate = DateTime.MinValue;
         private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
-        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (60);
+        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (300);    // 5 минут кэш свечей
+        private readonly TimeSpan _tradingLoopDelay = TimeSpan.FromSeconds (120); // 2 минуты между циклами
+        private int _cycleCount = 0;
         private DateTime _lastRebalanceAttempt = DateTime.MinValue;
         private readonly TimeSpan _rebalanceCooldown = TimeSpan.FromMinutes (2);
         private DateTime _lastLowBalanceLog = DateTime.MinValue;
@@ -180,11 +182,12 @@ namespace BinanceBotWpf.Services
             return k?.Last ().Close ?? 0;
         }
 
+        // Метод UpdatePairs (уменьшаем количество пар)
         private async Task UpdatePairs()
         {
             try
             {
-                var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 15);
+                var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 5); // только 5 пар
                 newPairs = newPairs
                     .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("LD"))
                     .Where (p => !_blacklistedSymbols.Contains (p))
@@ -511,7 +514,7 @@ namespace BinanceBotWpf.Services
         private async Task<List<(string Symbol, TradeAction Action, decimal Price, decimal Rsi, decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume, decimal MacdHistogram, decimal BbWidth, decimal Obv)>> AnalyzePairsAsync(List<string> pairs)
         {
             var results = new ConcurrentBag<(string, TradeAction, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal, decimal)> ();
-            await Parallel.ForEachAsync (pairs, async (sym, ct) =>
+            await Parallel.ForEachAsync (pairs, new ParallelOptions { MaxDegreeOfParallelism = 4 }, async (sym, ct) =>
             {
                 try
                 {
@@ -519,9 +522,9 @@ namespace BinanceBotWpf.Services
                     if (klines?.Count < Math.Max (_ui.FastSma, _ui.SlowSma) + 2) return;
                     var closes = klines.Select (k => k.Close).ToList ();
                     var volumes = klines.Select (k => k.Volume).ToList ();
-                    var obvValues = TechnicalAnalysis.OBV (klines);
-                    decimal obvLast = obvValues.Last ();
-                    decimal obvNormalized = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
+                    var obv = TechnicalAnalysis.OBV (klines);
+                    decimal obvLast = obv.Last ();
+                    decimal obvNorm = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
                     decimal price = closes.Last ();
                     decimal volume = volumes.Last ();
                     decimal avgVolume = volumes.TakeLast (20).Average ();
@@ -548,7 +551,7 @@ namespace BinanceBotWpf.Services
                         signal.Action = TradeAction.Hold;
 
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), _positionManager.TryGet (sym, out _), signal.Action, fastSma, slowSma);
-                    results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth, obvNormalized));
+                    results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth, obvNorm));
                 }
                 catch (Exception ex) { await LogErrorToTelegram ($"AnalyzePairsAsync {sym}: {ex.Message}"); }
             });
@@ -558,8 +561,8 @@ namespace BinanceBotWpf.Services
         // ==================== ПОКУПКА ====================
         /// <summary>Выполняет рыночную покупку на фиксированную сумму 10 USDC (упрощённая версия для накопления истории).</summary>
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
-     decimal MacdHistogram, decimal BbWidth, decimal Obv) sig, decimal currentSpotBalance)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
+    decimal MacdHistogram, decimal BbWidth, decimal Obv) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 10) return currentSpotBalance;
             decimal spend = 10;
@@ -804,13 +807,13 @@ namespace BinanceBotWpf.Services
                     decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                     decimal totalBalance = _wallet.GetTotalBalance ("USDC");
                     _ui?.UpdateWalletDisplay (totalBalance.ToString ("F2"));
-                    if (DateTime.UtcNow - _lastBalanceLog > TimeSpan.FromSeconds (60))
+                    if (DateTime.UtcNow - _lastBalanceLog > TimeSpan.FromMinutes (2)) // логируем раз в 2 минуты
                     {
                         _ui?.AddLog ($"💰 Баланс USDC: спот={spotBalance:F2}, всего={totalBalance:F2}");
                         _lastBalanceLog = DateTime.UtcNow;
                     }
 
-                    if (spotBalance < 10)
+                    if (spotBalance < 10) // ребаланс
                     {
                         if (DateTime.UtcNow - _lastRebalanceAttempt < _rebalanceCooldown)
                         {
@@ -853,7 +856,9 @@ namespace BinanceBotWpf.Services
                         }
                     }
 
-                    await Task.Delay (30000);
+                    await Task.Delay (_tradingLoopDelay); // 2 минуты
+                    _cycleCount++;
+                    if (_cycleCount % 10 == 0) GC.Collect (); // сборка мусора каждые 10 циклов
                 }
                 catch (Exception ex)
                 {
