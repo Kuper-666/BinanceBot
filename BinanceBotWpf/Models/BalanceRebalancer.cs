@@ -32,10 +32,11 @@ namespace BinanceBotWpf.Models
             try
             {
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
+                Log ($"DEBUG: currentUsdc={currentUsdc}, targetUsdc={targetUsdc}");
                 if (currentUsdc >= targetUsdc) return;
 
-                // 1. Пытаемся выкупить USDC из Earn
                 decimal need = targetUsdc - currentUsdc;
+                Log ($"DEBUG: need={need}");
                 if (need >= 1.0m)
                 {
                     Log ($"🔄 Выкупаю {need:F2} USDC из Earn...");
@@ -44,11 +45,16 @@ namespace BinanceBotWpf.Models
                     {
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                         if (currentUsdc >= targetUsdc) return;
+                        Log ($"✅ Выкуп USDC подтверждён. Новый спот баланс: {currentUsdc:F2}");
                     }
                     else
                     {
                         Log ($"⚠️ Не удалось выкупить USDC из Earn. Пробую продать другие активы.");
                     }
+                }
+                else
+                {
+                    Log ($"⚠️ need={need} меньше 1, выкуп USDC не требуется.");
                 }
 
                 // 2. Собираем все балансы (спот + Earn)
