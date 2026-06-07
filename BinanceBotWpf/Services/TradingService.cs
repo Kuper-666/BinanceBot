@@ -606,19 +606,18 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task ExecuteSell((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
-            decimal MacdHistogram, decimal BbWidth, decimal Obv) sig)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
+    decimal MacdHistogram, decimal BbWidth, decimal Obv) sig)
         {
             if (!_positionManager.TryGet (sig.Symbol, out var pos)) return;
             string asset = sig.Symbol.Replace ("USDC", "");
+
+            // Даём время на зачисление монет
+            await Task.Delay (2000);
+
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
-            if (spotBalance < 0.000001m)
-            {
-                _ui?.AddLog ($"⚠️ Нет {asset} на споте для продажи {sig.Symbol}. Удаляю позицию.");
-                _positionManager.Remove (sig.Symbol);
-                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                return;
-            }
+            _ui?.AddLog ($"DEBUG: Баланс {asset} на споте: {spotBalance}, нужно продать {pos.Quantity}");
+
             decimal qtyToSell = pos.Quantity;
             if (spotBalance < qtyToSell - 0.000001m && spotBalance > 0)
             {
@@ -626,58 +625,65 @@ namespace BinanceBotWpf.Services
                 qtyToSell = Math.Floor (spotBalance / stepSize) * stepSize;
                 if (qtyToSell <= 0)
                 {
-                    _ui?.AddLog ($"⚠️ Недостаточно {asset} для продажи {sig.Symbol}. Удаляю позицию.");
+                    _ui?.AddLog ($"⚠️ Недостаточно {asset} для продажи {sig.Symbol} (баланс {spotBalance}). Удаляю позицию.");
                     _positionManager.Remove (sig.Symbol);
                     _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
                     return;
                 }
-                _ui?.AddLog ($"⚠️ Корректировка продажи {sig.Symbol}: продаю {qtyToSell} вместо {pos.Quantity}");
+                _ui?.AddLog ($"⚠️ Корректировка продажи {sig.Symbol}: продаю {qtyToSell} вместо {pos.Quantity} (доступно {spotBalance})");
             }
+
             if (qtyToSell <= 0)
             {
                 _positionManager.Remove (sig.Symbol);
                 _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
                 return;
             }
+
             if (pos.OcoOrderListId != 0)
             {
                 bool cancelled = await _client.CancelOcoOrder (sig.Symbol, pos.OcoOrderListId);
                 if (cancelled) _ui?.AddLog ($"✅ Отменён OCO-ордер {pos.OcoOrderListId}");
                 else _ui?.AddLog ($"⚠️ Не удалось отменить OCO-ордер {pos.OcoOrderListId}");
             }
-            var order = await _client.PlaceOrder (sig.Symbol, "SELL", "MARKET", qtyToSell);
-            if (order != null)
+
+            // Повторная попытка продажи до 3 раз
+            for (int attempt = 0; attempt < 3; attempt++)
             {
-                decimal pnl = ( sig.Price - pos.EntryPrice ) * qtyToSell;
-                decimal pnlPct = ( sig.Price / pos.EntryPrice - 1 ) * 100;
-                _ui?.AddLog ($"🔒 ЗАКРЫТА: {sig.Symbol} по {sig.Price:F4} | PnL: {pnl:F2} ({pnlPct:F2}%)");
-                var trade = new TradeLog
+                var order = await _client.PlaceOrder (sig.Symbol, "SELL", "MARKET", qtyToSell);
+                if (order != null)
                 {
-                    Symbol = sig.Symbol,
-                    EntryPrice = pos.EntryPrice,
-                    ExitPrice = sig.Price,
-                    Quantity = qtyToSell,
-                    PnL = pnl,
-                    PnLPercent = pnlPct,
-                    OpenTime = pos.OpenTime,
-                    CloseTime = DateTime.UtcNow,
-                    Reason = "SMA Sell",
-                    Duration = DateTime.UtcNow - pos.OpenTime,
-                    Action = "SELL_CLOSE"
-                };
-                _ui.AddTradeToHistory (trade);
-                _dataLogger.LogTrade (trade);
-                _positionManager.Remove (sig.Symbol);
-                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                _ = TryAutoRetrainAsync ();
+                    decimal pnl = ( sig.Price - pos.EntryPrice ) * qtyToSell;
+                    decimal pnlPct = ( sig.Price / pos.EntryPrice - 1 ) * 100;
+                    _ui?.AddLog ($"🔒 ЗАКРЫТА: {sig.Symbol} по {sig.Price:F4} | PnL: {pnl:F2} ({pnlPct:F2}%)");
+                    var trade = new TradeLog
+                    {
+                        Symbol = sig.Symbol,
+                        EntryPrice = pos.EntryPrice,
+                        ExitPrice = sig.Price,
+                        Quantity = qtyToSell,
+                        PnL = pnl,
+                        PnLPercent = pnlPct,
+                        OpenTime = pos.OpenTime,
+                        CloseTime = DateTime.UtcNow,
+                        Reason = "SMA Sell",
+                        Duration = DateTime.UtcNow - pos.OpenTime,
+                        Action = "SELL_CLOSE"
+                    };
+                    _ui.AddTradeToHistory (trade);
+                    _dataLogger.LogTrade (trade);
+                    _positionManager.Remove (sig.Symbol);
+                    _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                    _ = TryAutoRetrainAsync ();
+                    return;
+                }
+                await Task.Delay (1000);
             }
-            else
-            {
-                if (_client.LastOrderError?.Contains ("Lot size") == true || _client.LastOrderError?.Contains ("minimum notional") == true)
-                    await ConvertDustAssetAsync (asset);
-                else
-                    await LogErrorToTelegram ($"ExecuteSell {sig.Symbol}: {_client.LastOrderError}");
-            }
+
+            // Если после 3 попыток не продалось
+            _ui?.AddLog ($"❌ Не удалось продать {sig.Symbol} после 3 попыток. Удаляю позицию.");
+            _positionManager.Remove (sig.Symbol);
+            _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
         }
 
         private async Task ConvertDustAssetAsync(string asset)
@@ -939,12 +945,27 @@ namespace BinanceBotWpf.Services
                 case "/reload_settings":
                     await _telegram.SendMessageAsync ("📁 Для применения новых настроек из strategy_settings.json перезапустите бота (СТОП → ЗАПУСК).", chatId);
                     break;
+                case "/backtest":
+                    await RunSimpleBacktest ();
+                    await _telegram.SendMessageAsync ("📊 Бэктест завершён, результаты в логе.", chatId);
+                    break;
                 case "/help":
-                    string help = "🤖 *Команды:*\n/status – состояние\n/balance – баланс\n" +
-                        "/stop – стоп торговли\n/start – старт\n/export – экспорт\n" +
-                        "/retrain – переобучить ML\n/pnl – статистика PnL\n/update – обновление\n/dust – конвертация пыли\n" +
-                        "/errors – ошибки\n/performance – детальная статистика\n/stop_all – остановить все циклы\n/start_all – запустить все циклы\n" +
-                        "\n/reload_settings – напоминание о перезагрузке настроек\n" +
+                    string help = "🤖 *Команды:*\n" +
+                        "/status – состояние\n" +
+                        "/balance – баланс\n" +
+                        "/stop – стоп торговли\n" +
+                        "/start – старт\n" +
+                        "/export – экспорт\n" +
+                        "/retrain – переобучить ML\n" +
+                        "/pnl – статистика PnL\n" +
+                        "/update – обновление\n" +
+                        "/dust – конвертация пыли\n" +
+                        "/errors – ошибки\n" +
+                        "/performance – детальная статистика\n" +
+                        "/stop_all – остановить все циклы\n" +
+                        "/start_all – запустить все циклы\n" +
+                        "/backtest – запустить простой бэктест на истории\n" +
+                        "/reload_settings – напоминание о перезагрузке настроек\n" +
                         "/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);
                     break;
@@ -1027,6 +1048,88 @@ namespace BinanceBotWpf.Services
             _orderHistoryLoopEnabled = true;
             _tradingLoopEnabled = true;
             _ui?.AddLog ("▶️ Все циклы запущены");
+        }
+
+        private async Task RunSimpleBacktest()
+        {
+            try
+            {
+                _ui?.AddLog ("📊 Запуск бэктеста на истории...");
+                string[] pairs = { "BTCUSDC", "ETHUSDC", "BNBUSDC" };
+                int[] fastPeriods = { 5, 9, 13 };
+                int[] slowPeriods = { 13, 21, 34 };
+                int[] rsiPeriods = { 7, 14, 21 };
+                int[] rsiLo = { 25, 30, 35 };
+                int[] rsiHi = { 65, 70, 75 };
+
+                var results = new List<(int fast, int slow, int rsiP, int lo, int hi, decimal profit)> ();
+
+                foreach (var pair in pairs)
+                {
+                    var klines = await _client.GetKlinesAsync (pair, "5m", 500);
+                    if (klines == null || klines.Count < 100) continue;
+                    var closes = klines.Select (k => k.Close).ToList ();
+
+                    foreach (var fast in fastPeriods)
+                    {
+                        foreach (var slow in slowPeriods)
+                        {
+                            if (fast >= slow) continue;
+                            foreach (var rsiP in rsiPeriods)
+                            {
+                                foreach (var lo in rsiLo)
+                                {
+                                    foreach (var hi in rsiHi)
+                                    {
+                                        decimal profit = SimulateStrategy (closes, fast, slow, rsiP, lo, hi);
+                                        results.Add ((fast, slow, rsiP, lo, hi, profit));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                var best = results.OrderByDescending (r => r.profit).First ();
+                _ui?.AddLog ($"📈 Лучшие параметры: Fast={best.fast}, Slow={best.slow}, RSI period={best.rsiP}, Buy<{best.lo}, Sell>{best.hi}, Profit={best.profit:F2}%");
+                _ui?.AddLog ($"✅ Рекомендуется установить SMA9={best.fast}, SMA21={best.slow}");
+            }
+            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка бэктеста: {ex.Message}"); }
+        }
+
+        private decimal SimulateStrategy(List<decimal> closes, int fast, int slow, int rsiPeriod, int rsiBuy, int rsiSell)
+        {
+            // Простая симуляция: покупаем при пересечении SMA вверх и RSI < rsiBuy, продаём при пересечении вниз или RSI > rsiSell
+            // Возвращает общую прибыль в процентах
+            List<decimal> fastSma = new List<decimal> ();
+            List<decimal> slowSma = new List<decimal> ();
+            List<decimal> rsi = TechnicalAnalysis.RSI (closes, rsiPeriod).Select (v => v ?? 50).ToList ();
+
+            for (int i = 0; i < closes.Count; i++)
+            {
+                if (i >= fast) fastSma.Add (closes.Skip (i - fast + 1).Take (fast).Average ());
+                else fastSma.Add (0);
+                if (i >= slow) slowSma.Add (closes.Skip (i - slow + 1).Take (slow).Average ());
+                else slowSma.Add (0);
+            }
+
+            decimal capital = 1000;
+            decimal position = 0;
+            for (int i = Math.Max (fast, slow) + 5; i < closes.Count; i++)
+            {
+                if (position == 0 && fastSma[i] > slowSma[i] && rsi[i] < rsiBuy)
+                {
+                    position = capital / closes[i];
+                    capital = 0;
+                }
+                else if (position > 0 && ( fastSma[i] < slowSma[i] || rsi[i] > rsiSell ))
+                {
+                    capital = position * closes[i];
+                    position = 0;
+                }
+            }
+            if (position > 0) capital = position * closes.Last ();
+            return ( capital - 1000 ) / 1000 * 100;
         }
 
         public void StopTrading()
