@@ -9,6 +9,10 @@ using System.Collections.Concurrent;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
 using System.Globalization;
+using Binance.Net.Clients;
+using Binance.Net.Objects.Models.Spot;
+using System.Diagnostics;
+
 
 namespace BinanceBotWpf.Services
 {
@@ -865,6 +869,93 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        /// <summary>
+        /// Экспортирует свечи для всех пар и запускает Python-оптимизатор.
+        /// </summary>
+        public async Task RunPythonOptimizer()
+        {
+            try
+            {
+                _ui?.AddLog ("📤 Экспорт свечей для оптимизации...");
+                await ExportKlinesToCsv (); // метод экспорта (нужно реализовать)
+
+                _ui?.AddLog ("🐍 Запуск Python-оптимизатора...");
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "python",
+                    Arguments = "optimize_strategy.py",
+                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using var process = Process.Start (psi);
+                string output = await process.StandardOutput.ReadToEndAsync ();
+                string error = await process.StandardError.ReadToEndAsync ();
+                await process.WaitForExitAsync ();
+
+                if (!string.IsNullOrEmpty (error))
+                    _ui?.AddLog ($"⚠️ Python stderr: {error}");
+
+                _ui?.AddLog (output);
+
+                if (output.Contains ("SUCCESS"))
+                {
+                    // Загружаем новые параметры из optimized_params.json
+                    string jsonPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "optimized_params.json");
+                    if (File.Exists (jsonPath))
+                    {
+                        string json = File.ReadAllText (jsonPath);
+                        var newSettings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (json);
+                        if (newSettings != null)
+                        {
+                            // Применяем параметры
+                            if (newSettings.TryGetValue ("FastSma", out var fs)) _ui.FastSma = Convert.ToInt32 (fs);
+                            if (newSettings.TryGetValue ("SlowSma", out var ss)) _ui.SlowSma = Convert.ToInt32 (ss);
+                            if (newSettings.TryGetValue ("RsiBuyThreshold", out var rb)) _ui.RsiBuyThreshold = Convert.ToInt32 (rb);
+                            if (newSettings.TryGetValue ("RsiSellThreshold", out var rs)) _ui.RsiSellThreshold = Convert.ToInt32 (rs);
+                            if (newSettings.TryGetValue ("StopLossPercent", out var sl)) _ui.StopLossPercent = Convert.ToDecimal (sl, CultureInfo.InvariantCulture);
+                            if (newSettings.TryGetValue ("TakeProfitPercent", out var tp)) _ui.TakeProfitPercent = Convert.ToDecimal (tp, CultureInfo.InvariantCulture);
+                            // Сохраняем в файл настроек
+                            _ui.SaveSettings ();
+                            _ui?.AddLog ("✅ Параметры стратегии обновлены и сохранены.");
+                        }
+                    }
+                }
+                else
+                {
+                    _ui?.AddLog ("❌ Оптимизация не удалась.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка при запуске Python: {ex.Message}");
+            }
+        }
+
+        private async Task ExportKlinesToCsv()
+        {
+            string exportDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Export", "Klines");
+            if (!Directory.Exists (exportDir)) Directory.CreateDirectory (exportDir);
+
+            foreach (var sym in _activePairs)
+            {
+                var klines = await _client.GetKlinesAsync (sym, "5m", 500);
+                if (klines == null || klines.Count == 0) continue;
+
+                var csvPath = Path.Combine (exportDir, $"{sym}_5m.csv");
+                using var writer = new StreamWriter (csvPath);
+                await writer.WriteLineAsync ("timestamp,open,high,low,close,volume");
+                foreach (var k in klines)
+                {
+                    await writer.WriteLineAsync ($"{k.OpenTime:yyyy-MM-dd HH:mm:ss},{k.Open},{k.High},{k.Low},{k.Close},{k.Volume}");
+                }
+                _ui?.AddLog ($"✅ Экспортированы свечи {sym} -> {csvPath}");
+            }
+        }
+
         private async Task HandleTelegramCommand(string command, string chatId)
         {
             string cmd = command.Trim ();
@@ -949,6 +1040,10 @@ namespace BinanceBotWpf.Services
                     await RunSimpleBacktest ();
                     await _telegram.SendMessageAsync ("📊 Бэктест завершён, результаты в логе.", chatId);
                     break;
+                case "/optimize":
+                    await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию параметров... Это может занять несколько минут.", chatId);
+                    _ = Task.Run (RunPythonOptimizer);
+                    break;
                 case "/help":
                     string help = "🤖 *Команды:*\n" +
                         "/status – состояние\n" +
@@ -965,6 +1060,7 @@ namespace BinanceBotWpf.Services
                         "/stop_all – остановить все циклы\n" +
                         "/start_all – запустить все циклы\n" +
                         "/backtest – запустить простой бэктест на истории\n" +
+                        "/optimize – запустить оптимизацию параметров (Python)\n" +
                         "/reload_settings – напоминание о перезагрузке настроек\n" +
                         "/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);

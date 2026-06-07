@@ -199,7 +199,7 @@ namespace BinanceBotWpf.ViewModels
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"LoadSettings error: {ex.Message}"); _isLoadingSettings = false; }
         }
 
-        private void SaveSettings()
+        public void SaveSettings()
         {
             if (_isLoadingSettings) return;
             lock (_settingsLock)
