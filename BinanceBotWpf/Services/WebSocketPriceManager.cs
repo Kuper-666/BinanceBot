@@ -1,6 +1,5 @@
 ﻿using Binance.Net.Clients;
 using Binance.Net.Objects;
-using CryptoExchange.Net.Objects;
 using CryptoExchange.Net.Objects.Sockets;
 using System;
 using System.Collections.Concurrent;
@@ -13,7 +12,6 @@ namespace BinanceBotWpf.Services
     {
         private readonly BinanceSocketClient _socketClient;
         private readonly Action<string> _logger;
-
         private readonly ConcurrentDictionary<string, decimal> _currentPrices = new ();
         private readonly ConcurrentDictionary<string, UpdateSubscription> _subscriptions = new ();
 
@@ -27,53 +25,35 @@ namespace BinanceBotWpf.Services
         {
             foreach (var symbol in symbols)
             {
-                if (_subscriptions.ContainsKey (symbol))
-                    continue;
-
-                var subscriptionResult = await _socketClient.SpotApi.ExchangeData.SubscribeToTickerUpdatesAsync (symbol, (update) =>
+                if (_subscriptions.ContainsKey (symbol)) continue;
+                var result = await _socketClient.SpotApi.ExchangeData.SubscribeToTickerUpdatesAsync (symbol, update =>
                 {
                     var price = update.Data.LastPrice;
                     _currentPrices.AddOrUpdate (symbol, price, (k, v) => price);
                 });
-
-                if (subscriptionResult.Success)
+                if (result.Success)
                 {
-                    _subscriptions[symbol] = subscriptionResult.Data;
+                    _subscriptions[symbol] = result.Data;
                     _logger?.Invoke ($"✅ WebSocket: подписка на {symbol}");
                 }
                 else
                 {
-                    _logger?.Invoke ($"❌ WebSocket: ошибка подписки на {symbol}: {subscriptionResult.Error?.Message}");
+                    _logger?.Invoke ($"❌ WebSocket: ошибка подписки на {symbol}. {result.Error?.Message}");
                 }
             }
         }
 
-        public decimal GetCurrentPrice(string symbol)
-        {
-            return _currentPrices.TryGetValue (symbol, out var price) ? price : 0;
-        }
-
-        public string[] GetSubscribedSymbols()
-        {
-            return _subscriptions.Keys.ToArray ();
-        }
+        public decimal GetCurrentPrice(string symbol) => _currentPrices.TryGetValue (symbol, out var price) ? price : 0;
+        public string[] GetSubscribedSymbols() => _subscriptions.Keys.ToArray ();
 
         public void Dispose()
         {
-            // Отписываемся от всех подписок, вызывая UnsubscribeAsync (если метод существует)
             foreach (var sub in _subscriptions.Values)
             {
-                try
-                {
-                    // Проверяем наличие метода UnsubscribeAsync через reflection (или просто игнорируем, так как при уничтожении клиента всё закроется)
-                    var method = sub.GetType ().GetMethod ("UnsubscribeAsync");
-                    if (method != null)
-                    {
-                        var task = (Task)method.Invoke (sub, null);
-                        task?.Wait (1000);
-                    }
-                }
-                catch { }
+                // В старой версии Binance.Net нет UnsubscribeAsync, но есть Unsubscribe
+                // Если нет ни того, ни другого, просто выходим
+                if (sub is IDisposable disposable)
+                    disposable.Dispose ();
             }
             _socketClient?.Dispose ();
         }

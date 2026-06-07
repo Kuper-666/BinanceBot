@@ -76,16 +76,11 @@ namespace BinanceBotWpf.Services
                 {
                     if (!features.Any (f => f.IsProfitable) || !features.Any (f => !f.IsProfitable))
                     {
-                        logger?.Invoke ("⚠️ В данных нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
+                        logger?.Invoke ("⚠️ Нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
                         return;
                     }
-                    if (features.Count < 10)
-                    {
-                        logger?.Invoke ($"⚠️ Недостаточно примеров для обучения: {features.Count}");
-                        return;
-                    }
-
-                    logger?.Invoke ($"🤖 Запуск обучения ML на {features.Count} примерах...");
+                    if (features.Count < 10) { logger?.Invoke ($"⚠️ Мало примеров: {features.Count}"); return; }
+                    logger?.Invoke ($"🤖 Обучение ML на {features.Count} примерах...");
 
                     var mlContext = new MLContext (seed: 42);
                     var dataWithLabel = features.Select (m => new
@@ -100,45 +95,29 @@ namespace BinanceBotWpf.Services
                         Obv = (float)m.Obv,
                         Label = m.IsProfitable
                     }).ToList ();
-
                     var dataView = mlContext.Data.LoadFromEnumerable (dataWithLabel);
                     var split = mlContext.Data.TrainTestSplit (dataView, testFraction: 0.2);
-                    var trainData = split.TrainSet;
-                    var testData = split.TestSet;
-
                     var pipeline = mlContext.Transforms.Concatenate ("Features",
                             "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth", "Obv")
                         .Append (mlContext.BinaryClassification.Trainers.FastTree (
                             numberOfTrees: 100,
                             numberOfLeaves: 20,
                             minimumExampleCountPerLeaf: 5));
-
-                    var model = pipeline.Fit (trainData);
-                    var predictions = model.Transform (testData);
+                    var model = pipeline.Fit (split.TrainSet);
+                    var predictions = model.Transform (split.TestSet);
                     var metrics = mlContext.BinaryClassification.Evaluate (predictions);
                     logger?.Invoke ($"📊 Точность: {metrics.Accuracy:P2}, AUC: {metrics.AreaUnderRocCurve:P2}, F1: {metrics.F1Score:P2}");
-
-                    string tempModelPath = _modelPath + ".tmp";
-                    mlContext.Model.Save (model, trainData.Schema, tempModelPath);
+                    string temp = _modelPath + ".tmp";
+                    mlContext.Model.Save (model, split.TrainSet.Schema, temp);
                     if (File.Exists (_modelPath)) File.Delete (_modelPath);
-                    File.Move (tempModelPath, _modelPath);
-
+                    File.Move (temp, _modelPath);
                     _mlContext = mlContext;
                     _mlModel = model;
                     _mlModelLoaded = true;
-                    logger?.Invoke ("✅ ML модель обновлена с новыми признаками (включая OBV)");
+                    logger?.Invoke ("✅ ML модель обновлена");
                 }
-                catch (Exception ex)
-                {
-                    logger?.Invoke ($"❌ Ошибка обучения: {ex.Message}");
-                }
+                catch (Exception ex) { logger?.Invoke ($"❌ Ошибка обучения: {ex.Message}"); }
             });
-        }
-
-        public async Task RetrainAsync(string logsDir, Action<string> logger)
-        {
-            await Task.Delay (1);
-            logger?.Invoke ("⚠️ RetrainAsync (CSV) не реализован, используйте RetrainFromFeaturesAsync");
         }
     }
 
@@ -153,11 +132,9 @@ namespace BinanceBotWpf.Services
         public float BbWidth { get; set; }
         public float Obv { get; set; }
     }
-
     public class ModelOutput
     {
-        [ColumnName ("PredictedLabel")]
-        public bool IsProfitable { get; set; }
+        [ColumnName ("PredictedLabel")] public bool IsProfitable { get; set; }
         public float Probability { get; set; }
     }
 }
