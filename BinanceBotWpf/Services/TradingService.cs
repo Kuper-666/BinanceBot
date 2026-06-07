@@ -236,6 +236,15 @@ namespace BinanceBotWpf.Services
                     RotateLogs ();
                     ArchiveLogs ();
                 }
+
+                // Ребаланс: проверяем, не нужно ли пополнить USDC (только если спот-баланс низкий и нет активных позиций?)
+                // Чтобы не мешать торговле, запускаем ребаланс только если спот-баланс < 10
+                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                if (spotBalance < 10)
+                {
+                    var openSymbols = new HashSet<string> (_positionManager.GetSymbols ());
+                    await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning, openSymbols);
+                }
             }
         }
 
@@ -559,8 +568,8 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task<decimal> ExecuteBuy((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
-            decimal MacdHistogram, decimal BbWidth, decimal Obv) sig, decimal currentSpotBalance)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
+    decimal MacdHistogram, decimal BbWidth, decimal Obv) sig, decimal currentSpotBalance)
         {
             if (currentSpotBalance < 10) return currentSpotBalance;
             decimal spend = 10; // фиксированная сумма
@@ -588,6 +597,8 @@ namespace BinanceBotWpf.Services
                     OcoOrderListId = 0
                 };
                 _positionManager.AddOrUpdate (sig.Symbol, pos);
+                // Отладочный вывод: список открытых позиций
+                _ui?.AddLog ($"📊 Позиция {sig.Symbol} добавлена. Все позиции: {string.Join (", ", _positionManager.GetSymbols ())}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
                 return currentSpotBalance - required;
             }
@@ -929,7 +940,12 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync ("📁 Для применения новых настроек из strategy_settings.json перезапустите бота (СТОП → ЗАПУСК).", chatId);
                     break;
                 case "/help":
-                    string help = "🤖 *Команды:*\n/status – состояние\n/balance – баланс\n/stop – стоп торговли\n/start – старт\n/export – экспорт\n/retrain – переобучить ML\n/pnl – статистика PnL\n/update – обновление\n/dust – конвертация пыли\n/errors – ошибки\n/performance – детальная статистика\n/stop_all – остановить все циклы\n/start_all – запустить все циклы\n/help – помощь";
+                    string help = "🤖 *Команды:*\n/status – состояние\n/balance – баланс\n" +
+                        "/stop – стоп торговли\n/start – старт\n/export – экспорт\n" +
+                        "/retrain – переобучить ML\n/pnl – статистика PnL\n/update – обновление\n/dust – конвертация пыли\n" +
+                        "/errors – ошибки\n/performance – детальная статистика\n/stop_all – остановить все циклы\n/start_all – запустить все циклы\n" +
+                        "\n/reload_settings – напоминание о перезагрузке настроек\n" +
+                        "/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);
                     break;
                 default:

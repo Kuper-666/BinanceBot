@@ -55,6 +55,10 @@ namespace BinanceBotWpf.Models
                 var allBalances = await GetAllBalancesAsync (client);
                 var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
 
+                // Отладочный вывод
+                if (openPositionSymbols != null && openPositionSymbols.Count > 0)
+                    Log ($"DEBUG: Открытые позиции: {string.Join (", ", openPositionSymbols)}");
+
                 foreach (var assetEntry in sorted)
                 {
                     if (!isRunning) break;
@@ -65,7 +69,7 @@ namespace BinanceBotWpf.Models
 
                     string pair = asset + "USDC";
 
-                    // --- ГЛАВНОЕ ИСПРАВЛЕНИЕ: не продаём активы с открытыми позициями ---
+                    // ---- НЕ ПРОДАЁМ АКТИВЫ С ОТКРЫТЫМИ ПОЗИЦИЯМИ ----
                     if (openPositionSymbols != null && openPositionSymbols.Contains (pair))
                     {
                         Log ($"⏸️ {asset} пропущен: есть открытая позиция ({pair})");
@@ -82,7 +86,7 @@ namespace BinanceBotWpf.Models
                     decimal normalizedAmount = Math.Floor (totalAmount / stepSize) * stepSize;
                     if (normalizedAmount <= 0) continue;
 
-                    // Если нужно – выкупаем недостающее количество из Earn
+                    // Выкупаем из Earn, если на споте не хватает
                     decimal spotAmount = await client.GetAccountBalanceAsync (asset);
                     if (spotAmount < normalizedAmount)
                     {

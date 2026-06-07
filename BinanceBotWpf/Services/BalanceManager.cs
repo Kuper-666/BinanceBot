@@ -1,5 +1,6 @@
 ﻿using BinanceBotWpf.Models;
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
@@ -43,9 +44,9 @@ namespace BinanceBotWpf.Services
             return current;
         }
 
-        public async Task AutoRebalanceAsync()
+        public async Task AutoRebalanceAsync(HashSet<string> openPositionSymbols = null)
         {
-            await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, true);
+            await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, true, openPositionSymbols ?? new HashSet<string> ());
         }
     }
 }
