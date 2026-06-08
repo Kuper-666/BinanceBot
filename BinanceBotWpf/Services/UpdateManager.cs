@@ -11,9 +11,6 @@ using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Services
 {
-    /// <summary>
-    /// Проверка и установка обновлений с GitHub Releases.
-    /// </summary>
     public class UpdateManager
     {
         private const string GitHubOwner = "Kuper-666";
@@ -21,6 +18,8 @@ namespace BinanceBotWpf.Services
         private static readonly Version CurrentVersion = Assembly.GetExecutingAssembly ().GetName ().Version ?? new Version ("1.0.0");
         private readonly HttpClient _httpClient = new HttpClient ();
         private readonly Action<string> _logger;
+        private DateTime _lastUpdateCheckDate = DateTime.MinValue;
+        private bool _isUpdating = false; // защита от параллельных обновлений
 
         public UpdateManager(Action<string> logger)
         {
@@ -29,17 +28,31 @@ namespace BinanceBotWpf.Services
             _httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
         }
 
-        /// <summary>Проверяет наличие новой версии и при необходимости обновляет.</summary>
         public async Task<bool> CheckAndUpdateAsync(bool silent = false)
         {
+            // Если уже идёт обновление – не запускаем повторно
+            if (_isUpdating)
+            {
+                _logger?.Invoke ("⚠️ Обновление уже запущено, пропускаем.");
+                return false;
+            }
+
+            // Проверка не чаще раза в сутки
+            if (( DateTime.UtcNow - _lastUpdateCheckDate ).TotalHours < 24 && !silent)
+            {
+                if (!silent) _logger?.Invoke ("✅ Обновления проверялись менее 24 часов назад, пропускаем.");
+                return false;
+            }
+
             try
             {
-                _logger ("🔍 Проверка обновлений...");
+                _lastUpdateCheckDate = DateTime.UtcNow;
+                _logger?.Invoke ("🔍 Проверка обновлений...");
                 string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases";
                 using var response = await _httpClient.GetAsync (apiUrl);
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger ($"❌ GitHub API вернул ошибку: {response.StatusCode}");
+                    _logger?.Invoke ($"❌ GitHub API вернул ошибку: {response.StatusCode}");
                     return false;
                 }
 
@@ -47,7 +60,7 @@ namespace BinanceBotWpf.Services
                 var releases = JArray.Parse (json);
                 if (releases.Count == 0)
                 {
-                    _logger ("⚠️ Релизы не найдены.");
+                    _logger?.Invoke ("⚠️ Релизы не найдены.");
                     return false;
                 }
 
@@ -58,29 +71,39 @@ namespace BinanceBotWpf.Services
                 string latestTag = latestRelease["tag_name"]?.ToString () ?? "v0.0.0";
                 string latestVersionStr = latestTag.TrimStart ('v');
                 Version latestVersion = new Version (latestVersionStr);
-                Version currentVersion = Assembly.GetExecutingAssembly ().GetName ().Version;
+                Version currentVersion = Assembly.GetExecutingAssembly ().GetName ().Version ?? new Version ("1.0.0");
                 var currentSimple = new Version (currentVersion.Major, currentVersion.Minor, currentVersion.Build >= 0 ? currentVersion.Build : 0);
+
                 if (latestVersion > currentSimple)
                 {
                     string downloadUrl = latestRelease["assets"]?[0]?["browser_download_url"]?.ToString ();
                     if (!string.IsNullOrEmpty (downloadUrl))
                     {
-                        _logger ($"✨ Новая версия: {latestVersion} (текущая: {currentSimple})");
+                        // Убираем дублирование – выводим только один раз
+                        _logger?.Invoke ($"✨ Найдена новая версия: {latestVersion} (текущая: {currentSimple})");
                         if (silent || MessageBox.Show ($"Доступна версия {latestVersion}. Обновить сейчас?",
                                                       "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                         {
+                            _isUpdating = true;
                             return await DownloadAndInstall (downloadUrl, latestTag);
                         }
                     }
-                    else _logger ("⚠️ Не найден архив для скачивания.");
+                    else _logger?.Invoke ("⚠️ Не найден архив для скачивания.");
                 }
-                else _logger ("✅ Установлена актуальная версия.");
+                else
+                {
+                    if (!silent) _logger?.Invoke ("✅ Установлена актуальная версия.");
+                }
                 return false;
             }
             catch (Exception ex)
             {
-                _logger ($"❌ Ошибка проверки обновлений: {ex.Message}");
+                _logger?.Invoke ($"❌ Ошибка проверки обновлений: {ex.Message}");
                 return false;
+            }
+            finally
+            {
+                _isUpdating = false;
             }
         }
 
@@ -88,7 +111,7 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                _logger ($"📥 Загрузка обновления {newVersion}...");
+                _logger?.Invoke ($"📥 Загрузка обновления {newVersion}...");
                 string tempZip = Path.GetTempFileName ();
                 using (var resp = await _httpClient.GetAsync (downloadUrl, HttpCompletionOption.ResponseHeadersRead))
                 using (var fs = new FileStream (tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
@@ -99,7 +122,7 @@ namespace BinanceBotWpf.Services
                 string extractPath = Path.Combine (Path.GetTempPath (), "BotUpdate_" + Guid.NewGuid ());
                 Directory.CreateDirectory (extractPath);
                 ZipFile.ExtractToDirectory (tempZip, extractPath);
-                _logger ("📦 Файлы распакованы.");
+                _logger?.Invoke ("📦 Файлы распакованы.");
 
                 string currentExe = Environment.ProcessPath ?? Assembly.GetExecutingAssembly ().Location;
                 if (string.IsNullOrEmpty (currentExe))
@@ -108,7 +131,7 @@ namespace BinanceBotWpf.Services
                 string backupDir = Path.Combine (appDir, "Backup_" + DateTime.Now.ToString ("yyyyMMdd_HHmmss"));
                 string scriptPath = CreateUpdateScript (extractPath, appDir, backupDir, currentExe);
 
-                _logger ("🔄 Запуск обновления... Бот будет закрыт.");
+                _logger?.Invoke ("🔄 Запуск обновления... Бот будет закрыт.");
                 var process = new Process
                 {
                     StartInfo = new ProcessStartInfo
@@ -126,7 +149,7 @@ namespace BinanceBotWpf.Services
             }
             catch (Exception ex)
             {
-                _logger ($"❌ Ошибка установки: {ex.Message}");
+                _logger?.Invoke ($"❌ Ошибка установки: {ex.Message}");
                 return false;
             }
         }
