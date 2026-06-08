@@ -1,16 +1,18 @@
-﻿using BinanceBotWpf.Models;
-using BinanceBotWpf.ViewModels;
-using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Globalization;
+﻿using System;
 using System.IO;
 using System.IO.Compression;
-using System.Linq;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Collections.Generic;
+using System.Linq;
+using System.Collections.Concurrent;
+using BinanceBotWpf.Models;
+using BinanceBotWpf.ViewModels;
+using System.Globalization;
+using Binance.Net.Clients;
+using Binance.Net.Objects.Models.Spot;
+using System.Diagnostics;
+
 
 namespace BinanceBotWpf.Services
 {
@@ -24,7 +26,7 @@ namespace BinanceBotWpf.Services
         private readonly EarnManager _earn;
         private readonly BalanceRebalancer _rebalancer;
         private readonly PositionManager _positionManager;
-        private MlModelManager _mlManager;
+        private readonly MlModelManager _mlManager;
         private readonly DataLogger _dataLogger;
         private readonly BalanceManager _balanceManager;
         private WebSocketPriceManager _webSocketManager;
@@ -33,7 +35,7 @@ namespace BinanceBotWpf.Services
 
         private readonly StrategyEngine _strategy = new ();
         private List<string> _activePairs = new ();
-        private readonly object _pairsLock = new ();
+        private readonly object _pairsLock = new object ();
         private TelegramNotifier _telegram;
         private DateTime _lastRetrainTime = DateTime.MinValue;
         private readonly TimeSpan _minRetrainInterval = TimeSpan.FromHours (1);
@@ -41,7 +43,7 @@ namespace BinanceBotWpf.Services
         private decimal _lastLoggedBalance = -1;
         private DateTime _lastReportDate = DateTime.MinValue;
         private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
-        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (300);
+        private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (300); // 5 минут
         private DateTime _lastRebalanceAttempt = DateTime.MinValue;
         private readonly TimeSpan _rebalanceCooldown = TimeSpan.FromMinutes (2);
         private DateTime _lastLowBalanceLog = DateTime.MinValue;
@@ -55,7 +57,7 @@ namespace BinanceBotWpf.Services
         private decimal _totalProfitSum = 0;
         private decimal _totalLossSum = 0;
         private int _cycleCount = 0;
-        private Dictionary<string, DateTime> _lastBuyTime = new ();
+        private Dictionary<string, DateTime> _lastBuyTime = new Dictionary<string, DateTime> ();
 
         private bool _balanceLoopEnabled = true;
         private bool _pairsLoopEnabled = true;
@@ -100,10 +102,6 @@ namespace BinanceBotWpf.Services
             _earn.OnLogGenerated += logger;
             _rebalancer.OnLogGenerated += logger;
             _client.OnLogGenerated += logger;
-
-            // Пересоздаём MlModelManager с логгером
-            string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
-            _mlManager = new MlModelManager (modelPath, logger);
 
             if (_webSocketManager == null)
             {
@@ -186,6 +184,9 @@ namespace BinanceBotWpf.Services
             _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
         }
 
+        /// <summary>
+        /// Возвращает текущую цену символа из WebSocket (синхронно).
+        /// </summary>
         private decimal GetCurrentPrice(string sym) => _webSocketManager?.GetCurrentPrice (sym) ?? 0;
 
         private async Task UpdatePairs()
@@ -241,6 +242,8 @@ namespace BinanceBotWpf.Services
                     ArchiveLogs ();
                 }
 
+                // Ребаланс: проверяем, не нужно ли пополнить USDC (только если спот-баланс низкий и нет активных позиций?)
+                // Чтобы не мешать торговле, запускаем ребаланс только если спот-баланс < 10
                 decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                 if (spotBalance < 10)
                 {
@@ -380,105 +383,105 @@ namespace BinanceBotWpf.Services
         /// Сбор истории ордеров и переобучение ML-модели.
         /// </summary>
         private async Task FetchAndRetrainFromOrderHistoryAsync()
+{
+    try
+    {
+        if (DateTime.UtcNow - _lastOrdersFetch < _ordersFetchInterval) return;
+        _ui?.AddLog("📥 Сбор истории ордеров для переобучения ML...");
+
+        List<string> pairsToFetch;
+        lock (_pairsLock) { pairsToFetch = new List<string>(_activePairs); }
+        if (pairsToFetch.Count == 0) return;
+
+        var allClosedTrades = new List<(DateTime CloseTime, string Symbol, decimal EntryPrice, decimal ExitPrice, decimal Quantity, bool IsProfitable)>();
+        foreach (var sym in pairsToFetch)
+        {
+            var orders = await _client.GetAllOrdersAsync(sym, limit: 100);
+            if (orders == null || orders.Count == 0) continue;
+
+            var buys = orders.Where(o => o["side"].ToString() == "BUY" && o["status"].ToString() == "FILLED")
+                             .OrderBy(o => (long)o["time"]).ToList();
+            var sells = orders.Where(o => o["side"].ToString() == "SELL" && o["status"].ToString() == "FILLED")
+                              .OrderBy(o => (long)o["time"]).ToList();
+
+            int buyIdx = 0, sellIdx = 0;
+            while (buyIdx < buys.Count && sellIdx < sells.Count)
+            {
+                var buy = buys[buyIdx];
+                var sell = sells[sellIdx];
+                if ((long)sell["time"] < (long)buy["time"]) { sellIdx++; continue; }
+
+                decimal buyQty = decimal.Parse(buy["executedQty"].ToString(), CultureInfo.InvariantCulture);
+                decimal sellQty = decimal.Parse(sell["executedQty"].ToString(), CultureInfo.InvariantCulture);
+                decimal qty = Math.Min(buyQty, sellQty);
+                if (qty > 0)
+                {
+                    decimal entryPrice = decimal.Parse(buy["price"].ToString(), CultureInfo.InvariantCulture);
+                    decimal exitPrice = decimal.Parse(sell["price"].ToString(), CultureInfo.InvariantCulture);
+                    bool profitable = exitPrice > entryPrice;
+                    allClosedTrades.Add((DateTimeOffset.FromUnixTimeMilliseconds((long)sell["time"]).DateTime, sym, entryPrice, exitPrice, qty, profitable));
+                }
+                if (buyQty <= sellQty) buyIdx++;
+                if (sellQty <= buyQty) sellIdx++;
+            }
+        }
+
+        int profitableCount = allClosedTrades.Count(t => t.IsProfitable);
+        int unprofitableCount = allClosedTrades.Count(t => !t.IsProfitable);
+        _ui?.AddLog($"📊 Найдено {allClosedTrades.Count} закрытых позиций (прибыльных: {profitableCount}, убыточных: {unprofitableCount})");
+
+        if (allClosedTrades.Count < 30)
+        {
+            _ui?.AddLog($"⚠️ Недостаточно сделок ({allClosedTrades.Count}) для обучения");
+            return;
+        }
+
+        if (profitableCount == 0 || unprofitableCount == 0)
+        {
+            _ui?.AddLog($"⚠️ Нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
+            return;
+        }
+
+        var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)>();
+        foreach (var trade in allClosedTrades)
         {
             try
             {
-                if (DateTime.UtcNow - _lastOrdersFetch < _ordersFetchInterval) return;
-                _ui?.AddLog ("📥 Сбор истории ордеров для переобучения ML...");
-
-                List<string> pairsToFetch;
-                lock (_pairsLock) { pairsToFetch = new List<string> (_activePairs); }
-                if (pairsToFetch.Count == 0) return;
-
-                var allClosedTrades = new List<(DateTime CloseTime, string Symbol, decimal EntryPrice, decimal ExitPrice, decimal Quantity, bool IsProfitable)> ();
-                foreach (var sym in pairsToFetch)
-                {
-                    var orders = await _client.GetAllOrdersAsync (sym, limit: 100);
-                    if (orders == null || orders.Count == 0) continue;
-
-                    var buys = orders.Where (o => o["side"].ToString () == "BUY" && o["status"].ToString () == "FILLED")
-                                     .OrderBy (o => (long)o["time"]).ToList ();
-                    var sells = orders.Where (o => o["side"].ToString () == "SELL" && o["status"].ToString () == "FILLED")
-                                      .OrderBy (o => (long)o["time"]).ToList ();
-
-                    int buyIdx = 0, sellIdx = 0;
-                    while (buyIdx < buys.Count && sellIdx < sells.Count)
-                    {
-                        var buy = buys[buyIdx];
-                        var sell = sells[sellIdx];
-                        if ((long)sell["time"] < (long)buy["time"]) { sellIdx++; continue; }
-
-                        decimal buyQty = decimal.Parse (buy["executedQty"].ToString (), CultureInfo.InvariantCulture);
-                        decimal sellQty = decimal.Parse (sell["executedQty"].ToString (), CultureInfo.InvariantCulture);
-                        decimal qty = Math.Min (buyQty, sellQty);
-                        if (qty > 0)
-                        {
-                            decimal entryPrice = decimal.Parse (buy["price"].ToString (), CultureInfo.InvariantCulture);
-                            decimal exitPrice = decimal.Parse (sell["price"].ToString (), CultureInfo.InvariantCulture);
-                            bool profitable = exitPrice > entryPrice;
-                            allClosedTrades.Add ((DateTimeOffset.FromUnixTimeMilliseconds ((long)sell["time"]).DateTime, sym, entryPrice, exitPrice, qty, profitable));
-                        }
-                        if (buyQty <= sellQty) buyIdx++;
-                        if (sellQty <= buyQty) sellIdx++;
-                    }
-                }
-
-                int profitableCount = allClosedTrades.Count (t => t.IsProfitable);
-                int unprofitableCount = allClosedTrades.Count (t => !t.IsProfitable);
-                _ui?.AddLog ($"📊 Найдено {allClosedTrades.Count} закрытых позиций (прибыльных: {profitableCount}, убыточных: {unprofitableCount})");
-
-                if (allClosedTrades.Count < 30)
-                {
-                    _ui?.AddLog ($"⚠️ Недостаточно сделок ({allClosedTrades.Count}) для обучения");
-                    return;
-                }
-
-                if (profitableCount == 0 || unprofitableCount == 0)
-                {
-                    _ui?.AddLog ($"⚠️ Нет одновременно прибыльных и убыточных сделок. Обучение отложено.");
-                    return;
-                }
-
-                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> ();
-                foreach (var trade in allClosedTrades)
-                {
-                    try
-                    {
-                        var klines = await _client.GetKlinesAsync (trade.Symbol, "5m", 50);
-                        if (klines == null || klines.Count < Math.Max (_ui.FastSma, _ui.SlowSma) + 2) continue;
-                        var closes = klines.Select (k => k.Close).ToList ();
-                        var volumes = klines.Select (k => k.Volume).ToList ();
-                        decimal fastSmaVal = closes.Skip (closes.Count - _ui.FastSma).Average ();
-                        decimal slowSmaVal = closes.Skip (closes.Count - _ui.SlowSma).Average ();
-                        decimal rsi = TechnicalAnalysis.RSI (closes, 14).LastOrDefault () ?? 50;
-                        decimal avgVolume = volumes.TakeLast (20).Average ();
-                        decimal volumeRatio = volumes.Last () / avgVolume;
-                        decimal atr = await _client.GetATRAsync (trade.Symbol, 14);
-                        var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
-                        decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
-                        var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
-                        decimal bbUpper = bb.Upper.LastOrDefault () ?? closes.Last ();
-                        decimal bbLower = bb.Lower.LastOrDefault () ?? closes.Last ();
-                        decimal bbMiddle = bb.Middle.LastOrDefault () ?? closes.Last ();
-                        decimal bbWidth = ( bbUpper - bbLower ) / ( bbMiddle + 0.0001m );
-                        // OBV
-                        var obvValues = TechnicalAnalysis.OBV (klines);
-                        decimal obvLast = obvValues.Last ();
-                        decimal obvNorm = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
-                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, obvNorm, trade.IsProfitable));
-                    }
-                    catch (Exception ex) { _ui?.AddLog ($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
-                }
-
-                if (features.Count < 20) return;
-                await _mlManager.RetrainFromFeaturesAsync (features, _ui.AddLog);
-                _lastOrdersFetch = DateTime.UtcNow;
+                var klines = await _client.GetKlinesAsync(trade.Symbol, "5m", 50);
+                if (klines == null || klines.Count < Math.Max(_ui.FastSma, _ui.SlowSma) + 2) continue;
+                var closes = klines.Select(k => k.Close).ToList();
+                var volumes = klines.Select(k => k.Volume).ToList();
+                decimal fastSmaVal = closes.Skip(closes.Count - _ui.FastSma).Average();
+                decimal slowSmaVal = closes.Skip(closes.Count - _ui.SlowSma).Average();
+                decimal rsi = TechnicalAnalysis.RSI(closes, 14).LastOrDefault() ?? 50;
+                decimal avgVolume = volumes.TakeLast(20).Average();
+                decimal volumeRatio = volumes.Last() / avgVolume;
+                decimal atr = await _client.GetATRAsync(trade.Symbol, 14);
+                var macd = TechnicalAnalysis.MACD(closes, 12, 26, 9);
+                decimal macdHist = macd.Histogram.LastOrDefault() ?? 0;
+                var bb = TechnicalAnalysis.BollingerBands(closes, 20, 2);
+                decimal bbUpper = bb.Upper.LastOrDefault() ?? closes.Last();
+                decimal bbLower = bb.Lower.LastOrDefault() ?? closes.Last();
+                decimal bbMiddle = bb.Middle.LastOrDefault() ?? closes.Last();
+                decimal bbWidth = (bbUpper - bbLower) / (bbMiddle + 0.0001m);
+                // OBV
+                var obvValues = TechnicalAnalysis.OBV(klines);
+                decimal obvLast = obvValues.Last();
+                decimal obvNorm = (decimal)Math.Log10(Math.Abs((double)obvLast) + 1);
+                features.Add((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, obvNorm, trade.IsProfitable));
             }
-            catch (Exception ex)
-            {
-                await LogErrorToTelegram ($"FetchAndRetrainFromOrderHistoryAsync: {ex.Message}");
-            }
+            catch (Exception ex) { _ui?.AddLog($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
         }
+
+        if (features.Count < 20) return;
+        await _mlManager.RetrainFromFeaturesAsync(features, _ui.AddLog);
+        _lastOrdersFetch = DateTime.UtcNow;
+    }
+    catch (Exception ex)
+    {
+        await LogErrorToTelegram($"FetchAndRetrainFromOrderHistoryAsync: {ex.Message}");
+    }
+}
 
         private decimal CalculateSma(List<decimal> data, int period) => data.Skip (data.Count - period).Average ();
         private decimal CalculateRsi(List<decimal> closes) => TechnicalAnalysis.RSI (closes, 14).LastOrDefault () ?? 50;
@@ -546,7 +549,7 @@ namespace BinanceBotWpf.Services
                     else
                         signal.Action = TradeAction.Hold;
 
-                    // RSI-условие для накопления сделок
+                    // Добавляем RSI-условие для накопления сделок (можно закомментировать позже)
                     if (signal.Action == TradeAction.Hold)
                     {
                         if (rsi < 30)
@@ -573,12 +576,14 @@ namespace BinanceBotWpf.Services
     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
     decimal MacdHistogram, decimal BbWidth, decimal Obv) sig, decimal currentSpotBalance)
         {
+            // 1. Проверка минимального баланса USDC на споте
             if (currentSpotBalance < 10)
             {
                 _ui?.AddLog ($"⚠️ Недостаточно USDC для покупки {sig.Symbol}: {currentSpotBalance:F2} < 10");
                 return currentSpotBalance;
             }
 
+            // 2. Расчёт количества (фиксированная сумма 10 USDC)
             decimal spend = 10;
             decimal rawQty = spend / sig.Price;
             decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
@@ -590,27 +595,14 @@ namespace BinanceBotWpf.Services
             }
             decimal required = qty * sig.Price;
 
-            decimal atr = await _client.GetATRAsync (sig.Symbol, 14);
-            if (atr <= 0) atr = sig.Price * 0.02m;
-
-            // Используем ML.NET вместо Python
-            decimal volumeRatio = sig.Volume / sig.AvgVolume;
-            bool mlProfitable = _mlManager.IsProfitable (
-                sig.FastSma, sig.SlowSma, sig.Rsi, volumeRatio,
-                atr, sig.MacdHistogram, sig.BbWidth, sig.Obv);
-
-            if (!mlProfitable)
-            {
-                _ui?.AddLog ($"⏸️ ML отклонил покупку {sig.Symbol} (вероятность прибыли низкая)");
-                return currentSpotBalance;
-            }
-
+            // 3. Проверка, что сумма сделки не превышает доступный баланс
             if (required > currentSpotBalance)
             {
                 _ui?.AddLog ($"⚠️ Недостаточно USDC для покупки {sig.Symbol}: нужно {required:F2}, есть {currentSpotBalance:F2}");
                 return currentSpotBalance;
             }
 
+            // 4. Кулдаун на повторную покупку того же символа (2 минуты)
             if (_lastBuyTime.TryGetValue (sig.Symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (2))
             {
                 _ui?.AddLog ($"⏸️ {sig.Symbol} недавно покупался (менее 2 минут назад), пропускаем.");
@@ -618,6 +610,7 @@ namespace BinanceBotWpf.Services
             }
             _lastBuyTime[sig.Symbol] = DateTime.UtcNow;
 
+            // 5. Выполнение покупки
             _ui?.AddLog ($"💵 Покупка {qty} {sig.Symbol} по {sig.Price:F4}, сумма ~{required:F2} USDC (доступно {currentSpotBalance:F2})");
             var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
             if (order != null)
@@ -637,7 +630,7 @@ namespace BinanceBotWpf.Services
                 _positionManager.AddOrUpdate (sig.Symbol, pos);
                 _ui?.AddLog ($"📊 Позиция {sig.Symbol} добавлена. Все позиции: {string.Join (", ", _positionManager.GetSymbols ())}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                return currentSpotBalance - required;
+                return currentSpotBalance - required; // возвращаем новый баланс
             }
             else
             {
@@ -653,6 +646,7 @@ namespace BinanceBotWpf.Services
             if (!_positionManager.TryGet (sig.Symbol, out var pos)) return;
             string asset = sig.Symbol.Replace ("USDC", "");
 
+            // Даём время на зачисление монет
             await Task.Delay (2000);
 
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
@@ -687,6 +681,7 @@ namespace BinanceBotWpf.Services
                 else _ui?.AddLog ($"⚠️ Не удалось отменить OCO-ордер {pos.OcoOrderListId}");
             }
 
+            // Повторная попытка продажи до 3 раз
             for (int attempt = 0; attempt < 3; attempt++)
             {
                 var order = await _client.PlaceOrder (sig.Symbol, "SELL", "MARKET", qtyToSell);
@@ -719,6 +714,7 @@ namespace BinanceBotWpf.Services
                 await Task.Delay (1000);
             }
 
+            // Если после 3 попыток не продалось
             _ui?.AddLog ($"❌ Не удалось продать {sig.Symbol} после 3 попыток. Удаляю позицию.");
             _positionManager.Remove (sig.Symbol);
             _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
@@ -846,7 +842,7 @@ namespace BinanceBotWpf.Services
                         _lastBalanceLog = DateTime.UtcNow;
                     }
 
-                    // Ребаланс с кулдауном
+                    // --- Ребаланс с кулдауном и проверкой на необходимость ---
                     if (spotBalance < 10)
                     {
                         if (DateTime.UtcNow - _lastRebalanceAttempt < _rebalanceCooldown)
@@ -891,7 +887,7 @@ namespace BinanceBotWpf.Services
                         }
                     }
 
-                    await Task.Delay (60000);
+                    await Task.Delay (60000); // 60 секунд (было 120, уменьшим для отзывчивости)
                     _cycleCount++;
                     if (_cycleCount % 10 == 0) GC.Collect ();
                 }
@@ -900,6 +896,136 @@ namespace BinanceBotWpf.Services
                     await LogErrorToTelegram ($"TradingLoop: {ex.Message}");
                     await Task.Delay (10000);
                 }
+            }
+        }
+
+        /// <summary>
+        /// Экспортирует свечи для всех пар и запускает Python-оптимизатор.
+        /// </summary>
+        public async Task RunPythonOptimizer()
+        {
+            try
+            {
+                _ui?.AddLog ("📤 Экспорт свечей для оптимизации...");
+                await ExportKlinesToCsv (); // метод экспорта (нужно реализовать)
+
+                _ui?.AddLog ("🐍 Запуск Python-оптимизатора...");
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "python",
+                    Arguments = "optimize_strategy.py",
+                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using var process = Process.Start (psi);
+                string output = await process.StandardOutput.ReadToEndAsync ();
+                string error = await process.StandardError.ReadToEndAsync ();
+                await process.WaitForExitAsync ();
+
+                if (!string.IsNullOrEmpty (error))
+                    _ui?.AddLog ($"⚠️ Python stderr: {error}");
+
+                _ui?.AddLog (output);
+
+                if (output.Contains ("SUCCESS"))
+                {
+                    // Загружаем новые параметры из optimized_params.json
+                    string jsonPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "optimized_params.json");
+                    if (File.Exists (jsonPath))
+                    {
+                        string json = File.ReadAllText (jsonPath);
+                        var newSettings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (json);
+                        if (newSettings != null)
+                        {
+                            // Применяем параметры
+                            if (newSettings.TryGetValue ("FastSma", out var fs)) _ui.FastSma = Convert.ToInt32 (fs);
+                            if (newSettings.TryGetValue ("SlowSma", out var ss)) _ui.SlowSma = Convert.ToInt32 (ss);
+                            if (newSettings.TryGetValue ("RsiBuyThreshold", out var rb)) _ui.RsiBuyThreshold = Convert.ToInt32 (rb);
+                            if (newSettings.TryGetValue ("RsiSellThreshold", out var rs)) _ui.RsiSellThreshold = Convert.ToInt32 (rs);
+                            if (newSettings.TryGetValue ("StopLossPercent", out var sl)) _ui.StopLossPercent = Convert.ToDecimal (sl, CultureInfo.InvariantCulture);
+                            if (newSettings.TryGetValue ("TakeProfitPercent", out var tp)) _ui.TakeProfitPercent = Convert.ToDecimal (tp, CultureInfo.InvariantCulture);
+                            // Сохраняем в файл настроек
+                            _ui.SaveSettings ();
+                            _ui?.AddLog ("✅ Параметры стратегии обновлены и сохранены.");
+                        }
+                    }
+                }
+                else
+                {
+                    _ui?.AddLog ("❌ Оптимизация не удалась.");
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка при запуске Python: {ex.Message}");
+            }
+        }
+
+        private async Task OptimizeStrategyWithPython()
+        {
+            try
+            {
+                _ui?.AddLog ("🐍 Запуск Python-оптимизатора...");
+                var psi = new ProcessStartInfo
+                {
+                    FileName = "python",
+                    Arguments = "optimize_strategy.py",
+                    WorkingDirectory = AppDomain.CurrentDomain.BaseDirectory,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+                using var process = Process.Start (psi);
+                if (process == null)
+                {
+                    _ui?.AddLog ("❌ Не удалось запустить Python. Проверьте, что python установлен и доступен в PATH.");
+                    return;
+                }
+                string output = await process.StandardOutput.ReadToEndAsync ();
+                string error = await process.StandardError.ReadToEndAsync ();
+                await process.WaitForExitAsync ();
+                if (!string.IsNullOrEmpty (output)) _ui?.AddLog (output);
+                if (!string.IsNullOrEmpty (error)) _ui?.AddLog ($"⚠️ Python stderr: {error}");
+                if (process.ExitCode == 0)
+                {
+                    _ui?.AddLog ("✅ Оптимизация завершена. Используйте /reload для применения новых настроек.");
+                    if (_telegram != null)
+                        await _telegram.SendMessageAsync ("✅ Оптимизация завершена. Новые параметры в strategy_settings.json. Отправьте /reload для применения.", _telegram.GetChatId ());
+                }
+                else
+                {
+                    _ui?.AddLog ($"❌ Оптимизация не удалась. Код ошибки: {process.ExitCode}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка при запуске Python: {ex.Message}");
+            }
+        }
+
+        private async Task ExportKlinesToCsv()
+        {
+            string exportDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Export", "Klines");
+            if (!Directory.Exists (exportDir)) Directory.CreateDirectory (exportDir);
+
+            foreach (var sym in _activePairs)
+            {
+                var klines = await _client.GetKlinesAsync (sym, "5m", 500);
+                if (klines == null || klines.Count == 0) continue;
+
+                var csvPath = Path.Combine (exportDir, $"{sym}_5m.csv");
+                using var writer = new StreamWriter (csvPath);
+                await writer.WriteLineAsync ("timestamp,open,high,low,close,volume");
+                foreach (var k in klines)
+                {
+                    await writer.WriteLineAsync ($"{k.OpenTime:yyyy-MM-dd HH:mm:ss},{k.Open},{k.High},{k.Low},{k.Close},{k.Volume}");
+                }
+                _ui?.AddLog ($"✅ Экспортированы свечи {sym} -> {csvPath}");
             }
         }
 
@@ -983,6 +1109,14 @@ namespace BinanceBotWpf.Services
                 case "/reload_settings":
                     await _telegram.SendMessageAsync ("📁 Для применения новых настроек из strategy_settings.json перезапустите бота (СТОП → ЗАПУСК).", chatId);
                     break;
+                case "/backtest":
+                    await RunSimpleBacktest ();
+                    await _telegram.SendMessageAsync ("📊 Бэктест завершён, результаты в логе.", chatId);
+                    break;
+                case "/optimize":
+                    await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию параметров... Это может занять несколько минут.", chatId);
+                    _ = Task.Run (RunPythonOptimizer);
+                    break;
                 case "/help":
                     string help = "🤖 *Команды:*\n" +
                         "/status – состояние\n" +
@@ -998,6 +1132,8 @@ namespace BinanceBotWpf.Services
                         "/performance – детальная статистика\n" +
                         "/stop_all – остановить все циклы\n" +
                         "/start_all – запустить все циклы\n" +
+                        "/backtest – запустить простой бэктест на истории\n" +
+                        "/optimize – запустить оптимизацию параметров (Python)\n" +
                         "/reload_settings – напоминание о перезагрузке настроек\n" +
                         "/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);
@@ -1081,6 +1217,88 @@ namespace BinanceBotWpf.Services
             _orderHistoryLoopEnabled = true;
             _tradingLoopEnabled = true;
             _ui?.AddLog ("▶️ Все циклы запущены");
+        }
+
+        private async Task RunSimpleBacktest()
+        {
+            try
+            {
+                _ui?.AddLog ("📊 Запуск бэктеста на истории...");
+                string[] pairs = { "BTCUSDC", "ETHUSDC", "BNBUSDC" };
+                int[] fastPeriods = { 5, 9, 13 };
+                int[] slowPeriods = { 13, 21, 34 };
+                int[] rsiPeriods = { 7, 14, 21 };
+                int[] rsiLo = { 25, 30, 35 };
+                int[] rsiHi = { 65, 70, 75 };
+
+                var results = new List<(int fast, int slow, int rsiP, int lo, int hi, decimal profit)> ();
+
+                foreach (var pair in pairs)
+                {
+                    var klines = await _client.GetKlinesAsync (pair, "5m", 500);
+                    if (klines == null || klines.Count < 100) continue;
+                    var closes = klines.Select (k => k.Close).ToList ();
+
+                    foreach (var fast in fastPeriods)
+                    {
+                        foreach (var slow in slowPeriods)
+                        {
+                            if (fast >= slow) continue;
+                            foreach (var rsiP in rsiPeriods)
+                            {
+                                foreach (var lo in rsiLo)
+                                {
+                                    foreach (var hi in rsiHi)
+                                    {
+                                        decimal profit = SimulateStrategy (closes, fast, slow, rsiP, lo, hi);
+                                        results.Add ((fast, slow, rsiP, lo, hi, profit));
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                var best = results.OrderByDescending (r => r.profit).First ();
+                _ui?.AddLog ($"📈 Лучшие параметры: Fast={best.fast}, Slow={best.slow}, RSI period={best.rsiP}, Buy<{best.lo}, Sell>{best.hi}, Profit={best.profit:F2}%");
+                _ui?.AddLog ($"✅ Рекомендуется установить SMA9={best.fast}, SMA21={best.slow}");
+            }
+            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка бэктеста: {ex.Message}"); }
+        }
+
+        private decimal SimulateStrategy(List<decimal> closes, int fast, int slow, int rsiPeriod, int rsiBuy, int rsiSell)
+        {
+            // Простая симуляция: покупаем при пересечении SMA вверх и RSI < rsiBuy, продаём при пересечении вниз или RSI > rsiSell
+            // Возвращает общую прибыль в процентах
+            List<decimal> fastSma = new List<decimal> ();
+            List<decimal> slowSma = new List<decimal> ();
+            List<decimal> rsi = TechnicalAnalysis.RSI (closes, rsiPeriod).Select (v => v ?? 50).ToList ();
+
+            for (int i = 0; i < closes.Count; i++)
+            {
+                if (i >= fast) fastSma.Add (closes.Skip (i - fast + 1).Take (fast).Average ());
+                else fastSma.Add (0);
+                if (i >= slow) slowSma.Add (closes.Skip (i - slow + 1).Take (slow).Average ());
+                else slowSma.Add (0);
+            }
+
+            decimal capital = 1000;
+            decimal position = 0;
+            for (int i = Math.Max (fast, slow) + 5; i < closes.Count; i++)
+            {
+                if (position == 0 && fastSma[i] > slowSma[i] && rsi[i] < rsiBuy)
+                {
+                    position = capital / closes[i];
+                    capital = 0;
+                }
+                else if (position > 0 && ( fastSma[i] < slowSma[i] || rsi[i] > rsiSell ))
+                {
+                    capital = position * closes[i];
+                    position = 0;
+                }
+            }
+            if (position > 0) capital = position * closes.Last ();
+            return ( capital - 1000 ) / 1000 * 100;
         }
 
         public void StopTrading()
