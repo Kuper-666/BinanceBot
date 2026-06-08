@@ -7,7 +7,6 @@
         Background="#121212">
 
     <Window.Resources>
-        <!-- Стиль для заголовков столбцов (общий для всех DataGrid) -->
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#2c3e50"/>
             <Setter Property="Foreground" Value="White"/>
@@ -32,6 +31,7 @@
         <WrapPanel Grid.Row="0" Margin="0,0,0,10">
             <Button Command="{Binding StartCommand}" Content="ЗАПУСК" Width="100" Height="30" Background="#2ecc71" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
             <Button Command="{Binding StopCommand}"  Content="СТОП"   Width="100" Height="30" Background="#e74c3c" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
+            <Button Command="{Binding ReloadSettingsCommand}" Content="RELOAD" Width="80" Height="30" Background="#f39c12" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
 
             <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="20,0,5,0" VerticalAlignment="Center"/>
             <TextBox Text="{Binding FastSma, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White" Margin="0,0,5,0"/>
@@ -74,7 +74,6 @@
                           CanUserResizeColumns="True" CanUserSortColumns="True">
 
                     <DataGrid.Resources>
-                        <!-- Стиль строки для цветов из PairAnalysisItem -->
                         <Style TargetType="DataGridRow">
                             <Setter Property="Background" Value="{Binding RowColor}"/>
                             <Setter Property="Foreground" Value="{Binding ForegroundBrush}"/>
@@ -84,7 +83,6 @@
                                 </Trigger>
                             </Style.Triggers>
                         </Style>
-                        <!-- Стиль ячейки -->
                         <Style TargetType="DataGridCell">
                             <Setter Property="Foreground" Value="{Binding ForegroundBrush}"/>
                             <Setter Property="Background" Value="{Binding RowColor}"/>
@@ -171,7 +169,6 @@
                         </Grid>
                     </Border>
 
-                    <!-- Таблица истории с чередованием строк -->
                     <DataGrid Grid.Row="1" ItemsSource="{Binding TradesHistory}" 
                               AutoGenerateColumns="False" HeadersVisibility="Column"
                               Background="#121212" Foreground="White"
@@ -212,13 +209,13 @@
             </TabItem>
             <TabItem Header="Акции США" Background="#1e1e1e" Foreground="White">
                 <DataGrid ItemsSource="{Binding StocksList}" 
-              AutoGenerateColumns="False" HeadersVisibility="Column"
-              Background="#121212" Foreground="White"
-              BorderThickness="0" FontSize="14"
-              GridLinesVisibility="Horizontal"
-              SelectionMode="Single" RowHeight="32"
-              CanUserAddRows="False" CanUserDeleteRows="False"
-              CanUserResizeColumns="True" CanUserSortColumns="True">
+                          AutoGenerateColumns="False" HeadersVisibility="Column"
+                          Background="#121212" Foreground="White"
+                          BorderThickness="0" FontSize="14"
+                          GridLinesVisibility="Horizontal"
+                          SelectionMode="Single" RowHeight="32"
+                          CanUserAddRows="False" CanUserDeleteRows="False"
+                          CanUserResizeColumns="True" CanUserSortColumns="True">
                     <DataGrid.Resources>
                         <Style TargetType="DataGridRow">
                             <Setter Property="Background" Value="{Binding RowColor}"/>

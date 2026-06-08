@@ -108,6 +108,7 @@ namespace BinanceBotWpf.ViewModels
         public ICommand StartCommand { get; }
         public ICommand StopCommand { get; }
         public ICommand ExportDataCommand { get; }
+        public ICommand ReloadSettingsCommand { get; }
 
         public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
         private Dictionary<string, PairAnalysisItem> _pairDict = new ();
@@ -157,6 +158,7 @@ namespace BinanceBotWpf.ViewModels
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
+            ReloadSettingsCommand = new RelayCommand (_ => ReloadSettings (), _ => true);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -164,11 +166,8 @@ namespace BinanceBotWpf.ViewModels
             _plotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
 
-            // Мониторинг акций
             _stockMonitor = new StockPriceMonitor (AddLog, _isTestnet);
             _ = Task.Run (StocksLoop);
-
-            // Запускаем цикл обновления UI через WebSocket (если TradingService поддерживает)
             _ = Task.Run (StartUiUpdateLoop);
         }
 
@@ -176,13 +175,22 @@ namespace BinanceBotWpf.ViewModels
         {
             try
             {
+                AddLog ($"🔧 Загрузка настроек из {_settingsPath}");
                 string dir = Path.GetDirectoryName (_settingsPath);
                 if (!Directory.Exists (dir)) Directory.CreateDirectory (dir);
-                if (!File.Exists (_settingsPath)) return;
+                if (!File.Exists (_settingsPath))
+                {
+                    AddLog ("⚠️ Файл настроек не найден, используются значения по умолчанию.");
+                    return;
+                }
 
                 string json = File.ReadAllText (_settingsPath);
                 var settings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (json);
-                if (settings == null) return;
+                if (settings == null)
+                {
+                    AddLog ("❌ Ошибка десериализации настроек.");
+                    return;
+                }
 
                 _isLoadingSettings = true;
                 if (settings.TryGetValue ("FastSma", out var fs)) FastSma = Convert.ToInt32 (fs);
@@ -195,8 +203,14 @@ namespace BinanceBotWpf.ViewModels
                 if (settings.TryGetValue ("MinBalanceForTrading", out var mb)) MinBalanceForTrading = Convert.ToDecimal (mb, CultureInfo.InvariantCulture);
                 if (settings.TryGetValue ("MaxRiskPercent", out var mr)) MaxRiskPercent = Convert.ToDecimal (mr, CultureInfo.InvariantCulture);
                 _isLoadingSettings = false;
+
+                AddLog ($"✅ Настройки загружены: FastSma={FastSma}, SlowSma={SlowSma}, SL={StopLossPercent:P0}, TP={TakeProfitPercent:P0}");
             }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"LoadSettings error: {ex.Message}"); _isLoadingSettings = false; }
+            catch (Exception ex)
+            {
+                AddLog ($"❌ Ошибка загрузки настроек: {ex.Message}");
+                _isLoadingSettings = false;
+            }
         }
 
         public void SaveSettings()
@@ -222,9 +236,30 @@ namespace BinanceBotWpf.ViewModels
                     if (!Directory.Exists (dir)) Directory.CreateDirectory (dir);
                     string json = System.Text.Json.JsonSerializer.Serialize (settings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
                     File.WriteAllText (_settingsPath, json);
+                    AddLog ($"💾 Настройки сохранены в {_settingsPath}");
                 }
-                catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"SaveSettings error: {ex.Message}"); }
+                catch (Exception ex)
+                {
+                    AddLog ($"❌ Ошибка сохранения настроек: {ex.Message}");
+                }
             }
+        }
+
+        public void ReloadSettings()
+        {
+            AddLog ("🔄 Принудительная перезагрузка настроек из файла...");
+            LoadSettings ();
+            // Принудительно обновляем UI
+            OnPropertyChanged (nameof (FastSma));
+            OnPropertyChanged (nameof (SlowSma));
+            OnPropertyChanged (nameof (RsiBuyThreshold));
+            OnPropertyChanged (nameof (RsiSellThreshold));
+            OnPropertyChanged (nameof (StopLossPercent));
+            OnPropertyChanged (nameof (TakeProfitPercent));
+            OnPropertyChanged (nameof (TrailingStopPercent));
+            OnPropertyChanged (nameof (MinBalanceForTrading));
+            OnPropertyChanged (nameof (MaxRiskPercent));
+            AddLog ("✅ Настройки перезагружены.");
         }
 
         private async Task Start() { IsRunning = true; await _tradingService.StartTradingAsync (this); }
@@ -258,7 +293,6 @@ namespace BinanceBotWpf.ViewModels
                 {
                     series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
-                    // Обновляем график не чаще чем каждые 10 точек
                     if (series.Points.Count % 10 == 0)
                         _plotModel.InvalidatePlot (true);
                 }
@@ -360,9 +394,6 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        /// <summary>
-        /// Цикл обновления таблицы криптовалют из WebSocket (между основными циклами анализа).
-        /// </summary>
         private async Task StartUiUpdateLoop()
         {
             while (true)
@@ -378,7 +409,7 @@ namespace BinanceBotWpf.ViewModels
                                 pairItem.Price = price.ToString ("F4");
                         }
                     });
-                    await Task.Delay (1000); // обновляем раз в секунду
+                    await Task.Delay (1000);
                 }
                 catch (Exception ex)
                 {
@@ -393,7 +424,6 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 SystemLogs += $"{DateTime.Now:HH:mm:ss} - {message}\n";
-                // Ограничиваем лог до ~500 строк
                 if (SystemLogs.Length > 50000)
                 {
                     var idx = SystemLogs.IndexOf ('\n', SystemLogs.Length / 2);
@@ -444,21 +474,6 @@ namespace BinanceBotWpf.ViewModels
                 MaxPositions = max;
                 PositionsStatusText = current == 0 ? $"{current}/{max} нет открытых" : $"{current}/{max} торгует: {string.Join (", ", symbols)}";
             });
-        }
-
-        public void ReloadSettings()
-        {
-            LoadSettings ();
-            // Обновляем UI
-            OnPropertyChanged (nameof (FastSma));
-            OnPropertyChanged (nameof (SlowSma));
-            OnPropertyChanged (nameof (RsiBuyThreshold));
-            OnPropertyChanged (nameof (RsiSellThreshold));
-            OnPropertyChanged (nameof (StopLossPercent));
-            OnPropertyChanged (nameof (TakeProfitPercent));
-            OnPropertyChanged (nameof (TrailingStopPercent));
-            OnPropertyChanged (nameof (MinBalanceForTrading));
-            OnPropertyChanged (nameof (MaxRiskPercent));
         }
 
         public void UpdateRiskDisplay(decimal riskPercent) => Application.Current.Dispatcher.Invoke (() => RiskPercentDisplay = $"Риск: {riskPercent * 100:F0}%");
