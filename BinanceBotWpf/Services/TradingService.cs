@@ -812,6 +812,7 @@ namespace BinanceBotWpf.Services
                         _lastBalanceLog = DateTime.UtcNow;
                     }
 
+                    // --- Ребаланс с кулдауном и проверкой на необходимость ---
                     if (spotBalance < 10)
                     {
                         if (DateTime.UtcNow - _lastRebalanceAttempt < _rebalanceCooldown)
@@ -826,7 +827,6 @@ namespace BinanceBotWpf.Services
                         {
                             _ui?.AddLog ($"🔄 Спот USDC низкий ({spotBalance:F2}), запускаю ребаланс...");
                             _lastRebalanceAttempt = DateTime.UtcNow;
-                            // В TradingLoop:
                             var openSymbols = new HashSet<string> (_positionManager.GetSymbols ());
                             await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning, openSymbols);
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
@@ -857,7 +857,7 @@ namespace BinanceBotWpf.Services
                         }
                     }
 
-                    await Task.Delay (120000); // 2 минуты
+                    await Task.Delay (60000); // 60 секунд (было 120, уменьшим для отзывчивости)
                     _cycleCount++;
                     if (_cycleCount % 10 == 0) GC.Collect ();
                 }

@@ -27,43 +27,51 @@ namespace BinanceBotWpf.Models
         /// <param name="isRunning">Флаг работы бота</param>
         /// <param name="openPositionSymbols">Список символов (пар), по которым есть открытые позиции – их не продаём</param>
         /// <param name="targetUsdc">Целевой баланс USDC на споте</param>
+        private bool _isRebalancing = false;
+
         public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, HashSet<string> openPositionSymbols, decimal targetUsdc = 15m)
         {
+            if (_isRebalancing)
+            {
+                Log ("⚠️ Ребаланс уже выполняется, пропускаем.");
+                return;
+            }
+            _isRebalancing = true;
             try
             {
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                Log ($"DEBUG: currentUsdc={currentUsdc}, targetUsdc={targetUsdc}");
                 if (currentUsdc >= targetUsdc) return;
 
+                // 1. Пытаемся выкупить USDC из Earn
                 decimal need = targetUsdc - currentUsdc;
-                Log ($"DEBUG: need={need}");
-                if (need >= 1.0m)
+                if (need >= 0.5m)
                 {
-                    Log ($"🔄 Выкупаю {need:F2} USDC из Earn...");
-                    bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync ("USDC", need);
-                    if (redeemed)
+                    // Проверяем, есть ли USDC в Earn
+                    decimal earnUsdc = await GetEarnBalanceAsync ("USDC", client);
+                    if (earnUsdc >= need - 0.01m)
                     {
-                        currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                        if (currentUsdc >= targetUsdc) return;
-                        Log ($"✅ Выкуп USDC подтверждён. Новый спот баланс: {currentUsdc:F2}");
+                        Log ($"🔄 Выкупаю {need:F2} USDC из Earn...");
+                        bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync ("USDC", need);
+                        if (redeemed)
+                        {
+                            currentUsdc = await client.GetAccountBalanceAsync ("USDC");
+                            if (currentUsdc >= targetUsdc) return;
+                            Log ($"✅ Выкуп USDC подтверждён. Новый спот баланс: {currentUsdc:F2}");
+                        }
+                        else
+                        {
+                            Log ($"⚠️ Не удалось выкупить USDC из Earn. Пробую продать другие активы.");
+                        }
                     }
                     else
                     {
-                        Log ($"⚠️ Не удалось выкупить USDC из Earn. Пробую продать другие активы.");
+                        Log ($"⚠️ В Earn недостаточно USDC: доступно {earnUsdc:F2}, требуется {need:F2}");
                     }
                 }
-                else
-                {
-                    Log ($"⚠️ need={need} меньше 1, выкуп USDC не требуется.");
-                }
 
-                // 2. Собираем все балансы (спот + Earn)
+                // 2. Собираем все балансы
                 var allBalances = await GetAllBalancesAsync (client);
                 var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
-
-                // Отладочный вывод
-                if (openPositionSymbols != null && openPositionSymbols.Count > 0)
-                    Log ($"DEBUG: Открытые позиции: {string.Join (", ", openPositionSymbols)}");
 
                 foreach (var assetEntry in sorted)
                 {
@@ -74,8 +82,7 @@ namespace BinanceBotWpf.Models
                     if (asset == "USDC" || BlacklistedAssets.Contains (asset) || asset.StartsWith ("LD")) continue;
 
                     string pair = asset + "USDC";
-
-                    // ---- НЕ ПРОДАЁМ АКТИВЫ С ОТКРЫТЫМИ ПОЗИЦИЯМИ ----
+                    // Пропускаем активы с открытыми позициями
                     if (openPositionSymbols != null && openPositionSymbols.Contains (pair))
                     {
                         Log ($"⏸️ {asset} пропущен: есть открытая позиция ({pair})");
@@ -121,6 +128,10 @@ namespace BinanceBotWpf.Models
                 Log ("❌ Не удалось пополнить USDC: нет ликвидных активов (или все активы с открытыми позициями).");
             }
             catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
+            finally
+            {
+                _isRebalancing = false;
+            }
         }
 
         private async Task<Dictionary<string, (decimal TotalAmount, decimal TotalValue)>> GetAllBalancesAsync(BinanceClient client)
@@ -157,6 +168,13 @@ namespace BinanceBotWpf.Models
             }
             catch (Exception ex) { Log ($"Ошибка получения балансов: {ex.Message}"); }
             return result;
+        }
+
+        private async Task<decimal> GetEarnBalanceAsync(string asset, BinanceClient client)
+        {
+            var earnPositions = await client.GetFlexibleEarnBalanceAsync ();
+            var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+            return earnPos != null ? decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture) : 0;
         }
 
         private void Log(string msg) => OnLogGenerated?.Invoke (msg);

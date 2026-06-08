@@ -237,6 +237,7 @@ namespace BinanceBotWpf.Models
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/simple-earn/flexible/redeem") { Content = content };
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
+                Log ($"DEBUG Redeem USDC response: {json}"); // <-- ДОБАВИТЬ
                 if (!response.IsSuccessStatusCode) return false;
 
                 for (int i = 0; i < maxWaitSeconds / 2; i++)
