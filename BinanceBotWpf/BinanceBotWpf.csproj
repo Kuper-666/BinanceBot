@@ -1,48 +1,48 @@
 <Project Sdk="Microsoft.NET.Sdk.WindowsDesktop">
-	<PropertyGroup>
-		<OutputType>WinExe</OutputType>
-		<TargetFramework>net8.0-windows</TargetFramework>
-		<UseWPF>true</UseWPF>
-		<StartupUri>/Views/MainWindow.xaml</StartupUri>
-		<VersionPrefix>1.0.127</VersionPrefix>
-		<VersionSuffix>$(VersionSuffix)</VersionSuffix>
-		<Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
-		<Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <StartupUri>MainWindow.xaml</StartupUri>
+    <VersionPrefix>1.0.127</VersionPrefix>
+    <VersionSuffix>$(VersionSuffix)</VersionSuffix>
+    <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
+    <Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
 
-		<!-- Параметры публикации одного файла -->
-		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
-		<PublishSingleFile>true</PublishSingleFile>
-		<SelfContained>true</SelfContained>
-		<PublishReadyToRun>true</PublishReadyToRun>
-		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
-		<EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
-		<DebugType>embedded</DebugType>
-	</PropertyGroup>
+    <!-- Параметры публикации одного файла -->
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <PublishSingleFile>true</PublishSingleFile>
+    <SelfContained>true</SelfContained>
+    <PublishReadyToRun>true</PublishReadyToRun>
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
+    <DebugType>embedded</DebugType>
+  </PropertyGroup>
 
-	<ItemGroup>
-		<PackageReference Include="Binance.Net" Version="12.13.0" />
-		<PackageReference Include="CsvHelper" Version="33.1.0" />
-		<PackageReference Include="LiveChartsCore" Version="2.0.4" />
-		<PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.4" />
-		<PackageReference Include="Microsoft.ML" Version="5.0.0" />
-		<PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0" />
-		<PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
-		<PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
-		<PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.4" />
-		<PackageReference Include="Telegram.Bot" Version="22.10.0.1" />
-	</ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Binance.Net" Version="12.13.0" />
+    <PackageReference Include="CsvHelper" Version="33.1.0" />
+    <PackageReference Include="LiveChartsCore" Version="2.0.4" />
+    <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.4" />
+    <PackageReference Include="Microsoft.ML" Version="5.0.0" />
+    <PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
+    <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
+    <PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.4" />
+    <PackageReference Include="Telegram.Bot" Version="22.10.0.1" />
+  </ItemGroup>
 
-	<ItemGroup>
-		<Resource Include="Resources\binance_bot.ico">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Resource>
-		<!-- Встраиваемый ресурс - модель -->
-		<EmbeddedResource Include="Resources\trading_model.zip" />
-	</ItemGroup>
+  <ItemGroup>
+    <Resource Include="Resources\binance_bot.ico">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Resource>
+    <!-- Встраиваемый ресурс - модель -->
+    <EmbeddedResource Include="Resources\trading_model.zip" />
+  </ItemGroup>
 
-	<ItemGroup>
-		<None Update=".gitignore">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</None>
-	</ItemGroup>
+  <ItemGroup>
+    <None Update=".gitignore">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
 </Project>
