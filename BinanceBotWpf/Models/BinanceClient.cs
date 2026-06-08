@@ -462,8 +462,10 @@ namespace BinanceBotWpf.Models
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
                 var response = await SendWithRetryAsync (request);
                 string jsonString = await response.Content.ReadAsStringAsync ();
-                // Логирование отключено для уменьшения спама
+
+                // ⚠️ ЛОГИРОВАНИЕ ОТКЛЮЧЕНО (было DEBUG Earn response)
                 // Log($"DEBUG Earn response: {jsonString}");
+
                 if (response.IsSuccessStatusCode)
                 {
                     JToken token = JToken.Parse (jsonString);
