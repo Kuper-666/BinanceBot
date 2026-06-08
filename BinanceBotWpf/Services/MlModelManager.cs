@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Reflection; // добавить
 
 namespace BinanceBotWpf.Services
 {
@@ -22,9 +23,34 @@ namespace BinanceBotWpf.Services
         {
             _modelPath = modelPath;
             _logger = logger;
+            ExtractEmbeddedModelIfNeeded ();  // <-- добавить вызов
             LoadModel ();
         }
 
+        private void ExtractEmbeddedModelIfNeeded()
+        {
+            if (File.Exists (_modelPath)) return;
+            var assembly = Assembly.GetExecutingAssembly ();
+            // Имя ресурса: по умолчанию "BinanceBotWpf.Resources.trading_model.zip"
+            string resourceName = "BinanceBotWpf.Resources.trading_model.zip";
+            using (Stream stream = assembly.GetManifestResourceStream (resourceName))
+            {
+                if (stream == null)
+                {
+                    _logger?.Invoke ("⚠️ Встроенная модель не найдена в ресурсах.");
+                    return;
+                }
+                string dir = Path.GetDirectoryName (_modelPath);
+                if (!Directory.Exists (dir)) Directory.CreateDirectory (dir);
+                using (var fileStream = new FileStream (_modelPath, FileMode.Create, FileAccess.Write))
+                {
+                    stream.CopyTo (fileStream);
+                }
+                _logger?.Invoke ("✅ Встроенная модель извлечена на диск.");
+            }
+        }
+
+        // Остальные методы без изменений...
         private void LoadModel()
         {
             if (!File.Exists (_modelPath))
@@ -70,6 +96,7 @@ namespace BinanceBotWpf.Services
 
         public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> features, Action<string> logger)
         {
+            // ... без изменений (оставляем существующий код)
             await Task.Run (() =>
             {
                 try
