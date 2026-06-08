@@ -20,13 +20,6 @@ namespace BinanceBotWpf.Models
             _targetUsdcBalance = Math.Max (targetUsdcBalance, 5.10m);
         }
 
-        /// <summary>
-        /// Автоматическая конвертация активов в USDC для поддержания баланса.
-        /// </summary>
-        /// <param name="client">Клиент Binance</param>
-        /// <param name="isRunning">Флаг работы бота</param>
-        /// <param name="openPositionSymbols">Список символов (пар), по которым есть открытые позиции – их не продаём</param>
-        /// <param name="targetUsdc">Целевой баланс USDC на споте</param>
         private bool _isRebalancing = false;
 
         public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, HashSet<string> openPositionSymbols, decimal targetUsdc = 15m)
@@ -46,7 +39,6 @@ namespace BinanceBotWpf.Models
                 decimal need = targetUsdc - currentUsdc;
                 if (need >= 0.5m)
                 {
-                    // Проверяем, есть ли USDC в Earn
                     decimal earnUsdc = await GetEarnBalanceAsync ("USDC", client);
                     if (earnUsdc >= need - 0.01m)
                     {
@@ -93,13 +85,13 @@ namespace BinanceBotWpf.Models
                     if (klines == null || klines.Count == 0) continue;
                     decimal price = klines.Last ().Close;
                     decimal estimatedValue = totalAmount * price;
-                    if (estimatedValue < 6.0m) continue; // не продаём дешевле 6 USDC
+                    // Снижен порог продажи с 6.0 до 1.0 USDC
+                    if (estimatedValue < 1.0m) continue;
 
                     decimal stepSize = await client.GetStepSizeAsync (pair);
                     decimal normalizedAmount = Math.Floor (totalAmount / stepSize) * stepSize;
                     if (normalizedAmount <= 0) continue;
 
-                    // Выкупаем из Earn, если на споте не хватает
                     decimal spotAmount = await client.GetAccountBalanceAsync (asset);
                     if (spotAmount < normalizedAmount)
                     {
