@@ -4,12 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <StartupUri>MainWindow.xaml</StartupUri>
-    <VersionPrefix>1.0.127</VersionPrefix>
-    <VersionSuffix>$(VersionSuffix)</VersionSuffix>
-    <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
-    <Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
-
-    <!-- Параметры публикации одного файла -->
+    <Version>1.0.127</Version>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <PublishSingleFile>true</PublishSingleFile>
     <SelfContained>true</SelfContained>
@@ -36,7 +31,6 @@
     <Resource Include="Resources\binance_bot.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>
-    <!-- Встраиваемый ресурс - модель -->
     <EmbeddedResource Include="Resources\trading_model.zip" />
   </ItemGroup>
 
