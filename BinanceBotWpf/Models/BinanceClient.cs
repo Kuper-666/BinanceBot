@@ -453,39 +453,52 @@ namespace BinanceBotWpf.Models
 
         public async Task<JArray> GetFlexibleEarnBalanceAsync()
         {
+            var allRows = new JArray ();
+            int page = 1;
+            int size = 100; // максимум за раз
+            bool hasMore = true;
+
             try
             {
-                long timestamp = GetTimestamp ();
-                string query = $"timestamp={timestamp}";
-                string signature = CreateSignature (query);
-                var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
-                request.Headers.Add ("X-MBX-APIKEY", _apiKey);
-                var response = await SendWithRetryAsync (request);
-                string jsonString = await response.Content.ReadAsStringAsync ();
-
-                // ⚠️ ЛОГИРОВАНИЕ ОТКЛЮЧЕНО (было DEBUG Earn response)
-                // Log($"DEBUG Earn response: {jsonString}");
-
-                if (response.IsSuccessStatusCode)
+                while (hasMore)
                 {
-                    JToken token = JToken.Parse (jsonString);
-                    if (token is JArray array) return array;
-                    if (token is JObject obj)
+                    long timestamp = GetTimestamp ();
+                    string query = $"timestamp={timestamp}&size={size}&page={page}";
+                    string signature = CreateSignature (query);
+                    var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
+                    request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+                    var response = await SendWithRetryAsync (request);
+                    string jsonString = await response.Content.ReadAsStringAsync ();
+
+                    if (!response.IsSuccessStatusCode)
                     {
-                        if (obj["rows"] != null) return (JArray)obj["rows"];
-                        if (obj["list"] != null) return (JArray)obj["list"];
+                        Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
+                        break;
                     }
-                }
-                else
-                {
-                    Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
+
+                    JObject obj = JObject.Parse (jsonString);
+                    JArray rows = obj["rows"] as JArray;
+                    if (rows == null || rows.Count == 0)
+                        break;
+
+                    foreach (var row in rows)
+                        allRows.Add (row);
+
+                    int total = obj["total"]?.Value<int> () ?? 0;
+                    if (total <= page * size)
+                        hasMore = false;
+                    else
+                        page++;
                 }
             }
             catch (Exception ex)
             {
                 Log ($"Exception GetFlexibleEarn: {ex.Message}");
             }
-            return new JArray ();
+
+            // Не спамим лог (закомментировано)
+            // Log($"DEBUG Earn response: {allRows.ToString()}");
+            return allRows;
         }
 
         public async Task<List<string>> GetTopVolumePairsAsync(string quoteAsset = "USDC", int topCount = 20)
