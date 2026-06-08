@@ -1,10 +1,11 @@
-﻿using Microsoft.ML;
+﻿using BinanceBotWpf.Models;
+using Microsoft.ML;
 using Microsoft.ML.Data;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Collections.Generic;
 
 namespace BinanceBotWpf.Services
 {
@@ -118,6 +119,13 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex) { logger?.Invoke ($"❌ Ошибка обучения: {ex.Message}"); }
             });
+        }
+        public async Task CollectExamplesFromHistoryAsync(BinanceClient client, List<string> pairs, int lookaheadBars = 12) // 12*5мин = 1 час
+        {
+            // Для каждой пары загружаем 500 свечей
+            // Для каждой позиции i (от 50 до 500-lookaheadBars) вычисляем фичи на баре i
+            // Целевая переменная: (close[i+lookaheadBars] - close[i]) / close[i]   – будущая доходность
+            // Сохраняем в CSV для обучения на Python (LightGBM) или используем ML.NET регрессию
         }
     }
 
