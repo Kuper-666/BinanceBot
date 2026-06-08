@@ -851,7 +851,11 @@ namespace BinanceBotWpf.Services
                         {
                             _ui?.AddLog ($"🔄 Спот USDC низкий ({spotBalance:F2}), запускаю ребаланс...");
                             _lastRebalanceAttempt = DateTime.UtcNow;
-                            await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning, new HashSet<string> (), 15m);
+                            var openSymbols = new HashSet<string> (_positionManager.GetSymbols ());
+                            await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning, openSymbols, 15m);
+
+                            // Обновляем балансы после ребаланса
+                            await _wallet.UpdateBalance ();
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                             totalBalance = _wallet.GetTotalBalance ("USDC");
                             _ui?.AddLog ($"💰 После ребаланса: спот={spotBalance:F2}, всего={totalBalance:F2}");

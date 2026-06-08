@@ -17,7 +17,7 @@ namespace BinanceBotWpf.Models
     {
         private readonly BinanceClient _client;
         private readonly Dictionary<string, AssetBalance> _balances;
-        public event Action<string> OnLogGenerated; // изменено
+        public event Action<string> OnLogGenerated;
 
         public WalletManager(BinanceClient client)
         {
