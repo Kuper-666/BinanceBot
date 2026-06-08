@@ -57,6 +57,7 @@ namespace BinanceBotWpf.Services
         private decimal _totalProfitSum = 0;
         private decimal _totalLossSum = 0;
         private int _cycleCount = 0;
+        private Dictionary<string, DateTime> _lastBuyTime = new Dictionary<string, DateTime> ();
 
         private bool _balanceLoopEnabled = true;
         private bool _pairsLoopEnabled = true;
@@ -575,20 +576,46 @@ namespace BinanceBotWpf.Services
     decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
     decimal MacdHistogram, decimal BbWidth, decimal Obv) sig, decimal currentSpotBalance)
         {
-            if (currentSpotBalance < 10) return currentSpotBalance;
-            decimal spend = 10; // фиксированная сумма
+            // 1. Проверка минимального баланса USDC на споте
+            if (currentSpotBalance < 10)
+            {
+                _ui?.AddLog ($"⚠️ Недостаточно USDC для покупки {sig.Symbol}: {currentSpotBalance:F2} < 10");
+                return currentSpotBalance;
+            }
+
+            // 2. Расчёт количества (фиксированная сумма 10 USDC)
+            decimal spend = 10;
             decimal rawQty = spend / sig.Price;
             decimal stepSize = await _client.GetStepSizeAsync (sig.Symbol);
             decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
-            if (qty <= 0) return currentSpotBalance;
+            if (qty <= 0)
+            {
+                _ui?.AddLog ($"⚠️ Расчётное количество {qty} для {sig.Symbol} меньше минимального лота");
+                return currentSpotBalance;
+            }
             decimal required = qty * sig.Price;
-            if (required > currentSpotBalance) return currentSpotBalance;
 
-            _ui?.AddLog ($"💵 Покупка {qty} {sig.Symbol} по {sig.Price}, сумма ~{required:F2} USDC");
+            // 3. Проверка, что сумма сделки не превышает доступный баланс
+            if (required > currentSpotBalance)
+            {
+                _ui?.AddLog ($"⚠️ Недостаточно USDC для покупки {sig.Symbol}: нужно {required:F2}, есть {currentSpotBalance:F2}");
+                return currentSpotBalance;
+            }
+
+            // 4. Кулдаун на повторную покупку того же символа (2 минуты)
+            if (_lastBuyTime.TryGetValue (sig.Symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (2))
+            {
+                _ui?.AddLog ($"⏸️ {sig.Symbol} недавно покупался (менее 2 минут назад), пропускаем.");
+                return currentSpotBalance;
+            }
+            _lastBuyTime[sig.Symbol] = DateTime.UtcNow;
+
+            // 5. Выполнение покупки
+            _ui?.AddLog ($"💵 Покупка {qty} {sig.Symbol} по {sig.Price:F4}, сумма ~{required:F2} USDC (доступно {currentSpotBalance:F2})");
             var order = await _client.PlaceOrder (sig.Symbol, "BUY", "MARKET", qty);
             if (order != null)
             {
-                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price}");
+                _ui?.AddLog ($"✅ КУПЛЕНО: {qty} {sig.Symbol} по {sig.Price:F4}");
                 var pos = new OpenPosition
                 {
                     Symbol = sig.Symbol,
@@ -601,12 +628,15 @@ namespace BinanceBotWpf.Services
                     OcoOrderListId = 0
                 };
                 _positionManager.AddOrUpdate (sig.Symbol, pos);
-                // Отладочный вывод: список открытых позиций
                 _ui?.AddLog ($"📊 Позиция {sig.Symbol} добавлена. Все позиции: {string.Join (", ", _positionManager.GetSymbols ())}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                return currentSpotBalance - required;
+                return currentSpotBalance - required; // возвращаем новый баланс
             }
-            return currentSpotBalance;
+            else
+            {
+                _ui?.AddLog ($"❌ Ошибка при покупке {sig.Symbol}: {_client.LastOrderError}");
+                return currentSpotBalance;
+            }
         }
 
         private async Task ExecuteSell((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
