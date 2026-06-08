@@ -227,33 +227,43 @@ namespace BinanceBotWpf.Models
         {
             try
             {
-                // 1. Получаем список позиций в Earn
+                Log ($"DEBUG: Попытка выкупа {amount} {asset} из Earn");
+
+                // 1. Получаем позиции в Earn
                 var earnPositions = await GetFlexibleEarnBalanceAsync ();
-                // 2. Ищем позицию для нашего актива
-                var targetPosition = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
-                if (targetPosition == null)
+                if (earnPositions == null || earnPositions.Count == 0)
                 {
-                    Log ($"❌ Нет Earn-позиции для {asset}");
+                    Log ($"❌ Нет позиций в Earn для {asset}");
                     return false;
                 }
 
-                // 3. Проверяем, достаточно ли средств в Earn
+                // 2. Ищем позицию для нужного актива
+                var targetPosition = earnPositions.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+                if (targetPosition == null)
+                {
+                    Log ($"❌ Не найдена Earn-позиция для {asset}");
+                    return false;
+                }
+
+                // 3. Проверяем доступное количество
                 decimal availableInEarn = decimal.Parse (targetPosition["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                Log ($"DEBUG: Доступно в Earn: {availableInEarn}, требуется: {amount}");
                 if (availableInEarn < amount - 0.000001m)
                 {
                     Log ($"⚠️ В Earn недостаточно {asset}: доступно {availableInEarn}, требуется {amount}");
                     return false;
                 }
 
-                // 4. Получаем правильный Product ID из позиции!
+                // 4. Получаем productId
                 string productId = targetPosition["productId"]?.ToString ();
                 if (string.IsNullOrEmpty (productId))
                 {
                     Log ($"❌ Не найден productId для {asset}");
                     return false;
                 }
+                Log ($"DEBUG: productId = {productId}");
 
-                // 5. Отправляем запрос на выкуп с правильным productId
+                // 5. Отправляем запрос на выкуп
                 long timestamp = GetTimestamp ();
                 string query = $"productId={productId}&amount={amount.ToString (CultureInfo.InvariantCulture)}&destAccount=SPOT&timestamp={timestamp}";
                 string signature = CreateSignature (query);
@@ -262,16 +272,14 @@ namespace BinanceBotWpf.Models
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
 
-                // Детальное логирование ответа API
-                Log ($"DEBUG Redeem {asset} response: {json}");
-
+                Log ($"DEBUG Redeem response: {json}");
                 if (!response.IsSuccessStatusCode)
                 {
                     Log ($"❌ Ошибка выкупа {asset}: HTTP {response.StatusCode}, ответ: {json}");
                     return false;
                 }
 
-                // 6. Ожидаем фактического зачисления на спот (проверяем каждые 2 секунды)
+                // 6. Ожидаем зачисления на спот
                 decimal initialSpot = await GetAccountBalanceAsync (asset);
                 for (int i = 0; i < maxWaitSeconds / 2; i++)
                 {
@@ -446,6 +454,9 @@ namespace BinanceBotWpf.Models
             return 0m;
         }
 
+        /// <summary>
+        /// Получает список активов в гибком Earn (Simple Earn Flexible).
+        /// </summary>
         public async Task<JArray> GetFlexibleEarnBalanceAsync()
         {
             try
@@ -457,19 +468,30 @@ namespace BinanceBotWpf.Models
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
                 var response = await SendWithRetryAsync (request);
                 string jsonString = await response.Content.ReadAsStringAsync ();
+
+                // Логируем сырой ответ от API
+                Log ($"DEBUG Earn response: {jsonString}");
+
                 if (response.IsSuccessStatusCode)
                 {
                     JToken token = JToken.Parse (jsonString);
+                    // Ответ может быть в разных форматах
                     if (token is JArray array) return array;
-                    if (token is JObject obj && obj["rows"] != null) return (JArray)obj["rows"];
-                    if (token is JObject obj2 && obj2["list"] != null) return (JArray)obj2["list"];
+                    if (token is JObject obj)
+                    {
+                        if (obj["rows"] != null) return (JArray)obj["rows"];
+                        if (obj["list"] != null) return (JArray)obj["list"];
+                    }
                 }
                 else
                 {
                     Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
                 }
             }
-            catch (Exception ex) { Log ($"Exception GetFlexibleEarn: {ex.Message}"); }
+            catch (Exception ex)
+            {
+                Log ($"Exception GetFlexibleEarn: {ex.Message}");
+            }
             return new JArray ();
         }
 
