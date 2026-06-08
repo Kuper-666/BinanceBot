@@ -1,4 +1,5 @@
-﻿using System;
+﻿#nullable enable
+using System;
 using System.IO;
 using System.Globalization;
 using System.Threading;
@@ -7,6 +8,8 @@ using System.Windows;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.ViewModels;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace BinanceBotWpf
 {
@@ -16,7 +19,6 @@ namespace BinanceBotWpf
 
         protected override async void OnStartup(StartupEventArgs e)
         {
-            // === 1. Защита от запуска нескольких копий ===
             const string mutexName = "Global\\{B9E8F2A1-5C7D-4A3E-8F2C-9D7E5B4A3C2F}";
             bool createdNew;
             _appMutex = new Mutex (true, mutexName, out createdNew);
@@ -27,24 +29,6 @@ namespace BinanceBotWpf
                 return;
             }
 
-            // === 2. Проверка обновлений (тихо, без UI) ===
-            //try
-            //{
-            //    var tempLogger = new Action<string> (msg => System.Diagnostics.Debug.WriteLine (msg));
-            //    var updater = new UpdateManager (tempLogger);
-            //    bool updated = await updater.CheckAndUpdateAsync (silent: true);
-            //    if (updated)
-            //    {
-            //        // Если обновление найдено и установлено, текущий процесс будет закрыт скриптом
-            //        return;
-            //    }
-            //}
-            //catch (Exception ex)
-            //{
-            //    System.Diagnostics.Debug.WriteLine ($"Ошибка при проверке обновлений: {ex.Message}");
-            //}
-
-            // === 3. Основная инициализация бота (ваш существующий код) ===
             base.OnStartup (e);
 
             string apiKey = "";
@@ -53,18 +37,25 @@ namespace BinanceBotWpf
             decimal minUsdcBalance = 5.50m;
             string telegramBotToken = "";
             string telegramChatId = "";
+            string futuresApiKey = "";
+            string futuresApiSecret = "";
+            int futuresLeverage = 5;
+            decimal futuresMaxRiskPercent = 0.10m;
 
             string configPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "config.txt");
+            var lines = new List<string> ();
 
             try
             {
                 if (File.Exists (configPath))
                 {
-                    var lines = File.ReadAllLines (configPath);
-                    foreach (var line in lines)
-                    {
-                        if (string.IsNullOrWhiteSpace (line) || !line.Contains ("=")) continue;
+                    lines = File.ReadAllLines (configPath).ToList ();
+                    bool needRewrite = false;
 
+                    for (int i = 0; i < lines.Count; i++)
+                    {
+                        var line = lines[i];
+                        if (string.IsNullOrWhiteSpace (line) || !line.Contains ("=")) continue;
                         var parts = line.Split ('=', 2);
                         string key = parts[0].Trim ().ToLower ();
                         string value = parts[1].Trim ();
@@ -75,7 +66,13 @@ namespace BinanceBotWpf
                                 apiKey = value;
                                 break;
                             case "apisecret":
-                                apiSecret = value;
+                                string decrypted = SecureStringHelper.Decrypt (value);
+                                apiSecret = decrypted;
+                                if (!value.StartsWith ("ENC:"))
+                                {
+                                    lines[i] = $"ApiSecret={SecureStringHelper.Encrypt (apiSecret)}";
+                                    needRewrite = true;
+                                }
                                 break;
                             case "istestnet":
                                 isTestnet = bool.Parse (value);
@@ -89,7 +86,30 @@ namespace BinanceBotWpf
                             case "telegramchatid":
                                 telegramChatId = value;
                                 break;
+                            case "futuresapikey":
+                                futuresApiKey = value;
+                                break;
+                            case "futuresapisecret":
+                                string futuresDecrypted = SecureStringHelper.Decrypt (value);
+                                futuresApiSecret = futuresDecrypted;
+                                if (!value.StartsWith ("ENC:"))
+                                {
+                                    lines[i] = $"futuresApiSecret={SecureStringHelper.Encrypt (futuresApiSecret)}";
+                                    needRewrite = true;
+                                }
+                                break;
+                            case "futuresleverage":
+                                futuresLeverage = int.Parse (value);
+                                break;
+                            case "futuresmaxriskpercent":
+                                futuresMaxRiskPercent = decimal.Parse (value, CultureInfo.InvariantCulture);
+                                break;
                         }
+                    }
+
+                    if (needRewrite)
+                    {
+                        File.WriteAllLines (configPath, lines);
                     }
                 }
             }
@@ -109,10 +129,16 @@ namespace BinanceBotWpf
             var rebalancer = new BalanceRebalancer (consoleLock, 0.1m);
 
             var tradingService = new TradingService (binanceClient, walletManager, earnManager, rebalancer, minUsdcBalance, telegramBotToken, telegramChatId);
-
             var viewModel = new MainWindowViewModel (tradingService, isTestnet);
             var mainWindow = new MainWindow (viewModel);
             mainWindow.Show ();
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            _appMutex?.ReleaseMutex ();
+            _appMutex?.Dispose ();
+            base.OnExit (e);
         }
     }
 }

@@ -11,9 +11,6 @@ namespace BinanceBotWpf.Models
 
     public class StrategyEngine
     {
-        public delegate void LogHandler(string message);
-        public event LogHandler OnLogGenerated;
-
         public StrategySignal AnalyzePairWithWallet(string symbol, List<decimal> closes, int fastPeriod, int slowPeriod, decimal currentPrice)
         {
             var signal = new StrategySignal ();

@@ -1,19 +1,17 @@
+using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
-using System.Collections.Generic;
-using System.Linq;
-using System.Diagnostics;
 
 namespace BinanceBotWpf.Models
 {
-    /// <summary>
-    /// Клиент для взаимодействия с Binance Spot API.
-    /// </summary>
     public class BinanceClient : IDisposable
     {
         private readonly string _apiKey;
@@ -23,6 +21,9 @@ namespace BinanceBotWpf.Models
         private readonly bool _useTestnet;
         private JObject _exchangeInfo;
         private readonly Dictionary<string, decimal> _stepSizeCache = new ();
+        private readonly SemaphoreSlim _rateLimiter = new SemaphoreSlim (5, 5);
+        private DateTime _lastRequestTime = DateTime.UtcNow;
+        private readonly TimeSpan _minInterval = TimeSpan.FromMilliseconds (200);
 
         public event Action<string> OnLogGenerated;
         public string LastOrderError { get; private set; }
@@ -54,13 +55,33 @@ namespace BinanceBotWpf.Models
             catch { _serverTimeOffset = 0; }
         }
 
+        private async Task<HttpResponseMessage> ThrottledSendAsync(HttpRequestMessage request)
+        {
+            await _rateLimiter.WaitAsync ();
+            try
+            {
+                var now = DateTime.UtcNow;
+                var elapsed = now - _lastRequestTime;
+                if (elapsed < _minInterval)
+                {
+                    await Task.Delay (_minInterval - elapsed);
+                }
+                _lastRequestTime = DateTime.UtcNow;
+                return await _httpClient.SendAsync (request);
+            }
+            finally
+            {
+                _rateLimiter.Release ();
+            }
+        }
+
         private async Task<HttpResponseMessage> SendWithRetryAsync(HttpRequestMessage request, int maxRetries = 3)
         {
             int retryCount = 0;
             int delayMs = 1000;
             while (true)
             {
-                var response = await _httpClient.SendAsync (request);
+                var response = await ThrottledSendAsync (request);
                 if (response.IsSuccessStatusCode) return response;
                 if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
                 {
@@ -74,7 +95,6 @@ namespace BinanceBotWpf.Models
             }
         }
 
-        /// <summary>Рыночный ордер (покупка/продажа).</summary>
         public async Task<JObject> PlaceOrder(string symbol, string side, string type, decimal quantity)
         {
             try
@@ -216,36 +236,23 @@ namespace BinanceBotWpf.Models
             }
         }
 
-        /// <summary>
-        /// Выкупает указанное количество актива из гибкого Earn на спотовый кошелек.
-        /// </summary>
-        /// <param name="asset">Актив (например, "USDC")</param>
-        /// <param name="amount">Количество для выкупа</param>
-        /// <param name="maxWaitSeconds">Максимальное время ожидания зачисления (сек)</param>
-        /// <returns>true если выкуп успешен, иначе false</returns>
         public async Task<bool> RedeemFlexibleEarnWithWaitAsync(string asset, decimal amount, int maxWaitSeconds = 60)
         {
             try
             {
                 Log ($"DEBUG: Попытка выкупа {amount} {asset} из Earn");
-
-                // 1. Получаем позиции в Earn
                 var earnPositions = await GetFlexibleEarnBalanceAsync ();
                 if (earnPositions == null || earnPositions.Count == 0)
                 {
                     Log ($"❌ Нет позиций в Earn для {asset}");
                     return false;
                 }
-
-                // 2. Ищем позицию для нужного актива
                 var targetPosition = earnPositions.FirstOrDefault (p => p["asset"]?.ToString () == asset);
                 if (targetPosition == null)
                 {
                     Log ($"❌ Не найдена Earn-позиция для {asset}");
                     return false;
                 }
-
-                // 3. Проверяем доступное количество
                 decimal availableInEarn = decimal.Parse (targetPosition["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                 Log ($"DEBUG: Доступно в Earn: {availableInEarn}, требуется: {amount}");
                 if (availableInEarn < amount - 0.000001m)
@@ -253,17 +260,12 @@ namespace BinanceBotWpf.Models
                     Log ($"⚠️ В Earn недостаточно {asset}: доступно {availableInEarn}, требуется {amount}");
                     return false;
                 }
-
-                // 4. Получаем productId
                 string productId = targetPosition["productId"]?.ToString ();
                 if (string.IsNullOrEmpty (productId))
                 {
                     Log ($"❌ Не найден productId для {asset}");
                     return false;
                 }
-                Log ($"DEBUG: productId = {productId}");
-
-                // 5. Отправляем запрос на выкуп
                 long timestamp = GetTimestamp ();
                 string query = $"productId={productId}&amount={amount.ToString (CultureInfo.InvariantCulture)}&destAccount=SPOT&timestamp={timestamp}";
                 string signature = CreateSignature (query);
@@ -278,8 +280,6 @@ namespace BinanceBotWpf.Models
                     Log ($"❌ Ошибка выкупа {asset}: HTTP {response.StatusCode}, ответ: {json}");
                     return false;
                 }
-
-                // 6. Ожидаем зачисления на спот
                 decimal initialSpot = await GetAccountBalanceAsync (asset);
                 for (int i = 0; i < maxWaitSeconds / 2; i++)
                 {
@@ -290,8 +290,6 @@ namespace BinanceBotWpf.Models
                         Log ($"✅ Выкуп {amount} {asset} подтверждён. Баланс на споте: {spotBalance}");
                         return true;
                     }
-
-                    // Альтернативная проверка: уменьшился ли баланс в Earn
                     var freshEarn = await GetFlexibleEarnBalanceAsync ();
                     var freshPos = freshEarn?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
                     if (freshPos != null)
@@ -304,7 +302,6 @@ namespace BinanceBotWpf.Models
                         }
                     }
                 }
-
                 Log ($"⚠️ Таймаут {maxWaitSeconds} сек: выкуп {amount} {asset} не подтверждён. Спот баланс: {await GetAccountBalanceAsync (asset)}");
                 return false;
             }
@@ -410,7 +407,7 @@ namespace BinanceBotWpf.Models
                     var data = JArray.Parse (json);
                     return data.Select (item => new BinanceKline
                     {
-                        Open = decimal.Parse (item[0].ToString (), CultureInfo.InvariantCulture),
+                        Open = decimal.Parse (item[1].ToString (), CultureInfo.InvariantCulture),
                         High = decimal.Parse (item[2].ToString (), CultureInfo.InvariantCulture),
                         Low = decimal.Parse (item[3].ToString (), CultureInfo.InvariantCulture),
                         Close = decimal.Parse (item[4].ToString (), CultureInfo.InvariantCulture),
@@ -454,9 +451,6 @@ namespace BinanceBotWpf.Models
             return 0m;
         }
 
-        /// <summary>
-        /// Получает список активов в гибком Earn (Simple Earn Flexible).
-        /// </summary>
         public async Task<JArray> GetFlexibleEarnBalanceAsync()
         {
             try
@@ -468,14 +462,10 @@ namespace BinanceBotWpf.Models
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
                 var response = await SendWithRetryAsync (request);
                 string jsonString = await response.Content.ReadAsStringAsync ();
-
-                // Логируем сырой ответ от API
                 Log ($"DEBUG Earn response: {jsonString}");
-
                 if (response.IsSuccessStatusCode)
                 {
                     JToken token = JToken.Parse (jsonString);
-                    // Ответ может быть в разных форматах
                     if (token is JArray array) return array;
                     if (token is JObject obj)
                     {

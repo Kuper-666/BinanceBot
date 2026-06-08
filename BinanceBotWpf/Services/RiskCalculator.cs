@@ -20,13 +20,13 @@ namespace BinanceBotWpf.Services
             _logger = logger;
         }
 
-        public async Task<decimal> CalculateDynamicRiskAsync(decimal totalBalance, decimal baseRisk, decimal volatility)
+        public Task<decimal> CalculateDynamicRiskAsync(decimal totalBalance, decimal baseRisk, decimal volatility)
         {
             volatility = Math.Clamp (volatility, 0.005m, 0.30m);
             decimal riskMultiplier = Math.Max (0.2m, 1 - ( volatility - 0.02m ) * 10);
             decimal adjustedRisk = Math.Clamp (baseRisk * riskMultiplier, 0.05m, 0.25m);
             _logger?.Invoke ($"📊 Волатильность: {volatility:P2}, скорректированный риск: {adjustedRisk:P2}");
-            return totalBalance * adjustedRisk;
+            return Task.FromResult (totalBalance * adjustedRisk);
         }
 
         public async Task<decimal> CalculateAtrAsync(string symbol, int period = 14)
