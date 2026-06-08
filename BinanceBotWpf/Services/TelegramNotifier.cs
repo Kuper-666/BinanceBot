@@ -83,6 +83,7 @@ namespace BinanceBotWpf.Services
         /// <summary>Запуск прослушивания входящих сообщений.</summary>
         public void StartListening(Func<string, string, Task> onCommandReceived)
         {
+            if (_commandHandler != null) return; // уже подписан
             _commandHandler = onCommandReceived;
             _cts = new CancellationTokenSource ();
             _ = Task.Run (() => ListenLoop (_cts.Token));
@@ -101,7 +102,9 @@ namespace BinanceBotWpf.Services
                     var updates = await _botClient.GetUpdates (offset: offset, timeout: 30, cancellationToken: token);
                     foreach (var update in updates)
                     {
+                        // Увеличиваем offset ПЕРЕД обработкой, чтобы не получить это же обновление снова
                         offset = update.Id + 1;
+
                         if (update.CallbackQuery != null)
                         {
                             await HandleCallbackQuery (update.CallbackQuery);
