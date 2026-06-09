@@ -16,6 +16,7 @@ namespace BinanceBotWpf.Services
         private readonly string _positionsFilePath;
         private readonly Action<string> _logger;
         private Dictionary<string, OpenPosition> _positions = new ();
+        public bool IsBreakevenSet { get; set; } = false;
 
         public IReadOnlyDictionary<string, OpenPosition> Positions => _positions;
 
@@ -102,5 +103,6 @@ namespace BinanceBotWpf.Services
         public long OcoOrderListId { get; set; }
         public decimal InitialTakeProfitPrice { get; set; }
         public decimal HighestPriceSinceOpen { get; set; }
+        public bool IsBreakevenSet { get; set; } = false; // добавьте эту строку
     }
 }

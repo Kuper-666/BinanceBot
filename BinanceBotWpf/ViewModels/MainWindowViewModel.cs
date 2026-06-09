@@ -1,23 +1,20 @@
-﻿using BinanceBotWpf.Models;
-using BinanceBotWpf.Services;
-using OxyPlot;
-using OxyPlot.Axes;
-using OxyPlot.Series;
-using System;
-using System.Collections.Generic;
+﻿using System;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Globalization;
-using System.IO;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text.Json;
+using System.Linq;
+using System.Windows.Input;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Input;
+using System.IO;
+using System.Globalization;
 using System.Windows.Media;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using BinanceBotWpf.Services;
+using BinanceBotWpf.Models;
+using System.Collections.Generic;
+using OxyPlot;
+using OxyPlot.Series;
+using OxyPlot.Axes;
 
 namespace BinanceBotWpf.ViewModels
 {
@@ -197,28 +194,17 @@ namespace BinanceBotWpf.ViewModels
 
                 _isLoadingSettings = true;
 
-                // Безопасное чтение каждого параметра с приведением типов
-                if (settings.TryGetValue ("FastSma", out var fs))
-                    FastSma = ConvertToInt32 (fs, 9);
-                if (settings.TryGetValue ("SlowSma", out var ss))
-                    SlowSma = ConvertToInt32 (ss, 21);
-                if (settings.TryGetValue ("RsiBuyThreshold", out var rb))
-                    RsiBuyThreshold = ConvertToInt32 (rb, 30);
-                if (settings.TryGetValue ("RsiSellThreshold", out var rs))
-                    RsiSellThreshold = ConvertToInt32 (rs, 70);
-                if (settings.TryGetValue ("StopLossPercent", out var sl))
-                    StopLossPercent = ConvertToDecimal (sl, 0.05m);
-                if (settings.TryGetValue ("TakeProfitPercent", out var tp))
-                    TakeProfitPercent = ConvertToDecimal (tp, 0.10m);
-                if (settings.TryGetValue ("TrailingStopPercent", out var tr))
-                    TrailingStopPercent = ConvertToDecimal (tr, 0.02m);
-                if (settings.TryGetValue ("MinBalanceForTrading", out var mb))
-                    MinBalanceForTrading = ConvertToDecimal (mb, 20m);
-                if (settings.TryGetValue ("MaxRiskPercent", out var mr))
-                    MaxRiskPercent = ConvertToDecimal (mr, 0.25m);
+                if (settings.TryGetValue ("FastSma", out var fs)) FastSma = ConvertToInt32 (fs, 9);
+                if (settings.TryGetValue ("SlowSma", out var ss)) SlowSma = ConvertToInt32 (ss, 21);
+                if (settings.TryGetValue ("RsiBuyThreshold", out var rb)) RsiBuyThreshold = ConvertToInt32 (rb, 30);
+                if (settings.TryGetValue ("RsiSellThreshold", out var rs)) RsiSellThreshold = ConvertToInt32 (rs, 70);
+                if (settings.TryGetValue ("StopLossPercent", out var sl)) StopLossPercent = ConvertToDecimal (sl, 0.05m);
+                if (settings.TryGetValue ("TakeProfitPercent", out var tp)) TakeProfitPercent = ConvertToDecimal (tp, 0.10m);
+                if (settings.TryGetValue ("TrailingStopPercent", out var tr)) TrailingStopPercent = ConvertToDecimal (tr, 0.02m);
+                if (settings.TryGetValue ("MinBalanceForTrading", out var mb)) MinBalanceForTrading = ConvertToDecimal (mb, 20m);
+                if (settings.TryGetValue ("MaxRiskPercent", out var mr)) MaxRiskPercent = ConvertToDecimal (mr, 0.25m);
 
                 _isLoadingSettings = false;
-
                 AddLog ($"✅ Настройки загружены: FastSma={FastSma}, SlowSma={SlowSma}, RsiBuy={RsiBuyThreshold}, RsiSell={RsiSellThreshold}, SL={StopLossPercent:P0}, TP={TakeProfitPercent:P0}");
             }
             catch (Exception ex)
@@ -228,14 +214,14 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        // Вспомогательные методы для безопасного преобразования
         private int ConvertToInt32(object value, int defaultValue)
         {
             try
             {
-                if (value is JsonElement elem)
+                if (value is System.Text.Json.JsonElement elem)
                 {
-                    return elem.ValueKind == JsonValueKind.Number ? elem.GetInt32 () : Convert.ToInt32 (elem.GetString ());
+                    if (elem.ValueKind == System.Text.Json.JsonValueKind.Number) return elem.GetInt32 ();
+                    if (elem.ValueKind == System.Text.Json.JsonValueKind.String) return int.Parse (elem.GetString ()!);
                 }
                 return Convert.ToInt32 (value);
             }
@@ -246,9 +232,10 @@ namespace BinanceBotWpf.ViewModels
         {
             try
             {
-                if (value is JsonElement elem)
+                if (value is System.Text.Json.JsonElement elem)
                 {
-                    return elem.ValueKind == JsonValueKind.Number ? elem.GetDecimal () : Convert.ToDecimal (elem.GetString (), CultureInfo.InvariantCulture);
+                    if (elem.ValueKind == System.Text.Json.JsonValueKind.Number) return elem.GetDecimal ();
+                    if (elem.ValueKind == System.Text.Json.JsonValueKind.String) return decimal.Parse (elem.GetString ()!, CultureInfo.InvariantCulture);
                 }
                 return Convert.ToDecimal (value, CultureInfo.InvariantCulture);
             }
@@ -280,10 +267,7 @@ namespace BinanceBotWpf.ViewModels
                     File.WriteAllText (_settingsPath, json);
                     AddLog ($"💾 Настройки сохранены в {_settingsPath}");
                 }
-                catch (Exception ex)
-                {
-                    AddLog ($"❌ Ошибка сохранения настроек: {ex.Message}");
-                }
+                catch (Exception ex) { AddLog ($"❌ Ошибка сохранения настроек: {ex.Message}"); }
             }
         }
 
@@ -291,7 +275,7 @@ namespace BinanceBotWpf.ViewModels
         {
             AddLog ("🔄 Принудительная перезагрузка настроек из файла...");
             LoadSettings ();
-            // Принудительно обновляем UI
+            // Оповещаем UI об изменении свойств
             OnPropertyChanged (nameof (FastSma));
             OnPropertyChanged (nameof (SlowSma));
             OnPropertyChanged (nameof (RsiBuyThreshold));

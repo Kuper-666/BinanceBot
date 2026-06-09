@@ -15,7 +15,7 @@
     <None Remove="Resources\binance_bot.ico" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Binance.Net" Version="12.13.0" />
+    <PackageReference Include="Binance.Net" Version="12.14.0" />
     <PackageReference Include="CsvHelper" Version="33.1.0" />
     <PackageReference Include="LiveChartsCore" Version="2.0.4" />
     <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.4" />
@@ -23,6 +23,7 @@
     <PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
+    <PackageReference Include="Polly" Version="8.6.6" />
     <PackageReference Include="SkiaSharp.Views.WPF" Version="3.119.0" />
     <PackageReference Include="SkiaSharp" Version="3.119.4" />
     <PackageReference Include="SkiaSharp.HarfBuzz" Version="3.119.4" />
@@ -33,7 +34,7 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="bot_icon.svg" />
-    <Resource Include="optimize_strategy.py">
+    <Resource Include="Resources\optimize_strategy.py">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </Resource>
     <Resource Include="Resources\binance_bot.ico">

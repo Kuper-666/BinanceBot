@@ -1,4 +1,5 @@
 ﻿using Binance.Net.Clients;
+using CryptoExchange.Net.Objects;
 using CryptoExchange.Net.Objects.Sockets;
 using System;
 using System.Collections.Concurrent;
@@ -17,10 +18,14 @@ namespace BinanceBotWpf.Services
         private readonly SemaphoreSlim _subscribeSemaphore = new (1, 1);
         private CancellationTokenSource _reconnectCts = new ();
         private bool _disposed;
+        private readonly int _maxReconnectAttempts = 10;
+        private readonly TimeSpan _initialReconnectDelay = TimeSpan.FromSeconds (2);
+        private readonly TimeSpan _maxReconnectDelay = TimeSpan.FromSeconds (30);
 
         public WebSocketPriceManager(Action<string> logger)
         {
             _logger = logger;
+            // Используем клиент с настройками по умолчанию
             _socketClient = new BinanceSocketClient ();
         }
 
@@ -45,21 +50,23 @@ namespace BinanceBotWpf.Services
 
         private async Task SubscribeWithRetry(string symbol, CancellationToken cancellationToken)
         {
-            int retryCount = 0;
-            int maxRetries = 10;
-            int baseDelay = 2000;
+            int attempt = 0;
+            TimeSpan delay = _initialReconnectDelay;
 
-            while (!cancellationToken.IsCancellationRequested && retryCount < maxRetries)
+            while (!cancellationToken.IsCancellationRequested && attempt < _maxReconnectAttempts)
             {
                 try
                 {
                     var result = await _socketClient.SpotApi.ExchangeData.SubscribeToTickerUpdatesAsync (symbol, update =>
                     {
-                        var price = update.Data.LastPrice;
-                        _currentPrices.AddOrUpdate (symbol, price, (k, v) => price);
+                        if (update?.Data?.LastPrice != null)
+                        {
+                            decimal price = update.Data.LastPrice;
+                            _currentPrices.AddOrUpdate (symbol, price, (_, _) => price);
+                        }
                     }, cancellationToken);
 
-                    if (result.Success)
+                    if (result.Success && result.Data != null)
                     {
                         _subscriptions[symbol] = result.Data;
                         _logger?.Invoke ($"✅ WebSocket: подписка на {symbol} успешна");
@@ -67,9 +74,9 @@ namespace BinanceBotWpf.Services
                     }
                     else
                     {
-                        _logger?.Invoke ($"⚠️ WebSocket: ошибка подписки на {symbol}: {result.Error?.Message}. Попытка {retryCount + 1}");
-                        retryCount++;
-                        int delay = baseDelay * (int)Math.Pow (2, retryCount);
+                        _logger?.Invoke ($"⚠️ WebSocket: ошибка подписки на {symbol}: {result.Error?.Message}. Попытка {attempt + 1}");
+                        attempt++;
+                        delay = TimeSpan.FromTicks (Math.Min ((long)( delay.Ticks * 2 ), _maxReconnectDelay.Ticks));
                         await Task.Delay (delay, cancellationToken);
                     }
                 }
@@ -79,17 +86,18 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Invoke ($"❌ WebSocket: исключение при подписке {symbol}: {ex.Message}. Попытка {retryCount + 1}");
-                    retryCount++;
-                    int delay = baseDelay * (int)Math.Pow (2, retryCount);
+                    _logger?.Invoke ($"❌ WebSocket: исключение при подписке {symbol}: {ex.Message}. Попытка {attempt + 1}");
+                    attempt++;
+                    delay = TimeSpan.FromTicks (Math.Min ((long)( delay.Ticks * 2 ), _maxReconnectDelay.Ticks));
                     await Task.Delay (delay, cancellationToken);
                 }
             }
 
-            _logger?.Invoke ($"❌ WebSocket: не удалось подписаться на {symbol} после {maxRetries} попыток");
+            _logger?.Invoke ($"❌ WebSocket: не удалось подписаться на {symbol} после {_maxReconnectAttempts} попыток");
         }
 
         public decimal GetCurrentPrice(string symbol) => _currentPrices.TryGetValue (symbol, out var price) ? price : 0;
+
         public string[] GetSubscribedSymbols() => _subscriptions.Keys.ToArray ();
 
         public void Dispose()

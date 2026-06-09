@@ -1,6 +1,5 @@
 ﻿using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
-using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -66,6 +65,7 @@ namespace BinanceBotWpf.Services
         private DateTime _lastTelegramCommandTime = DateTime.MinValue;
         private readonly TimeSpan _telegramCommandCooldown = TimeSpan.FromSeconds (5);
         private bool _isUpdating = false;
+        private ErrorHandler _errorHandler;
 
         private DateTime _lastOptimizationRun = DateTime.MinValue;
         private readonly TimeSpan _optimizationInterval = TimeSpan.FromHours (24);
@@ -138,6 +138,8 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex) { logAction ($"❌ Ошибка инициализации Telegram: {ex.Message}"); }
             }
             else logAction ("⚠️ Telegram не настроен. Уведомления отключены.");
+
+            _errorHandler = new ErrorHandler (logAction, async (msg) => { if (_telegram != null) await _telegram.SendErrorNotification (msg); });
 
             if (_webSocketManager == null)
             {
@@ -590,7 +592,8 @@ namespace BinanceBotWpf.Services
                     HighestPrice = sig.Price,
                     HighestPriceSinceOpen = sig.Price,
                     InitialTakeProfitPrice = takeProfitPrice,
-                    OcoOrderListId = ocoOrderListId
+                    OcoOrderListId = ocoOrderListId,
+                    IsBreakevenSet = false
                 };
                 _positionManager.AddOrUpdate (sig.Symbol, pos);
                 _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
@@ -608,7 +611,6 @@ namespace BinanceBotWpf.Services
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
             if (spotBalance < 0.000001m)
             {
-                // Пытаемся выкупить из Earn
                 var earnPositions = await _client.GetFlexibleEarnBalanceAsync ();
                 var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
                 if (earnPos != null)
@@ -715,51 +717,64 @@ namespace BinanceBotWpf.Services
                 decimal price = await GetCurrentPrice (sym);
                 if (price <= 0) continue;
 
+                decimal profitPercent = ( price - pos.EntryPrice ) / pos.EntryPrice;
+
+                // 1. Перенос в безубыток при 2%
+                if (!pos.IsBreakevenSet && profitPercent >= 0.02m)
+                {
+                    pos.StopLossPrice = pos.EntryPrice;
+                    pos.IsBreakevenSet = true;
+                    _ui?.AddLog ($"🛡️ {sym}: стоп-лосс перемещён в безубыток ({pos.StopLossPrice:F4})");
+                    await UpdateOcoOrder (sym, pos);
+                }
+
+                // 2. Трейлинг-стоп (только повышение)
                 if (price > pos.HighestPrice)
                 {
                     pos.HighestPrice = price;
                     decimal newSl = pos.HighestPrice * ( 1 - _ui.TrailingStopPercent );
-                    if (newSl > pos.StopLossPrice) pos.StopLossPrice = newSl;
-                }
-
-                if (price > pos.HighestPriceSinceOpen)
-                {
-                    pos.HighestPriceSinceOpen = price;
-                    decimal profitPercent = ( price - pos.EntryPrice ) / pos.EntryPrice;
-                    if (profitPercent > 0.02m)
+                    if (newSl > pos.StopLossPrice)
                     {
-                        decimal newTP = price * ( 1 + _ui.TakeProfitPercent );
-                        if (newTP > pos.TakeProfitPrice)
-                        {
-                            pos.TakeProfitPrice = newTP;
-                            _ui?.AddLog ($"📈 Трейлинг TP для {sym}: повышен до {newTP:F4}");
-                            await UpdateOcoOrder (sym, pos);
-                        }
+                        pos.StopLossPrice = newSl;
+                        _ui?.AddLog ($"📈 {sym}: трейлинг-стоп повышен до {pos.StopLossPrice:F4}");
+                        await UpdateOcoOrder (sym, pos);
                     }
                 }
 
-                if (price >= pos.EntryPrice * 1.05m && pos.Quantity > 0)
+                // 3. Частичное закрытие по уровням
+                decimal[] closeLevels = { 0.05m, 0.10m, 0.15m };
+                decimal[] closeRatios = { 0.25m, 0.25m, 0.50m };
+                for (int i = 0; i < closeLevels.Length; i++)
                 {
-                    decimal stepSize = await _client.GetStepSizeAsync (sym);
-                    decimal closeQty = Math.Floor (pos.Quantity / 2 / stepSize) * stepSize;
-                    if (closeQty > 0.000001m)
+                    if (profitPercent >= closeLevels[i] && pos.Quantity > 0)
                     {
-                        var order = await _client.PlaceOrder (sym, "SELL", "MARKET", closeQty);
-                        if (order != null)
+                        decimal stepSize = await _client.GetStepSizeAsync (sym);
+                        decimal closeQty = Math.Floor (pos.Quantity * closeRatios[i] / stepSize) * stepSize;
+                        if (closeQty > 0.000001m)
                         {
-                            _ui?.AddLog ($"🎯 Частичная фиксация: продано {closeQty} {sym} по {price:F4} (+5%)");
-                            pos.Quantity -= closeQty;
-                            if (pos.Quantity <= 0) toClose.Add (sym);
-                            else
+                            var order = await _client.PlaceOrder (sym, "SELL", "MARKET", closeQty);
+                            if (order != null)
                             {
-                                pos.StopLossPrice = pos.EntryPrice;
-                                _ui?.AddLog ($"🛡️ Стоп-лосс для {sym} перемещён в безубыток: {pos.StopLossPrice:F4}");
-                                await UpdateOcoOrder (sym, pos);
+                                decimal pnlPart = ( price - pos.EntryPrice ) * closeQty;
+                                _ui?.AddLog ($"🎯 Частичная фиксация {closeQty} {sym} по {price:F4} (+{closeLevels[i] * 100:F0}%) | PnL: {pnlPart:F2}");
+                                pos.Quantity -= closeQty;
+                                if (pos.Quantity <= 0)
+                                {
+                                    toClose.Add (sym);
+                                    break;
+                                }
+                                if (!pos.IsBreakevenSet && pos.Quantity > 0)
+                                {
+                                    pos.StopLossPrice = pos.EntryPrice;
+                                    pos.IsBreakevenSet = true;
+                                    await UpdateOcoOrder (sym, pos);
+                                }
                             }
                         }
                     }
                 }
 
+                // 4. Полное закрытие по стопу, тейку или времени
                 if (price <= pos.StopLossPrice || price >= pos.TakeProfitPrice || DateTime.UtcNow - pos.OpenTime > TimeSpan.FromHours (2))
                     toClose.Add (sym);
             }
@@ -919,26 +934,17 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync ($"📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {_ui?.WinRate ?? 0:F1}%", chatId);
                     break;
                 case "/update":
-                    if (_isUpdating)
-                    {
-                        await _telegram.SendMessageAsync ("⏳ Обновление уже выполняется, подождите...", chatId);
-                        return;
-                    }
+                    if (_isUpdating) { await _telegram.SendMessageAsync ("⏳ Обновление уже выполняется, подождите...", chatId); return; }
                     _isUpdating = true;
                     try
                     {
                         await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
                         var updater = new UpdateManager (msg => _ui?.AddLog (msg));
                         bool updated = await updater.CheckAndUpdateAsync (silent: false);
-                        if (!updated)
-                            await _telegram.SendMessageAsync ("✅ Обновлений не найдено.", chatId);
-                        else
-                            await _telegram.SendMessageAsync ("✅ Бот обновлён! Перезапустите его вручную.", chatId);
+                        if (!updated) await _telegram.SendMessageAsync ("✅ Обновлений не найдено.", chatId);
+                        else await _telegram.SendMessageAsync ("✅ Бот обновлён! Перезапустите его вручную.", chatId);
                     }
-                    catch (Exception ex)
-                    {
-                        await _telegram.SendMessageAsync ($"❌ Ошибка обновления: {ex.Message}", chatId);
-                    }
+                    catch (Exception ex) { await _telegram.SendMessageAsync ($"❌ Ошибка обновления: {ex.Message}", chatId); }
                     finally { _isUpdating = false; }
                     break;
                 case "/dust":
@@ -947,8 +953,7 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync ("✅ Конвертация пыли выполнена.", chatId);
                     break;
                 case "/errors":
-                    string errors;
-                    lock (_recentErrors) { errors = _recentErrors.Count == 0 ? "✅ Нет ошибок" : string.Join ("\n", _recentErrors); }
+                    string errors; lock (_recentErrors) { errors = _recentErrors.Count == 0 ? "✅ Нет ошибок" : string.Join ("\n", _recentErrors); }
                     await _telegram.SendMessageAsync ($"📋 <b>Последние ошибки:</b>\n{errors}", chatId);
                     break;
                 case "/performance":
@@ -958,20 +963,16 @@ namespace BinanceBotWpf.Services
                     await SendPnlChartAsync (chatId);
                     break;
                 case "/stop_all":
-                    StopAllLoops ();
-                    await _telegram.SendMessageAsync ("⏸️ Все циклы остановлены.", chatId);
+                    StopAllLoops (); await _telegram.SendMessageAsync ("⏸️ Все циклы остановлены.", chatId);
                     break;
                 case "/start_all":
-                    StartAllLoops ();
-                    await _telegram.SendMessageAsync ("▶️ Все циклы запущены.", chatId);
+                    StartAllLoops (); await _telegram.SendMessageAsync ("▶️ Все циклы запущены.", chatId);
                     break;
                 case "/reload":
-                    _ui?.ReloadSettings ();
-                    await _telegram.SendMessageAsync ("✅ Настройки перезагружены из файла.", chatId);
+                    _ui?.ReloadSettings (); await _telegram.SendMessageAsync ("✅ Настройки перезагружены из файла.", chatId);
                     break;
                 case "/export_klines":
-                    await ExportKlinesToCsv ();
-                    await _telegram.SendMessageAsync ("📁 Экспорт свечей выполнен в папку Export/Klines", chatId);
+                    await ExportKlinesToCsv (); await _telegram.SendMessageAsync ("📁 Экспорт свечей выполнен в папку Export/Klines", chatId);
                     break;
                 case "/optimize":
                     await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию стратегии... Это может занять несколько минут.", chatId);
@@ -1010,10 +1011,7 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendPhotoAsync (chatId, fs, "📈 График баланса USDC");
                 File.Delete (tempFile);
             }
-            catch (Exception ex)
-            {
-                await _telegram.SendMessageAsync ($"❌ Ошибка создания графика: {ex.Message}", chatId);
-            }
+            catch (Exception ex) { await _telegram.SendMessageAsync ($"❌ Ошибка создания графика: {ex.Message}", chatId); }
         }
 
         private string GetPerformanceStats()
@@ -1087,7 +1085,7 @@ namespace BinanceBotWpf.Services
             _webSocketManager?.Dispose ();
         }
 
-        // ============== МЕТОДЫ ОПТИМИЗАЦИИ (встроенный Python) ==============
+        // ==================== МЕТОДЫ ОПТИМИЗАЦИИ ====================
 
         private async Task RunOptimizationAndUpdateSettings()
         {
@@ -1134,19 +1132,8 @@ namespace BinanceBotWpf.Services
                 var outputBuilder = new StringBuilder ();
                 var errorBuilder = new StringBuilder ();
 
-                process.OutputDataReceived += (sender, e) =>
-                {
-                    if (!string.IsNullOrEmpty (e.Data))
-                    {
-                        outputBuilder.AppendLine (e.Data);
-                        _ui?.AddLog ($"[Python] {e.Data}");
-                    }
-                };
-                process.ErrorDataReceived += (sender, e) =>
-                {
-                    if (!string.IsNullOrEmpty (e.Data))
-                        errorBuilder.AppendLine (e.Data);
-                };
+                process.OutputDataReceived += (sender, e) => { if (!string.IsNullOrEmpty (e.Data)) { outputBuilder.AppendLine (e.Data); _ui?.AddLog ($"[Python] {e.Data}"); } };
+                process.ErrorDataReceived += (sender, e) => { if (!string.IsNullOrEmpty (e.Data)) errorBuilder.AppendLine (e.Data); };
 
                 process.BeginOutputReadLine ();
                 process.BeginErrorReadLine ();
@@ -1156,8 +1143,7 @@ namespace BinanceBotWpf.Services
                 if (process.ExitCode != 0)
                 {
                     _ui?.AddLog ($"❌ Ошибка оптимизации (код {process.ExitCode}):");
-                    if (errorBuilder.Length > 0)
-                        _ui?.AddLog (errorBuilder.ToString ());
+                    if (errorBuilder.Length > 0) _ui?.AddLog (errorBuilder.ToString ());
                     return;
                 }
 
@@ -1179,31 +1165,20 @@ namespace BinanceBotWpf.Services
                 }
 
                 bool updated = false;
-                if (newParams.TryGetValue ("RsiBuyThreshold", out var rsiBuy))
-                { _ui.RsiBuyThreshold = Convert.ToInt32 (rsiBuy); updated = true; }
-                if (newParams.TryGetValue ("RsiSellThreshold", out var rsiSell))
-                { _ui.RsiSellThreshold = Convert.ToInt32 (rsiSell); updated = true; }
-                if (newParams.TryGetValue ("StopLossPercent", out var sl))
-                { _ui.StopLossPercent = Convert.ToDecimal (sl, CultureInfo.InvariantCulture); updated = true; }
-                if (newParams.TryGetValue ("TakeProfitPercent", out var tp))
-                { _ui.TakeProfitPercent = Convert.ToDecimal (tp, CultureInfo.InvariantCulture); updated = true; }
-                if (newParams.TryGetValue ("FastSma", out var fs))
-                { _ui.FastSma = Convert.ToInt32 (fs); updated = true; }
-                if (newParams.TryGetValue ("SlowSma", out var ss))
-                { _ui.SlowSma = Convert.ToInt32 (ss); updated = true; }
+                if (newParams.TryGetValue ("RsiBuyThreshold", out var rsiBuy)) { _ui.RsiBuyThreshold = Convert.ToInt32 (rsiBuy); updated = true; }
+                if (newParams.TryGetValue ("RsiSellThreshold", out var rsiSell)) { _ui.RsiSellThreshold = Convert.ToInt32 (rsiSell); updated = true; }
+                if (newParams.TryGetValue ("StopLossPercent", out var sl)) { _ui.StopLossPercent = Convert.ToDecimal (sl, CultureInfo.InvariantCulture); updated = true; }
+                if (newParams.TryGetValue ("TakeProfitPercent", out var tp)) { _ui.TakeProfitPercent = Convert.ToDecimal (tp, CultureInfo.InvariantCulture); updated = true; }
+                if (newParams.TryGetValue ("FastSma", out var fs)) { _ui.FastSma = Convert.ToInt32 (fs); updated = true; }
+                if (newParams.TryGetValue ("SlowSma", out var ss)) { _ui.SlowSma = Convert.ToInt32 (ss); updated = true; }
 
                 var extraPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "advanced_settings.json");
-                Dictionary<string, object> extra = new Dictionary<string, object> ();
+                var extra = new Dictionary<string, object> ();
                 if (File.Exists (extraPath))
                 {
-                    try
-                    {
-                        string extraJson = File.ReadAllText (extraPath);
-                        extra = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (extraJson) ?? new Dictionary<string, object> ();
-                    }
+                    try { extra = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (File.ReadAllText (extraPath)) ?? new Dictionary<string, object> (); }
                     catch { }
                 }
-
                 if (newParams.TryGetValue ("BbPeriod", out var bbPeriod)) extra["BbPeriod"] = bbPeriod;
                 if (newParams.TryGetValue ("BbK", out var bbK)) extra["BbK"] = bbK;
                 if (newParams.TryGetValue ("MacdFast", out var macdFast)) extra["MacdFast"] = macdFast;
@@ -1213,17 +1188,12 @@ namespace BinanceBotWpf.Services
 
                 File.WriteAllText (extraPath, System.Text.Json.JsonSerializer.Serialize (extra, new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
 
-                if (updated)
-                    _ui?.AddLog ("✅ Параметры стратегии обновлены по результатам оптимизации!");
-                else
-                    _ui?.AddLog ("⚠️ Не удалось обновить параметры (не найдены ключи в JSON).");
+                if (updated) _ui?.AddLog ("✅ Параметры стратегии обновлены по результатам оптимизации!");
+                else _ui?.AddLog ("⚠️ Не удалось обновить параметры (не найдены ключи в JSON).");
 
                 try { File.Delete (scriptPath); } catch { }
             }
-            catch (Exception ex)
-            {
-                _ui?.AddLog ($"❌ Ошибка при запуске оптимизации: {ex.Message}");
-            }
+            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка при запуске оптимизации: {ex.Message}"); }
         }
 
         private async Task<string> ExtractEmbeddedScriptAsync()
@@ -1233,17 +1203,13 @@ namespace BinanceBotWpf.Services
                 .FirstOrDefault (r => r.EndsWith ("optimize_strategy.py", StringComparison.OrdinalIgnoreCase));
             if (resourceName == null)
                 throw new Exception ("Встроенный скрипт optimize_strategy.py не найден в ресурсах сборки.");
-
             using (Stream stream = assembly.GetManifestResourceStream (resourceName))
             {
-                if (stream == null)
-                    throw new Exception ($"Не удалось загрузить ресурс {resourceName}.");
+                if (stream == null) throw new Exception ($"Не удалось загрузить ресурс {resourceName}.");
                 string tempPath = Path.Combine (Path.GetTempPath (), "BinanceBotOptimize", "optimize_strategy.py");
                 Directory.CreateDirectory (Path.GetDirectoryName (tempPath));
                 using (FileStream fileStream = new FileStream (tempPath, FileMode.Create, FileAccess.Write))
-                {
                     await stream.CopyToAsync (fileStream);
-                }
                 return tempPath;
             }
         }
@@ -1252,24 +1218,13 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                var psi = new ProcessStartInfo
-                {
-                    FileName = "python",
-                    Arguments = "--version",
-                    UseShellExecute = false,
-                    CreateNoWindow = true,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true
-                };
+                var psi = new ProcessStartInfo { FileName = "python", Arguments = "--version", UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
                 using var process = Process.Start (psi);
                 if (process == null) return false;
                 await process.WaitForExitAsync ();
                 return process.ExitCode == 0;
             }
-            catch
-            {
-                return false;
-            }
+            catch { return false; }
         }
     }
 }

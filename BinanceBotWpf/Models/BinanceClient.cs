@@ -1,14 +1,14 @@
-using Newtonsoft.Json.Linq;
 using System;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.Globalization;
-using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
-using System.Threading;
 using System.Threading.Tasks;
+using Newtonsoft.Json.Linq;
+using System.Collections.Generic;
+using System.Linq;
+using System.Diagnostics;
+using BinanceBotWpf.Services;
 
 namespace BinanceBotWpf.Models
 {
@@ -21,9 +21,7 @@ namespace BinanceBotWpf.Models
         private readonly bool _useTestnet;
         private JObject _exchangeInfo;
         private readonly Dictionary<string, decimal> _stepSizeCache = new ();
-        private readonly SemaphoreSlim _rateLimiter = new SemaphoreSlim (5, 5);
-        private DateTime _lastRequestTime = DateTime.UtcNow;
-        private readonly TimeSpan _minInterval = TimeSpan.FromMilliseconds (200);
+        private readonly RateLimiter _rateLimiter; // единственное объявление
 
         public event Action<string> OnLogGenerated;
         public string LastOrderError { get; private set; }
@@ -40,6 +38,7 @@ namespace BinanceBotWpf.Models
             _httpClient.Timeout = TimeSpan.FromSeconds (15);
             _httpClient.BaseAddress = new Uri (useTestnet ? "https://testnet.binance.vision" : "https://api.binance.com");
             _httpClient.DefaultRequestHeaders.Add ("X-MBX-APIKEY", _apiKey);
+            _rateLimiter = new RateLimiter (10, 1.0);
         }
 
         private long GetTimestamp() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds () + _serverTimeOffset;
@@ -55,43 +54,37 @@ namespace BinanceBotWpf.Models
             catch { _serverTimeOffset = 0; }
         }
 
-        private async Task<HttpResponseMessage> ThrottledSendAsync(HttpRequestMessage request)
+        private async Task<HttpResponseMessage> SendWithRetryAsync(HttpRequestMessage request, int maxRetries = 3, int weight = 1)
         {
-            await _rateLimiter.WaitAsync ();
+            await _rateLimiter.WaitForSlotAsync (weight);
             try
             {
-                var now = DateTime.UtcNow;
-                var elapsed = now - _lastRequestTime;
-                if (elapsed < _minInterval)
+                int retryCount = 0;
+                int delayMs = 1000;
+                while (true)
                 {
-                    await Task.Delay (_minInterval - elapsed);
+                    var response = await _httpClient.SendAsync (request);
+                    // Извлечение заголовков веса (если есть)
+                    if (response.Headers.TryGetValues ("X-MBX-USED-WEIGHT-1m", out var usedWeightValues))
+                    {
+                        if (int.TryParse (usedWeightValues.FirstOrDefault (), out int usedWeight))
+                            _rateLimiter.UpdateWeightMultiplier (usedWeight);
+                    }
+                    if (response.IsSuccessStatusCode) return response;
+                    if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
+                    {
+                        retryCount++;
+                        if (retryCount > maxRetries) throw new Exception ($"Rate limit превышен после {maxRetries} попыток");
+                        await Task.Delay (delayMs);
+                        delayMs *= 2;
+                        continue;
+                    }
+                    return response;
                 }
-                _lastRequestTime = DateTime.UtcNow;
-                return await _httpClient.SendAsync (request);
             }
             finally
             {
-                _rateLimiter.Release ();
-            }
-        }
-
-        private async Task<HttpResponseMessage> SendWithRetryAsync(HttpRequestMessage request, int maxRetries = 3)
-        {
-            int retryCount = 0;
-            int delayMs = 1000;
-            while (true)
-            {
-                var response = await ThrottledSendAsync (request);
-                if (response.IsSuccessStatusCode) return response;
-                if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
-                {
-                    retryCount++;
-                    if (retryCount > maxRetries) throw new Exception ($"Rate limit превышен после {maxRetries} попыток");
-                    await Task.Delay (delayMs);
-                    delayMs *= 2;
-                    continue;
-                }
-                return response;
+                _rateLimiter.ReleaseSlot (weight);
             }
         }
 
@@ -103,7 +96,7 @@ namespace BinanceBotWpf.Models
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order") { Content = content };
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 string body = await response.Content.ReadAsStringAsync ();
 
                 if (response.IsSuccessStatusCode)
@@ -136,7 +129,7 @@ namespace BinanceBotWpf.Models
                 if (endTime > 0) query += $"&endTime={endTime}";
                 string signature = CreateSignature (query);
                 var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/allOrders?{query}&signature={signature}");
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 2);
                 string body = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
@@ -163,7 +156,7 @@ namespace BinanceBotWpf.Models
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/asset/dust") { Content = content };
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 string json = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
@@ -271,7 +264,7 @@ namespace BinanceBotWpf.Models
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/simple-earn/flexible/redeem") { Content = content };
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 2);
                 string json = await response.Content.ReadAsStringAsync ();
 
                 Log ($"DEBUG Redeem response: {json}");
@@ -327,7 +320,7 @@ namespace BinanceBotWpf.Models
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order/oco") { Content = content };
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 3);
                 string body = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
@@ -357,7 +350,7 @@ namespace BinanceBotWpf.Models
                 string query = $"symbol={symbol}&orderListId={orderListId}&timestamp={timestamp}";
                 string signature = CreateSignature (query);
                 var request = new HttpRequestMessage (HttpMethod.Delete, $"/api/v3/orderList?{query}&signature={signature}");
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 string body = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
@@ -400,7 +393,7 @@ namespace BinanceBotWpf.Models
             {
                 string url = $"/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}";
                 var request = new HttpRequestMessage (HttpMethod.Get, url);
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 if (response.IsSuccessStatusCode)
                 {
                     var json = await response.Content.ReadAsStringAsync ();
@@ -431,7 +424,7 @@ namespace BinanceBotWpf.Models
             string query = $"timestamp={timestamp}";
             string signature = CreateSignature (query);
             var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/account?{query}&signature={signature}");
-            var response = await SendWithRetryAsync (request);
+            var response = await SendWithRetryAsync (request, 3, 5);
             if (response.IsSuccessStatusCode)
                 return JObject.Parse (await response.Content.ReadAsStringAsync ());
             return null;
@@ -453,52 +446,36 @@ namespace BinanceBotWpf.Models
 
         public async Task<JArray> GetFlexibleEarnBalanceAsync()
         {
-            var allRows = new JArray ();
-            int page = 1;
-            int size = 100; // максимум за раз
-            bool hasMore = true;
-
             try
             {
-                while (hasMore)
+                long timestamp = GetTimestamp ();
+                string query = $"timestamp={timestamp}";
+                string signature = CreateSignature (query);
+                var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
+                request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+                var response = await SendWithRetryAsync (request, 3, 2);
+                string jsonString = await response.Content.ReadAsStringAsync ();
+                // Log($"DEBUG Earn response: {jsonString}");
+                if (response.IsSuccessStatusCode)
                 {
-                    long timestamp = GetTimestamp ();
-                    string query = $"timestamp={timestamp}&size={size}&page={page}";
-                    string signature = CreateSignature (query);
-                    var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
-                    request.Headers.Add ("X-MBX-APIKEY", _apiKey);
-                    var response = await SendWithRetryAsync (request);
-                    string jsonString = await response.Content.ReadAsStringAsync ();
-
-                    if (!response.IsSuccessStatusCode)
+                    JToken token = JToken.Parse (jsonString);
+                    if (token is JArray array) return array;
+                    if (token is JObject obj)
                     {
-                        Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
-                        break;
+                        if (obj["rows"] != null) return (JArray)obj["rows"];
+                        if (obj["list"] != null) return (JArray)obj["list"];
                     }
-
-                    JObject obj = JObject.Parse (jsonString);
-                    JArray rows = obj["rows"] as JArray;
-                    if (rows == null || rows.Count == 0)
-                        break;
-
-                    foreach (var row in rows)
-                        allRows.Add (row);
-
-                    int total = obj["total"]?.Value<int> () ?? 0;
-                    if (total <= page * size)
-                        hasMore = false;
-                    else
-                        page++;
+                }
+                else
+                {
+                    Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
                 }
             }
             catch (Exception ex)
             {
                 Log ($"Exception GetFlexibleEarn: {ex.Message}");
             }
-
-            // Не спамим лог (закомментировано)
-            // Log($"DEBUG Earn response: {allRows.ToString()}");
-            return allRows;
+            return new JArray ();
         }
 
         public async Task<List<string>> GetTopVolumePairsAsync(string quoteAsset = "USDC", int topCount = 20)
@@ -506,7 +483,7 @@ namespace BinanceBotWpf.Models
             try
             {
                 var request = new HttpRequestMessage (HttpMethod.Get, "/api/v3/ticker/24hr");
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 if (!response.IsSuccessStatusCode)
                     return new List<string> ();
                 var json = await response.Content.ReadAsStringAsync ();
@@ -605,7 +582,7 @@ namespace BinanceBotWpf.Models
                 string signature = CreateSignature (query);
                 var request = new HttpRequestMessage (HttpMethod.Post, $"/sapi/v1/asset/dust?{query}&signature={signature}");
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 string json = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
@@ -627,7 +604,7 @@ namespace BinanceBotWpf.Models
                 string signature = CreateSignature (query);
                 var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/list?{query}&signature={signature}");
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 string json = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
@@ -649,7 +626,7 @@ namespace BinanceBotWpf.Models
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/simple-earn/flexible/subscribe") { Content = content };
-                var response = await SendWithRetryAsync (request);
+                var response = await SendWithRetryAsync (request, 3, 1);
                 string json = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                     return true;
