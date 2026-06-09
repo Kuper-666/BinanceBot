@@ -53,6 +53,9 @@ namespace BinanceBotWpf.Services
         private decimal _totalLossSum = 0;
         private WebSocketPriceManager _webSocketManager;
 
+        private DateTime _lastOptimizationRun = DateTime.MinValue;
+        private readonly TimeSpan _optimizationInterval = TimeSpan.FromHours (24); // раз в сутки
+
         private bool _balanceLoopEnabled = true;
         private bool _pairsLoopEnabled = true;
         private bool _earnLoopEnabled = true;
@@ -150,6 +153,7 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (DustLoop);
             _ = Task.Run (AutoRetrainLoop);
             _ = Task.Run (OrderHistoryCollectorLoop);
+            _ = Task.Run (OptimizationLoop);
             await TradingLoop ();
         }
 
@@ -578,20 +582,53 @@ namespace BinanceBotWpf.Services
         }
 
         private async Task ExecuteSell((string Symbol, TradeAction Action, decimal Price, decimal Rsi,
-            decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
-            decimal MacdHistogram, decimal BbWidth, decimal Obv) sig)
+    decimal FastSma, decimal SlowSma, decimal Volatility, decimal Volume, decimal AvgVolume,
+    decimal MacdHistogram, decimal BbWidth, decimal Obv) sig)
         {
             if (!_positionManager.TryGet (sig.Symbol, out var pos)) return;
+
             string asset = sig.Symbol.Replace ("USDC", "");
+
+            // 1. Проверяем спотовый баланс
             decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
-            if (spotBalance < 0.000001m)
+
+            // 2. Если на споте недостаточно – пытаемся выкупить из Earn
+            if (spotBalance < pos.Quantity - 0.000001m)
             {
-                _ui?.AddLog ($"⚠️ Нет {asset} на споте для продажи {sig.Symbol}. Удаляю позицию.");
-                _positionManager.Remove (sig.Symbol);
-                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
-                return;
+                decimal earnBalance = 0;
+                var earnPositions = await _client.GetFlexibleEarnBalanceAsync ();
+                var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+                if (earnPos != null)
+                    earnBalance = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+
+                decimal totalBalance = spotBalance + earnBalance;
+                if (totalBalance < pos.Quantity - 0.000001m)
+                {
+                    _ui?.AddLog ($"⚠️ Нет {asset} на споте и в Earn (всего {totalBalance}, нужно {pos.Quantity}). Удаляю позицию.");
+                    _positionManager.Remove (sig.Symbol);
+                    _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                    return;
+                }
+
+                // Выкупаем недостающее
+                decimal need = pos.Quantity - spotBalance;
+                if (need > 0.000001m)
+                {
+                    _ui?.AddLog ($"🔄 Выкупаю {need} {asset} из Earn для продажи...");
+                    bool redeemed = await _client.RedeemFlexibleEarnWithWaitAsync (asset, need);
+                    if (!redeemed)
+                    {
+                        _ui?.AddLog ($"⚠️ Не удалось выкупить {asset} из Earn. Удаляю позицию.");
+                        _positionManager.Remove (sig.Symbol);
+                        _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                        return;
+                    }
+                    await Task.Delay (3000);
+                    spotBalance = await _client.GetAccountBalanceAsync (asset);
+                }
             }
 
+            // 3. Теперь у нас есть актив на споте – определяем точное количество для продажи
             decimal qtyToSell = pos.Quantity;
             if (spotBalance < qtyToSell - 0.000001m && spotBalance > 0)
             {
@@ -599,19 +636,26 @@ namespace BinanceBotWpf.Services
                 qtyToSell = Math.Floor (spotBalance / stepSize) * stepSize;
                 if (qtyToSell <= 0)
                 {
-                    _ui?.AddLog ($"⚠️ Недостаточно {asset} для продажи {sig.Symbol}. Удаляю позицию.");
+                    _ui?.AddLog ($"⚠️ Недостаточно {asset} для продажи {sig.Symbol} (спот {spotBalance}). Удаляю позицию.");
                     _positionManager.Remove (sig.Symbol);
                     _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
                     return;
                 }
-                _ui?.AddLog ($"⚠️ Корректировка продажи {sig.Symbol}: продаю {qtyToSell} вместо {pos.Quantity} (доступно {spotBalance})");
+                _ui?.AddLog ($"⚠️ Корректировка продажи {sig.Symbol}: продаю {qtyToSell} вместо {pos.Quantity}");
             }
 
-            if (qtyToSell <= 0) return;
+            if (qtyToSell <= 0)
+            {
+                _positionManager.Remove (sig.Symbol);
+                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                return;
+            }
 
+            // 4. Отменяем OCO-ордер (если есть)
             if (pos.OcoOrderListId != 0)
                 await _client.CancelOcoOrder (sig.Symbol, pos.OcoOrderListId);
 
+            // 5. Выполняем продажу
             var order = await _client.PlaceOrder (sig.Symbol, "SELL", "MARKET", qtyToSell);
             if (order != null)
             {
@@ -640,10 +684,11 @@ namespace BinanceBotWpf.Services
             }
             else
             {
-                if (_client.LastOrderError?.Contains ("Lot size") == true || _client.LastOrderError?.Contains ("minimum notional") == true)
+                string error = _client.LastOrderError ?? "Unknown error";
+                if (error.Contains ("Lot size") || error.Contains ("minimum notional"))
                     await ConvertDustAssetAsync (asset);
                 else
-                    await LogErrorToTelegram ($"ExecuteSell {sig.Symbol}: {_client.LastOrderError}");
+                    await LogErrorToTelegram ($"ExecuteSell {sig.Symbol}: {error}");
             }
         }
 
@@ -910,8 +955,28 @@ namespace BinanceBotWpf.Services
                     await ExportKlinesToCsv ();
                     await _telegram.SendMessageAsync ("📁 Экспорт свечей выполнен в папку Export/Klines", chatId);
                     break;
+                case "/optimize":
+                    await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию стратегии...", chatId);
+                    _ = Task.Run (RunOptimizationAsync);
+                    break;
                 case "/help":
-                    string help = "🤖 *Команды:*\n/status – состояние\n/balance – баланс\n/stop – стоп торговли\n/start – старт\n/export – экспорт\n/retrain – переобучить ML\n/pnl – статистика PnL\n/update – обновление\n/dust – конвертация пыли\n/errors – ошибки\n/performance – детальная статистика\n/stop_all – остановить все циклы\n/start_all – запустить все циклы\n/reload – перезагрузить настройки\n/help – помощь";
+                    string help = "🤖 *Команды:*\n" +
+                        "/status – состояние\n" +
+                        "/balance – баланс\n" +
+                        "/stop – стоп торговли\n" +
+                        "/start – старт\n" +
+                        "/export – экспорт\n" +
+                        "/retrain – переобучить ML\n" +
+                        "/pnl – статистика PnL\n" +
+                        "/update – обновление\n" +
+                        "/dust – конвертация пыли\n" +
+                        "/errors – ошибки\n" +
+                        "/performance – детальная статистика\n" +
+                        "/stop_all – остановить все циклы\n" +
+                        "/start_all – запустить все циклы\n" +
+                        "/reload – перезагрузить настройки\n" +
+                        "/ptimize – оптимизация стратегии\n" +
+                        "/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);
                     break;
                 default:
@@ -1009,6 +1074,119 @@ namespace BinanceBotWpf.Services
                 foreach (var k in klines)
                     writer.WriteLine ($"{k.OpenTime:yyyy-MM-dd HH:mm:ss},{k.Open},{k.High},{k.Low},{k.Close},{k.Volume}");
                 _ui?.AddLog ($"✅ Экспортированы свечи {sym} -> {csvPath}");
+            }
+        }
+
+        private async Task RunOptimizationAsync()
+        {
+            try
+            {
+                _ui?.AddLog ("🧠 Запуск автоматической оптимизации стратегии...");
+
+                await ExportKlinesToCsv (); // метод уже есть в TradingService
+
+                string pythonPath = "python"; // или полный путь, если python не в PATH
+                string scriptPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "optimize_strategy.py");
+
+                if (!File.Exists (scriptPath))
+                {
+                    _ui?.AddLog ("⚠️ Файл optimize_strategy.py не найден в папке бота.");
+                    return;
+                }
+
+                var psi = new ProcessStartInfo
+                {
+                    FileName = pythonPath,
+                    Arguments = $"\"{scriptPath}\"",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
+                };
+
+                using var process = Process.Start (psi);
+                string output = await process.StandardOutput.ReadToEndAsync ();
+                string error = await process.StandardError.ReadToEndAsync ();
+                await process.WaitForExitAsync ();
+
+                if (process.ExitCode != 0)
+                {
+                    _ui?.AddLog ($"❌ Ошибка оптимизации: {error}");
+                    return;
+                }
+
+                _ui?.AddLog ($"📊 Результат оптимизации:\n{output}");
+
+                // Путь к файлу с результатами (скрипт сохраняет в текущей папке)
+                string resultPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "optimized_params.json");
+                if (!File.Exists (resultPath))
+                {
+                    _ui?.AddLog ("⚠️ Файл optimized_params.json не найден после выполнения скрипта.");
+                    return;
+                }
+
+                // Читаем новые параметры
+                string json = await File.ReadAllTextAsync (resultPath);
+                var newParams = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (json);
+                if (newParams == null)
+                {
+                    _ui?.AddLog ("❌ Ошибка парсинга optimized_params.json");
+                    return;
+                }
+
+                // Обновляем файл настроек стратегии
+                string settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
+                var currentSettings = File.Exists (settingsPath)
+                    ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (await File.ReadAllTextAsync (settingsPath))
+                    : new Dictionary<string, object> ();
+
+                if (currentSettings == null) currentSettings = new Dictionary<string, object> ();
+
+                // Копируем подходящие параметры
+                var keysToUpdate = new[] { "RsiBuyThreshold", "RsiSellThreshold", "StopLossPercent", "TakeProfitPercent" };
+                foreach (var key in keysToUpdate)
+                {
+                    if (newParams.ContainsKey (key))
+                        currentSettings[key] = newParams[key];
+                }
+                // Также можно обновить SMA периоды, если скрипт их выдаёт
+                if (newParams.ContainsKey ("FastSma"))
+                    currentSettings["FastSma"] = newParams["FastSma"];
+                if (newParams.ContainsKey ("SlowSma"))
+                    currentSettings["SlowSma"] = newParams["SlowSma"];
+
+                string updatedJson = System.Text.Json.JsonSerializer.Serialize (currentSettings, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                await File.WriteAllTextAsync (settingsPath, updatedJson);
+
+                _ui?.AddLog ("✅ Параметры стратегии обновлены. Перезагружаю настройки...");
+                _ui?.ReloadSettings (); // Перезагружаем UI и настройки в боте
+
+                // Дополнительно можно отправить уведомление в Telegram
+                if (_telegram != null)
+                {
+                    string msg = "🧠 Автооптимизация завершена!\n";
+                    msg += $"RSI покупка: {newParams["RsiBuyThreshold"]}, продажа: {newParams["RsiSellThreshold"]}\n";
+                    msg += $"SL: {Convert.ToDecimal (newParams["StopLossPercent"]) * 100}%, TP: {Convert.ToDecimal (newParams["TakeProfitPercent"]) * 100}%";
+                    await _telegram.SendMessageAsync (msg);
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка при оптимизации: {ex.Message}");
+            }
+        }
+
+        private async Task OptimizationLoop()
+        {
+            while (_isRunning)
+            {
+                // Запускаем оптимизацию не чаще заданного интервала
+                if (DateTime.UtcNow - _lastOptimizationRun >= _optimizationInterval)
+                {
+                    _lastOptimizationRun = DateTime.UtcNow;
+                    await RunOptimizationAsync ();
+                }
+                await Task.Delay (TimeSpan.FromHours (1)); // проверяем каждый час
             }
         }
 
