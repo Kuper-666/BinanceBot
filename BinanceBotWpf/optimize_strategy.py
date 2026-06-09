@@ -43,8 +43,8 @@ def calculate_atr(high, low, close, period=14):
 def backtest(df, params):
     """
     Бэктест улучшенной стратегии:
-    - покупка: RSI < rsi_buy, цена <= нижняя BB, MACD гистограмма растёт, объём > 1.2*среднего
-    - продажа: RSI > rsi_sell, цена >= верхняя BB, MACD гистограмма падает, объём > 1.2*среднего
+    - покупка: RSI < rsi_buy, цена <= нижняя BB, MACD гистограмма растёт, объём > volume_threshold * среднего
+    - продажа: RSI > rsi_sell, цена >= верхняя BB, MACD гистограмма падает, объём > volume_threshold * среднего
     - стоп-лосс / тейк-профит в процентах
     """
     df = df.copy()
@@ -75,7 +75,7 @@ def backtest(df, params):
         (df['high_volume'])
     )
 
-    capital = 1000.0  # начальный капитал
+    capital = 1000.0
     position = 0.0
     entry_price = 0.0
     trades = 0
@@ -83,14 +83,15 @@ def backtest(df, params):
 
     for i in range(period, len(df)):
         price = df.iloc[i]['close']
-        # Проверка стоп-лосса / тейк-профита (если есть позиция)
+        # Проверка стоп-лосса / тейк-профита
         if position > 0:
             pnl_pct = (price - entry_price) / entry_price
             if pnl_pct <= -params['stop_loss'] or pnl_pct >= params['take_profit']:
                 capital = position * price
                 position = 0.0
                 trades += 1
-                if pnl_pct > 0: wins += 1
+                if pnl_pct > 0:
+                    wins += 1
                 continue
 
         if position == 0 and df.iloc[i]['buy_signal']:
@@ -102,13 +103,15 @@ def backtest(df, params):
             position = 0.0
             trades += 1
             pnl_pct = (price - entry_price) / entry_price
-            if pnl_pct > 0: wins += 1
+            if pnl_pct > 0:
+                wins += 1
 
     if position > 0:
         capital = position * df.iloc[-1]['close']
         trades += 1
         pnl_pct = (df.iloc[-1]['close'] - entry_price) / entry_price
-        if pnl_pct > 0: wins += 1
+        if pnl_pct > 0:
+            wins += 1
 
     if trades == 0:
         return np.nan
@@ -123,27 +126,31 @@ def load_csv_files(folder_path="Export/Klines"):
     """Загружает все CSV-файлы из папки и возвращает список DataFrame"""
     csv_files = glob.glob(os.path.join(folder_path, "*.csv"))
     if not csv_files:
-        print(f"❌ Нет CSV-файлов в папке: {folder_path}")
+        print(f"[ERROR] Нет CSV-файлов в папке: {folder_path}")
         return []
     data_frames = []
     for file in csv_files:
         try:
-            # Формат бота: timestamp,open,high,low,close,volume
-            df = pd.read_csv(file, parse_dates=['timestamp'], index_col='timestamp')
-            # Убедимся, что нужные колонки есть
-            required = ['open', 'high', 'low', 'close', 'volume']
+            # Пробуем прочитать с заголовком, указываем кодировку utf-8-sig для удаления BOM
+            df = pd.read_csv(file, encoding='utf-8-sig', header=0)
+            # Проверяем наличие необходимых колонок (игнорируем регистр)
+            df.columns = [col.lower() for col in df.columns]
+            required = ['timestamp', 'open', 'high', 'low', 'close', 'volume']
             if not all(col in df.columns for col in required):
-                print(f"⚠️ Пропущен {file}: неверный формат")
+                print(f"[WARN] Пропущен {file}: неверный формат, колонки: {list(df.columns)}")
                 continue
-            df = df[required]
-            df = df.astype(float)
+            # Преобразуем timestamp в datetime и устанавливаем индекс
+            df['timestamp'] = pd.to_datetime(df['timestamp'])
+            df.set_index('timestamp', inplace=True)
+            # Оставляем только нужные колонки и конвертируем в float
+            df = df[['open','high','low','close','volume']].astype(float)
             if len(df) >= 100:
                 data_frames.append(df)
-                print(f"✅ Загружен {os.path.basename(file)}: {len(df)} свечей")
+                print(f"[OK] Загружен {os.path.basename(file)}: {len(df)} свечей")
             else:
-                print(f"⚠️ {os.path.basename(file)}: слишком мало данных ({len(df)} < 100)")
+                print(f"[WARN] {os.path.basename(file)}: слишком мало данных ({len(df)} < 100)")
         except Exception as e:
-            print(f"❌ Ошибка загрузки {file}: {e}")
+            print(f"[ERROR] Ошибка загрузки {file}: {e}")
     return data_frames
 
 def optimize(data_frames, params_grid):
@@ -155,18 +162,20 @@ def optimize(data_frames, params_grid):
     for grid in params_grid.values():
         total_combinations *= len(grid)
 
-    print(f"🔄 Перебор {total_combinations} комбинаций параметров на {len(data_frames)} файлах...")
+    print(f"[INFO] Перебор {total_combinations} комбинаций параметров на {len(data_frames)} файлах...")
     current = 0
 
     for rsi_period in params_grid['rsi_period']:
         for rsi_buy in params_grid['rsi_buy']:
             for rsi_sell in params_grid['rsi_sell']:
-                if rsi_buy >= rsi_sell: continue
+                if rsi_buy >= rsi_sell:
+                    continue
                 for bb_period in params_grid['bb_period']:
                     for bb_k in params_grid['bb_k']:
                         for macd_fast in params_grid['macd_fast']:
                             for macd_slow in params_grid['macd_slow']:
-                                if macd_fast >= macd_slow: continue
+                                if macd_fast >= macd_slow:
+                                    continue
                                 for macd_signal in params_grid['macd_signal']:
                                     for volume_threshold in params_grid['volume_threshold']:
                                         for stop_loss in params_grid['stop_loss']:
@@ -223,7 +232,7 @@ def optimize(data_frames, params_grid):
                                                         'avg_trades': avg_trades,
                                                         'valid_files': valid_files
                                                     }
-                                                    print(f"\n✨ Новый лучший результат!")
+                                                    print(f"\n[INFO] Новый лучший результат!")
                                                     print(f"   Параметры: {best_params}")
                                                     print(f"   Средняя доходность: {avg_return:.2%}, Win Rate: {avg_win_rate:.1%}, Сделок: {avg_trades:.1f}")
                                                     print(f"   Комбинированный скор: {best_score:.4f}\n")
@@ -237,10 +246,10 @@ def main():
     else:
         folder = os.path.join(os.getcwd(), "Export", "Klines")
 
-    print(f"📂 Поиск CSV-файлов в: {folder}")
+    print(f"[INFO] Поиск CSV-файлов в: {folder}")
     data_frames = load_csv_files(folder)
     if len(data_frames) < 2:
-        print("❌ Недостаточно данных для оптимизации (нужно минимум 2 файла).")
+        print("[ERROR] Недостаточно данных для оптимизации (нужно минимум 2 файла).")
         return
 
     # Сетка параметров для перебора
@@ -263,7 +272,7 @@ def main():
     if best_params:
         # Формируем выходной JSON в формате, совместимом с ботом
         result = {
-            'FastSma': best_params['bb_period'],  # используем BB период как быструю SMA для совместимости (не критично)
+            'FastSma': best_params['bb_period'],
             'SlowSma': best_params['bb_period'] * 2,
             'RsiBuyThreshold': best_params['rsi_buy'],
             'RsiSellThreshold': best_params['rsi_sell'],
@@ -272,7 +281,6 @@ def main():
             'TrailingStopPercent': 0.02,
             'MinBalanceForTrading': 20,
             'MaxRiskPercent': 0.25,
-            # Дополнительные параметры для расширенной стратегии (бот пока не использует, но можно добавить)
             'BbPeriod': best_params['bb_period'],
             'BbK': best_params['bb_k'],
             'MacdFast': best_params['macd_fast'],
@@ -284,11 +292,11 @@ def main():
         with open('optimized_params.json', 'w') as f:
             json.dump(result, f, indent=4)
 
-        print("\n✅ Оптимизация завершена!")
-        print(f"📁 Результат сохранён в optimized_params.json")
-        print(f"📊 Метрики: {metrics}")
+        print("\n[SUCCESS] Оптимизация завершена!")
+        print(f"[INFO] Результат сохранён в optimized_params.json")
+        print(f"[INFO] Метрики: {metrics}")
     else:
-        print("❌ Не удалось найти оптимальные параметры.")
+        print("[ERROR] Не удалось найти оптимальные параметры.")
 
 if __name__ == '__main__':
     main()

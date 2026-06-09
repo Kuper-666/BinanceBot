@@ -19,7 +19,7 @@ namespace BinanceBotWpf.Services
         private readonly HttpClient _httpClient = new HttpClient ();
         private readonly Action<string> _logger;
         private DateTime _lastUpdateCheckDate = DateTime.MinValue;
-        private bool _isUpdating = false; // защита от параллельных обновлений
+        private bool _isUpdating = false;
 
         public UpdateManager(Action<string> logger)
         {
@@ -30,23 +30,23 @@ namespace BinanceBotWpf.Services
 
         public async Task<bool> CheckAndUpdateAsync(bool silent = false)
         {
-            // Если уже идёт обновление – не запускаем повторно
             if (_isUpdating)
             {
-                _logger?.Invoke ("⚠️ Обновление уже запущено, пропускаем.");
+                _logger?.Invoke ("⚠️ Обновление уже выполняется, пропускаем.");
                 return false;
             }
 
-            // Проверка не чаще раза в сутки
-            if (( DateTime.UtcNow - _lastUpdateCheckDate ).TotalHours < 24 && !silent)
+            // Не проверяем чаще раза в 6 часов
+            if (( DateTime.UtcNow - _lastUpdateCheckDate ).TotalHours < 6 && !silent)
             {
-                if (!silent) _logger?.Invoke ("✅ Обновления проверялись менее 24 часов назад, пропускаем.");
+                if (!silent) _logger?.Invoke ("✅ Обновления проверялись менее 6 часов назад, пропускаем.");
                 return false;
             }
+            _lastUpdateCheckDate = DateTime.UtcNow;
 
+            _isUpdating = true;
             try
             {
-                _lastUpdateCheckDate = DateTime.UtcNow;
                 _logger?.Invoke ("🔍 Проверка обновлений...");
                 string apiUrl = $"https://api.github.com/repos/{GitHubOwner}/{GitHubRepo}/releases";
                 using var response = await _httpClient.GetAsync (apiUrl);
@@ -70,30 +70,28 @@ namespace BinanceBotWpf.Services
                 var latestRelease = sortedReleases.First ();
                 string latestTag = latestRelease["tag_name"]?.ToString () ?? "v0.0.0";
                 string latestVersionStr = latestTag.TrimStart ('v');
-                Version latestVersion = new Version (latestVersionStr);
-                Version currentVersion = Assembly.GetExecutingAssembly ().GetName ().Version ?? new Version ("1.0.0");
-                var currentSimple = new Version (currentVersion.Major, currentVersion.Minor, currentVersion.Build >= 0 ? currentVersion.Build : 0);
+                if (!Version.TryParse (latestVersionStr, out var latestVersion))
+                {
+                    _logger?.Invoke ($"⚠️ Не удалось распарсить версию {latestVersionStr}");
+                    return false;
+                }
 
+                var currentSimple = new Version (CurrentVersion.Major, CurrentVersion.Minor, CurrentVersion.Build >= 0 ? CurrentVersion.Build : 0);
                 if (latestVersion > currentSimple)
                 {
                     string downloadUrl = latestRelease["assets"]?[0]?["browser_download_url"]?.ToString ();
                     if (!string.IsNullOrEmpty (downloadUrl))
                     {
-                        // Убираем дублирование – выводим только один раз
-                        _logger?.Invoke ($"✨ Найдена новая версия: {latestVersion} (текущая: {currentSimple})");
+                        _logger?.Invoke ($"✨ Новая версия: {latestVersion} (текущая: {currentSimple})");
                         if (silent || MessageBox.Show ($"Доступна версия {latestVersion}. Обновить сейчас?",
                                                       "Обновление", MessageBoxButton.YesNo, MessageBoxImage.Question) == MessageBoxResult.Yes)
                         {
-                            _isUpdating = true;
                             return await DownloadAndInstall (downloadUrl, latestTag);
                         }
                     }
                     else _logger?.Invoke ("⚠️ Не найден архив для скачивания.");
                 }
-                else
-                {
-                    if (!silent) _logger?.Invoke ("✅ Установлена актуальная версия.");
-                }
+                else _logger?.Invoke ("✅ Установлена актуальная версия.");
                 return false;
             }
             catch (Exception ex)

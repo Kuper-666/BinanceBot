@@ -1,20 +1,23 @@
-﻿using System;
+﻿using BinanceBotWpf.Models;
+using BinanceBotWpf.Services;
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Series;
+using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
+using System.Globalization;
+using System.IO;
 using System.Linq;
-using System.Windows.Input;
+using System.Runtime.CompilerServices;
+using System.Text.Json;
 using System.Threading.Tasks;
 using System.Windows;
-using System.IO;
-using System.Globalization;
+using System.Windows.Input;
 using System.Windows.Media;
-using BinanceBotWpf.Services;
-using BinanceBotWpf.Models;
-using System.Collections.Generic;
-using OxyPlot;
-using OxyPlot.Series;
-using OxyPlot.Axes;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace BinanceBotWpf.ViewModels
 {
@@ -188,29 +191,68 @@ namespace BinanceBotWpf.ViewModels
                 var settings = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>> (json);
                 if (settings == null)
                 {
-                    AddLog ("❌ Ошибка десериализации настроек.");
+                    AddLog ("❌ Ошибка десериализации настроек (пустой или невалидный JSON).");
                     return;
                 }
 
                 _isLoadingSettings = true;
-                if (settings.TryGetValue ("FastSma", out var fs)) FastSma = Convert.ToInt32 (fs);
-                if (settings.TryGetValue ("SlowSma", out var ss)) SlowSma = Convert.ToInt32 (ss);
-                if (settings.TryGetValue ("RsiBuyThreshold", out var rb)) RsiBuyThreshold = Convert.ToInt32 (rb);
-                if (settings.TryGetValue ("RsiSellThreshold", out var rs)) RsiSellThreshold = Convert.ToInt32 (rs);
-                if (settings.TryGetValue ("StopLossPercent", out var sl)) StopLossPercent = Convert.ToDecimal (sl, CultureInfo.InvariantCulture);
-                if (settings.TryGetValue ("TakeProfitPercent", out var tp)) TakeProfitPercent = Convert.ToDecimal (tp, CultureInfo.InvariantCulture);
-                if (settings.TryGetValue ("TrailingStopPercent", out var tr)) TrailingStopPercent = Convert.ToDecimal (tr, CultureInfo.InvariantCulture);
-                if (settings.TryGetValue ("MinBalanceForTrading", out var mb)) MinBalanceForTrading = Convert.ToDecimal (mb, CultureInfo.InvariantCulture);
-                if (settings.TryGetValue ("MaxRiskPercent", out var mr)) MaxRiskPercent = Convert.ToDecimal (mr, CultureInfo.InvariantCulture);
+
+                // Безопасное чтение каждого параметра с приведением типов
+                if (settings.TryGetValue ("FastSma", out var fs))
+                    FastSma = ConvertToInt32 (fs, 9);
+                if (settings.TryGetValue ("SlowSma", out var ss))
+                    SlowSma = ConvertToInt32 (ss, 21);
+                if (settings.TryGetValue ("RsiBuyThreshold", out var rb))
+                    RsiBuyThreshold = ConvertToInt32 (rb, 30);
+                if (settings.TryGetValue ("RsiSellThreshold", out var rs))
+                    RsiSellThreshold = ConvertToInt32 (rs, 70);
+                if (settings.TryGetValue ("StopLossPercent", out var sl))
+                    StopLossPercent = ConvertToDecimal (sl, 0.05m);
+                if (settings.TryGetValue ("TakeProfitPercent", out var tp))
+                    TakeProfitPercent = ConvertToDecimal (tp, 0.10m);
+                if (settings.TryGetValue ("TrailingStopPercent", out var tr))
+                    TrailingStopPercent = ConvertToDecimal (tr, 0.02m);
+                if (settings.TryGetValue ("MinBalanceForTrading", out var mb))
+                    MinBalanceForTrading = ConvertToDecimal (mb, 20m);
+                if (settings.TryGetValue ("MaxRiskPercent", out var mr))
+                    MaxRiskPercent = ConvertToDecimal (mr, 0.25m);
+
                 _isLoadingSettings = false;
 
-                AddLog ($"✅ Настройки загружены: FastSma={FastSma}, SlowSma={SlowSma}, SL={StopLossPercent:P0}, TP={TakeProfitPercent:P0}");
+                AddLog ($"✅ Настройки загружены: FastSma={FastSma}, SlowSma={SlowSma}, RsiBuy={RsiBuyThreshold}, RsiSell={RsiSellThreshold}, SL={StopLossPercent:P0}, TP={TakeProfitPercent:P0}");
             }
             catch (Exception ex)
             {
                 AddLog ($"❌ Ошибка загрузки настроек: {ex.Message}");
                 _isLoadingSettings = false;
             }
+        }
+
+        // Вспомогательные методы для безопасного преобразования
+        private int ConvertToInt32(object value, int defaultValue)
+        {
+            try
+            {
+                if (value is JsonElement elem)
+                {
+                    return elem.ValueKind == JsonValueKind.Number ? elem.GetInt32 () : Convert.ToInt32 (elem.GetString ());
+                }
+                return Convert.ToInt32 (value);
+            }
+            catch { return defaultValue; }
+        }
+
+        private decimal ConvertToDecimal(object value, decimal defaultValue)
+        {
+            try
+            {
+                if (value is JsonElement elem)
+                {
+                    return elem.ValueKind == JsonValueKind.Number ? elem.GetDecimal () : Convert.ToDecimal (elem.GetString (), CultureInfo.InvariantCulture);
+                }
+                return Convert.ToDecimal (value, CultureInfo.InvariantCulture);
+            }
+            catch { return defaultValue; }
         }
 
         public void SaveSettings()

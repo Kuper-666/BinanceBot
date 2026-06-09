@@ -11,6 +11,7 @@
   </PropertyGroup>
   <ItemGroup>
     <None Remove="bot_icon.svg" />
+    <None Remove="optimize_strategy.py" />
     <None Remove="Resources\binance_bot.ico" />
   </ItemGroup>
   <ItemGroup>
@@ -32,6 +33,9 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="bot_icon.svg" />
+    <Resource Include="optimize_strategy.py">
+      <CopyToOutputDirectory>Never</CopyToOutputDirectory>
+    </Resource>
     <Resource Include="Resources\binance_bot.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>
