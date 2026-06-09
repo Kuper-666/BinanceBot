@@ -26,6 +26,7 @@ namespace BinanceBotWpf.Services
         private readonly BalanceManager _balanceManager;
         private MainWindowViewModel _ui;
         private bool _isRunning;
+        private bool _isUpdating = false;
 
         private List<string> _activePairs = new ();
         private readonly object _pairsLock = new ();
@@ -52,6 +53,9 @@ namespace BinanceBotWpf.Services
         private decimal _totalProfitSum = 0;
         private decimal _totalLossSum = 0;
         private WebSocketPriceManager _webSocketManager;
+        private string _lastTelegramCommand = "";
+        private DateTime _lastTelegramCommandTime = DateTime.MinValue;
+        private readonly TimeSpan _telegramCommandCooldown = TimeSpan.FromSeconds (5);
 
         private DateTime _lastOptimizationRun = DateTime.MinValue;
         private readonly TimeSpan _optimizationInterval = TimeSpan.FromHours (24); // раз в сутки
@@ -871,7 +875,17 @@ namespace BinanceBotWpf.Services
 
         private async Task HandleTelegramCommand(string command, string chatId)
         {
+            // Дедупликация: не обрабатываем ту же команду повторно в течение 5 секунд
+            if (command == _lastTelegramCommand && DateTime.UtcNow - _lastTelegramCommandTime < _telegramCommandCooldown)
+            {
+                // _ui?.AddLog($"⏸️ Игнорирую повторную команду: {command}");
+                return;
+            }
+            _lastTelegramCommand = command;
+            _lastTelegramCommandTime = DateTime.UtcNow;
+
             string cmd = command.Trim ();
+            // Преобразование reply-кнопок
             switch (cmd)
             {
                 case "📊 Статус": cmd = "/status"; break;
@@ -918,10 +932,31 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync ($"📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {_ui?.WinRate ?? 0:F1}%", chatId);
                     break;
                 case "/update":
-                    await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
-                    var updater = new UpdateManager (msg => _ui?.AddLog (msg));
-                    bool updated = await updater.CheckAndUpdateAsync (silent: false);
-                    if (!updated) await _telegram.SendMessageAsync ("✅ Обновлений не найдено.", chatId);
+                    // Блокируем одновременные вызовы
+                    if (_isUpdating)
+                    {
+                        await _telegram.SendMessageAsync ("⏳ Обновление уже выполняется, подождите...", chatId);
+                        return;
+                    }
+                    _isUpdating = true;
+                    try
+                    {
+                        await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
+                        var updater = new UpdateManager (msg => _ui?.AddLog (msg));
+                        bool updated = await updater.CheckAndUpdateAsync (silent: false);
+                        if (!updated)
+                            await _telegram.SendMessageAsync ("✅ Обновлений не найдено.", chatId);
+                        else
+                            await _telegram.SendMessageAsync ("✅ Бот обновлён! Перезапустите его вручную.", chatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        await _telegram.SendMessageAsync ($"❌ Ошибка обновления: {ex.Message}", chatId);
+                    }
+                    finally
+                    {
+                        _isUpdating = false;
+                    }
                     break;
                 case "/dust":
                     await _telegram.SendMessageAsync ("🧹 Запускаю конвертацию пыли...", chatId);
@@ -955,28 +990,8 @@ namespace BinanceBotWpf.Services
                     await ExportKlinesToCsv ();
                     await _telegram.SendMessageAsync ("📁 Экспорт свечей выполнен в папку Export/Klines", chatId);
                     break;
-                case "/optimize":
-                    await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию стратегии...", chatId);
-                    _ = Task.Run (RunOptimizationAsync);
-                    break;
                 case "/help":
-                    string help = "🤖 *Команды:*\n" +
-                        "/status – состояние\n" +
-                        "/balance – баланс\n" +
-                        "/stop – стоп торговли\n" +
-                        "/start – старт\n" +
-                        "/export – экспорт\n" +
-                        "/retrain – переобучить ML\n" +
-                        "/pnl – статистика PnL\n" +
-                        "/update – обновление\n" +
-                        "/dust – конвертация пыли\n" +
-                        "/errors – ошибки\n" +
-                        "/performance – детальная статистика\n" +
-                        "/stop_all – остановить все циклы\n" +
-                        "/start_all – запустить все циклы\n" +
-                        "/reload – перезагрузить настройки\n" +
-                        "/ptimize – оптимизация стратегии\n" +
-                        "/help – помощь";
+                    string help = "🤖 *Команды:*\n/status – состояние\n/balance – баланс\n/stop – стоп торговли\n/start – старт\n/export – экспорт\n/retrain – переобучить ML\n/pnl – статистика PnL\n/update – обновление\n/dust – конвертация пыли\n/errors – ошибки\n/performance – детальная статистика\n/stop_all – остановить все циклы\n/start_all – запустить все циклы\n/reload – перезагрузить настройки\n/export_klines – экспорт свечей\n/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);
                     break;
                 default:
