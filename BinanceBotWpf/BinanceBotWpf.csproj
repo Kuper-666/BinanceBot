@@ -5,26 +5,16 @@
 		<UseWPF>true</UseWPF>
 		<StartupUri>MainWindow.xaml</StartupUri>
 		<Version>1.0.130</Version>
-
-		<!-- Single file publication - ОДИН .EXE ФАЙЛ -->
 		<RuntimeIdentifier>win-x64</RuntimeIdentifier>
 		<PublishSingleFile>true</PublishSingleFile>
 		<SelfContained>true</SelfContained>
-		<PublishTrimmed>false</PublishTrimmed>
 		<PublishReadyToRun>true</PublishReadyToRun>
 		<IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 		<EnableCompressionInSingleFile>true</EnableCompressionInSingleFile>
 		<DebugType>embedded</DebugType>
-
-		<!-- Optimizations -->
-		<TieredCompilation>true</TieredCompilation>
-		<TieredCompilationQuickJit>true</TieredCompilationQuickJit>
-
-		<!-- Remove unnecessary files -->
-		<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+		<Nullable>enable</Nullable>
 	</PropertyGroup>
 
-	<!-- NuGet packages -->
 	<ItemGroup>
 		<PackageReference Include="Binance.Net" Version="12.13.0" />
 		<PackageReference Include="CsvHelper" Version="33.1.0" />
@@ -36,21 +26,13 @@
 		<PackageReference Include="Telegram.Bot" Version="22.10.0.1" />
 	</ItemGroup>
 
-	<!-- Embedded resources - встраиваемые ресурсы -->
-	<ItemGroup>
-		<EmbeddedResource Include="Resources\trading_model.zip" />
-		<Resource Include="Resources\binance_bot.ico">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-		</Resource>
-	</ItemGroup>
-
-	<!-- Source files -->
 	<ItemGroup>
 		<Compile Remove="DataDownloader\**" />
-		<Compile Remove="Python\**" />
 		<EmbeddedResource Remove="DataDownloader\**" />
-		<EmbeddedResource Remove="Python\**" />
 		<None Remove="DataDownloader\**" />
-		<None Remove="Python\**" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<EmbeddedResource Include="Resources\trading_model.zip" />
 	</ItemGroup>
 </Project>
