@@ -235,6 +235,7 @@ namespace BinanceBotWpf.Models
 
                 decimal availableInEarn = decimal.Parse (targetPosition["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                 Log ($"DEBUG: Доступно в Earn: {availableInEarn}, требуется: {amount}");
+
                 if (availableInEarn < amount - 0.000001m)
                 {
                     Log ($"⚠️ В Earn недостаточно {asset}: доступно {availableInEarn}, требуется {amount}");
@@ -247,23 +248,30 @@ namespace BinanceBotWpf.Models
                     Log ($"❌ Не найден productId для {asset}");
                     return false;
                 }
+
                 Log ($"DEBUG: productId = {productId}");
 
                 long timestamp = GetTimestamp ();
-                string query = $"productId={productId}&amount={amount.ToString (CultureInfo.InvariantCulture)}&destAccount=SPOT&timestamp={timestamp}";
+                int recvWindow = 5000;
+                string query = $"productId={productId}&amount={amount.ToString (CultureInfo.InvariantCulture)}&destAccount=SPOT&timestamp={timestamp}&recvWindow={recvWindow}";
                 string signature = CreateSignature (query);
+
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/simple-earn/flexible/redeem") { Content = content };
+                request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
 
                 Log ($"DEBUG Redeem response: {json}");
+
                 if (!response.IsSuccessStatusCode)
                 {
                     Log ($"❌ Ошибка выкупа {asset}: HTTP {response.StatusCode}, ответ: {json}");
                     return false;
                 }
 
+                // Ожидаем зачисления на спот
                 decimal initialSpot = await GetAccountBalanceAsync (asset);
                 for (int i = 0; i < maxWaitSeconds / 2; i++)
                 {
@@ -437,40 +445,53 @@ namespace BinanceBotWpf.Models
             return 0m;
         }
 
+        /// <summary>
+        /// Получает список активов в гибком Earn (Simple Earn Flexible).
+        /// </summary>
         public async Task<JArray> GetFlexibleEarnBalanceAsync()
         {
             try
             {
                 long timestamp = GetTimestamp ();
-                string query = $"timestamp={timestamp}";
+                // Добавляем recvWindow (рекомендуется Binance)
+                int recvWindow = 5000;
+                string query = $"timestamp={timestamp}&recvWindow={recvWindow}";
                 string signature = CreateSignature (query);
+
                 var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+
                 var response = await SendWithRetryAsync (request);
                 string jsonString = await response.Content.ReadAsStringAsync ();
 
-                Log ($"DEBUG Earn response: {jsonString}");
-
-                if (response.IsSuccessStatusCode)
-                {
-                    JToken token = JToken.Parse (jsonString);
-                    if (token is JArray array) return array;
-                    if (token is JObject obj)
-                    {
-                        if (obj["rows"] != null) return (JArray)obj["rows"];
-                        if (obj["list"] != null) return (JArray)obj["list"];
-                    }
-                }
-                else
+                // Логируем только ошибки, не спамим в лог
+                if (!response.IsSuccessStatusCode)
                 {
                     Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
+                    return new JArray ();
                 }
+
+                JToken token = JToken.Parse (jsonString);
+
+                // Ответ может быть в разных форматах
+                if (token is JArray array)
+                    return array;
+
+                if (token is JObject obj)
+                {
+                    if (obj["rows"] != null)
+                        return (JArray)obj["rows"];
+                    if (obj["list"] != null)
+                        return (JArray)obj["list"];
+                }
+
+                return new JArray ();
             }
             catch (Exception ex)
             {
                 Log ($"Exception GetFlexibleEarn: {ex.Message}");
+                return new JArray ();
             }
-            return new JArray ();
         }
 
         public async Task<List<string>> GetTopVolumePairsAsync(string quoteAsset = "USDC", int topCount = 20)
@@ -573,12 +594,16 @@ namespace BinanceBotWpf.Models
             try
             {
                 long timestamp = GetTimestamp ();
-                string query = $"asset={asset}&timestamp={timestamp}";
+                int recvWindow = 5000;
+                string query = $"asset={asset}&timestamp={timestamp}&recvWindow={recvWindow}";
                 string signature = CreateSignature (query);
+
                 var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/list?{query}&signature={signature}");
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
+
                 if (response.IsSuccessStatusCode)
                 {
                     var result = JObject.Parse (json);
@@ -595,14 +620,20 @@ namespace BinanceBotWpf.Models
             try
             {
                 long timestamp = GetTimestamp ();
-                string query = $"productId={productId}&amount={amount.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+                int recvWindow = 5000;
+                string query = $"productId={productId}&amount={amount.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}&recvWindow={recvWindow}";
                 string signature = CreateSignature (query);
+
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/simple-earn/flexible/subscribe") { Content = content };
+                request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
+
                 if (response.IsSuccessStatusCode)
                     return true;
+
                 Log ($"Subscribe error: {json}");
             }
             catch (Exception ex) { Log ($"Subscribe exception: {ex.Message}"); }
