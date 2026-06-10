@@ -3,10 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:oxy="http://oxyplot.org/wpf"
         Title="Binance Trading Bot" 
-        Height="650" Width="950" 
+        Height="700" Width="1000" 
         Background="#121212">
 
     <Window.Resources>
+        <!-- Стиль для заголовков столбцов (общий для всех DataGrid) -->
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#2c3e50"/>
             <Setter Property="Foreground" Value="White"/>
@@ -15,6 +16,16 @@
             <Setter Property="BorderThickness" Value="0,0,1,1"/>
             <Setter Property="Padding" Value="8,4"/>
             <Setter Property="HorizontalContentAlignment" Value="Center"/>
+        </Style>
+
+        <!-- Стиль для TextBox -->
+        <Style TargetType="TextBox">
+            <Setter Property="Background" Value="#2c3e50"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#34495e"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="Padding" Value="4,2"/>
+            <Setter Property="VerticalContentAlignment" Value="Center"/>
         </Style>
     </Window.Resources>
 
@@ -30,40 +41,48 @@
         <!-- Панель управления -->
         <WrapPanel Grid.Row="0" Margin="0,0,0,10">
             <Button Command="{Binding StartCommand}" Content="ЗАПУСК" Width="100" Height="30" Background="#2ecc71" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
-            <Button Command="{Binding StopCommand}"  Content="СТОП"   Width="100" Height="30" Background="#e74c3c" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
-            <Button Command="{Binding ReloadSettingsCommand}" Content="RELOAD" Width="80" Height="30" Background="#f39c12" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
+            <Button Command="{Binding StopCommand}" Content="СТОП" Width="100" Height="30" Background="#e74c3c" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
+            <Button Command="{Binding OptimizeStrategyCommand}" Content="ОПТИМИЗАЦИЯ" Width="120" Height="30" Background="#9b59b6" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
 
-            <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="20,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding FastSma, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White" Margin="0,0,5,0"/>
-            <TextBox Text="{Binding SlowSma, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White" Margin="0,0,15,0"/>
+            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="5,0" Width="1" Background="#34495e"/>
 
-            <TextBlock Text="RSI buy &lt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding RsiBuyThreshold, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White" Margin="0,0,5,0"/>
-            <TextBlock Text="RSI sell &gt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding RsiSellThreshold, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White"/>
+            <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="10,0,5,0" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding FastSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+            <TextBox Text="{Binding SlowSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
 
-            <TextBlock Text="SL %" Foreground="#bdc3c7" Margin="10,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding StopLossPercent, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White" Margin="0,0,5,0"/>
+            <TextBlock Text="RSI Buy &lt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding RsiBuyThreshold, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+            <TextBlock Text="RSI Sell &gt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding RsiSellThreshold, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
+
+            <TextBlock Text="SL %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding StopLossPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
             <TextBlock Text="TP %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding TakeProfitPercent, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White" Margin="0,0,5,0"/>
+            <TextBox Text="{Binding TakeProfitPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
             <TextBlock Text="Trail %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding TrailingStopPercent, UpdateSourceTrigger=PropertyChanged}" Width="45" Background="#2c3e50" Foreground="White"/>
+            <TextBox Text="{Binding TrailingStopPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
         </WrapPanel>
 
         <!-- Баланс и статус -->
         <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,5">
-            <TextBlock Foreground="#2ecc71" FontWeight="Bold" FontSize="18">
-                <Run Text="USDC BALANCE: "/>
-                <Run Text="{Binding WalletBalance}"/>
-            </TextBlock>
-            <TextBlock Foreground="#f39c12" FontWeight="Bold" FontSize="14" Margin="30,0,0,0" Text="{Binding PositionsStatusText}"/>
+            <Border Background="#2c3e50" CornerRadius="5" Padding="10,5">
+                <TextBlock Foreground="#2ecc71" FontWeight="Bold" FontSize="18">
+                    <Run Text="💰 USDC BALANCE: "/>
+                    <Run Text="{Binding WalletBalance}"/>
+                </TextBlock>
+            </Border>
+            <Border Background="#2c3e50" CornerRadius="5" Padding="10,5" Margin="10,0,0,0">
+                <TextBlock Foreground="#f39c12" FontWeight="Bold" FontSize="14" Text="{Binding PositionsStatusText}"/>
+            </Border>
+            <Border Background="#2c3e50" CornerRadius="5" Padding="10,5" Margin="10,0,0,0">
+                <TextBlock Foreground="#3498db" FontWeight="Bold" FontSize="14" Text="{Binding RiskPercentDisplay}"/>
+            </Border>
         </StackPanel>
-        <TextBlock Grid.Row="2" Foreground="#3498db" FontWeight="Bold" FontSize="14" Margin="0,0,0,10" Text="{Binding RiskPercentDisplay}"/>
 
         <!-- Вкладки -->
         <TabControl Grid.Row="3" Background="Transparent" Foreground="White">
             <!-- Вкладка Торговля -->
-            <TabItem Header="Торговля" Background="#1e1e1e" Foreground="White">
+            <TabItem Header="📈 Торговля" Background="#1e1e1e" Foreground="White">
                 <DataGrid x:Name="TradingDataGrid" ItemsSource="{Binding PairsList}" 
                           AutoGenerateColumns="False" HeadersVisibility="Column"
                           Background="#121212" Foreground="White"
@@ -95,15 +114,15 @@
                     </DataGrid.Resources>
 
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="ПАРА"      Binding="{Binding Pair}"     Width="120" />
-                        <DataGridTextColumn Header="ЦЕНА"      Binding="{Binding Price}"    Width="120" />
-                        <DataGridTextColumn Header="СИГНАЛ"    Binding="{Binding Analysis}" Width="*"   />
+                        <DataGridTextColumn Header="ПАРА" Binding="{Binding Pair}" Width="120"/>
+                        <DataGridTextColumn Header="ЦЕНА" Binding="{Binding Price}" Width="140"/>
+                        <DataGridTextColumn Header="СИГНАЛ" Binding="{Binding Analysis}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>
 
             <!-- Вкладка История сделок -->
-            <TabItem Header="История сделок" Background="#1e1e1e" Foreground="White">
+            <TabItem Header="📊 История сделок" Background="#1e1e1e" Foreground="White">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -125,33 +144,33 @@
                             </Grid.ColumnDefinitions>
 
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="Общий PnL" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Общий PnL" Foreground="#bdc3c7" FontSize="11"/>
                                 <TextBlock Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0">
                                     <Run Text="{Binding TotalPnL, StringFormat=F2}"/>
                                     <Run Text=" USDC"/>
                                 </TextBlock>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="Win Rate" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Win Rate" Foreground="#bdc3c7" FontSize="11"/>
                                 <TextBlock Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0">
                                     <Run Text="{Binding WinRate, StringFormat=F1}"/>
                                     <Run Text="%"/>
                                 </TextBlock>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="Сделок" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Сделок" Foreground="#bdc3c7" FontSize="11"/>
                                 <TextBlock Text="{Binding TotalTrades}" Foreground="#f39c12" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="3">
-                                <TextBlock Text="Выигрышей" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Выигрышей" Foreground="#bdc3c7" FontSize="11"/>
                                 <TextBlock Text="{Binding WinningTrades}" Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="4">
-                                <TextBlock Text="Проигрышей" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Проигрышей" Foreground="#bdc3c7" FontSize="11"/>
                                 <TextBlock Text="{Binding LosingTrades}" Foreground="#e74c3c" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="5">
-                                <TextBlock Text="Лучшая/Худшая" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Лучшая/Худшая" Foreground="#bdc3c7" FontSize="11"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="{Binding BestPnL, StringFormat=F2}" Foreground="#2ecc71" FontSize="14" FontWeight="Bold"/>
                                     <TextBlock Text=" / " Foreground="#bdc3c7" FontSize="14"/>
@@ -159,16 +178,17 @@
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="6">
-                                <TextBlock Text="Макс. просадка" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Макс. просадка" Foreground="#bdc3c7" FontSize="11"/>
                                 <TextBlock Text="{Binding MaxDrawdownDisplay}" Foreground="#e74c3c" FontSize="14" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="7">
-                                <TextBlock Text="Ср. приб/убыток" Foreground="#bdc3c7" FontSize="12"/>
+                                <TextBlock Text="Ср. приб/убыток" Foreground="#bdc3c7" FontSize="11"/>
                                 <TextBlock Text="{Binding AvgProfitLossDisplay}" Foreground="#f39c12" FontSize="12" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                         </Grid>
                     </Border>
 
+                    <!-- Таблица истории -->
                     <DataGrid Grid.Row="1" ItemsSource="{Binding TradesHistory}" 
                               AutoGenerateColumns="False" HeadersVisibility="Column"
                               Background="#121212" Foreground="White"
@@ -207,7 +227,9 @@
                     </DataGrid>
                 </Grid>
             </TabItem>
-            <TabItem Header="Акции США" Background="#1e1e1e" Foreground="White">
+
+            <!-- Вкладка Акции США -->
+            <TabItem Header="🇺🇸 Акции США" Background="#1e1e1e" Foreground="White">
                 <DataGrid ItemsSource="{Binding StocksList}" 
                           AutoGenerateColumns="False" HeadersVisibility="Column"
                           Background="#121212" Foreground="White"
@@ -216,6 +238,7 @@
                           SelectionMode="Single" RowHeight="32"
                           CanUserAddRows="False" CanUserDeleteRows="False"
                           CanUserResizeColumns="True" CanUserSortColumns="True">
+
                     <DataGrid.Resources>
                         <Style TargetType="DataGridRow">
                             <Setter Property="Background" Value="{Binding RowColor}"/>
@@ -236,24 +259,26 @@
                             <Setter Property="FontWeight" Value="Bold"/>
                         </Style>
                     </DataGrid.Resources>
+
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Символ" Binding="{Binding Symbol}" Width="120" />
-                        <DataGridTextColumn Header="Цена, USDC" Binding="{Binding Price, StringFormat=F2}" Width="140" />
-                        <DataGridTextColumn Header="Изм. за 24ч, %" Binding="{Binding ChangePercent, StringFormat=F2}" Width="140" />
-                        <DataGridTextColumn Header="Объём, USDC" Binding="{Binding Volume, StringFormat=N0}" Width="*" />
+                        <DataGridTextColumn Header="Символ" Binding="{Binding Symbol}" Width="120"/>
+                        <DataGridTextColumn Header="Цена, USDC" Binding="{Binding Price, StringFormat=F2}" Width="140"/>
+                        <DataGridTextColumn Header="Изм. за 24ч, %" Binding="{Binding ChangePercent, StringFormat=F2}" Width="140"/>
+                        <DataGridTextColumn Header="Объём, USDC" Binding="{Binding Volume, StringFormat=N0}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
             </TabItem>
 
             <!-- Вкладка Баланс -->
-            <TabItem Header="Баланс" Background="#1e1e1e" Foreground="White">
+            <TabItem Header="📉 График баланса" Background="#1e1e1e" Foreground="White">
                 <oxy:PlotView Model="{Binding PlotModel}" Background="#1e1e1e"/>
             </TabItem>
         </TabControl>
 
+        <!-- Лог -->
         <TextBox Grid.Row="4" x:Name="LogTextBox" Text="{Binding SystemLogs, Mode=OneWay}" 
                  Background="#1e1e1e" Foreground="#bdc3c7" 
                  IsReadOnly="True" VerticalScrollBarVisibility="Auto" 
-                 Margin="0,10,0,0" Padding="5"/>
+                 Margin="0,10,0,0" Padding="5" FontSize="11" FontFamily="Consolas"/>
     </Grid>
 </Window>
