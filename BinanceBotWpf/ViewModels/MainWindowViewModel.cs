@@ -95,6 +95,7 @@ namespace BinanceBotWpf.ViewModels
         private int _maxPositions = 3;
         private string _positionsStatusText = "0/3 нет открытых";
         private string _riskPercentDisplay = "Риск: 0%";
+        private TradingSettings _tradingSettings;
 
         // График
         private PlotModel _plotModel;
@@ -153,7 +154,12 @@ namespace BinanceBotWpf.ViewModels
             _tradingService = tradingService;
             _isTestnet = isTestnet;
             _settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
+
+            // Синхронная загрузка настроек (не асинхронная)
             LoadSettings ();
+
+            // Загружаем TradingSettings синхронно
+            _tradingSettings = LoadTradingSettingsSync ();
 
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
@@ -480,5 +486,65 @@ namespace BinanceBotWpf.ViewModels
 
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
+        // Добавьте в конец секции свойств (перед конструктором)
+
+        public int RsiPeriod
+        {
+            get => _tradingSettings?.RsiPeriod ?? 14;
+            set { if (_tradingSettings != null) { _tradingSettings.RsiPeriod = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal MinTradeAmount
+        {
+            get => _tradingSettings?.MinTradeAmount ?? 10;
+            set { if (_tradingSettings != null) { _tradingSettings.MinTradeAmount = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal MaxTradeAmount
+        {
+            get => _tradingSettings?.MaxTradeAmount ?? 50;
+            set { if (_tradingSettings != null) { _tradingSettings.MaxTradeAmount = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        private async void SaveTradingSettings()
+        {
+            if (_tradingSettings != null)
+                await _tradingSettings.SaveAsync ();
+        }
+
+        private TradingSettings LoadTradingSettingsSync()
+        {
+            string settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "trading_settings.json");
+            if (!File.Exists (settingsPath))
+                return new TradingSettings ();
+
+            try
+            {
+                string json = File.ReadAllText (settingsPath);
+                return System.Text.Json.JsonSerializer.Deserialize<TradingSettings> (json) ?? new TradingSettings ();
+            }
+            catch
+            {
+                return new TradingSettings ();
+            }
+        }
+
+        // Добавьте эти свойства в класс MainWindowViewModel (после других свойств)
+
+        // Добавьте это свойство в класс MainWindowViewModel
+        public decimal RiskPerTradePercent
+        {
+            get => _tradingSettings?.RiskPerTradePercent ?? 0.02m;
+            set
+            {
+                if (_tradingSettings != null)
+                {
+                    _tradingSettings.RiskPerTradePercent = value;
+                    OnPropertyChanged ();
+                    SaveTradingSettings ();
+                    UpdateRiskDisplay (value);
+                }
+            }
+        }
     }
 }

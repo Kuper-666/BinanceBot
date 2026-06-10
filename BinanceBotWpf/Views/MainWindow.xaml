@@ -3,11 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:oxy="http://oxyplot.org/wpf"
         Title="Binance Trading Bot" 
-        Height="700" Width="1000" 
+        Height="750" Width="1100" 
         Background="#121212">
 
     <Window.Resources>
-        <!-- Стиль для заголовков столбцов (общий для всех DataGrid) -->
+        <!-- Стиль для заголовков столбцов -->
         <Style TargetType="DataGridColumnHeader">
             <Setter Property="Background" Value="#2c3e50"/>
             <Setter Property="Foreground" Value="White"/>
@@ -26,6 +26,13 @@
             <Setter Property="BorderThickness" Value="1"/>
             <Setter Property="Padding" Value="4,2"/>
             <Setter Property="VerticalContentAlignment" Value="Center"/>
+            <Setter Property="Height" Value="28"/>
+        </Style>
+
+        <!-- Стиль для Label -->
+        <Style TargetType="Label">
+            <Setter Property="Foreground" Value="#bdc3c7"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
         </Style>
     </Window.Resources>
 
@@ -38,15 +45,25 @@
             <RowDefinition Height="130"/>
         </Grid.RowDefinitions>
 
-        <!-- Панель управления -->
-        <WrapPanel Grid.Row="0" Margin="0,0,0,10">
-            <Button Command="{Binding StartCommand}" Content="ЗАПУСК" Width="100" Height="30" Background="#2ecc71" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
-            <Button Command="{Binding StopCommand}" Content="СТОП" Width="100" Height="30" Background="#e74c3c" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
-            <Button Command="{Binding OptimizeStrategyCommand}" Content="ОПТИМИЗАЦИЯ" Width="120" Height="30" Background="#9b59b6" Foreground="White" BorderThickness="0" Margin="0,0,10,0"/>
+        <!-- Панель управления - строка 1 -->
+        <WrapPanel Grid.Row="0" Margin="0,0,0,8">
+            <Button Command="{Binding StartCommand}" Content="▶ ЗАПУСК" Width="100" Height="32" Background="#2ecc71" Foreground="White" BorderThickness="0" Margin="0,0,8,0">
+                <Button.Resources>
+                    <Style TargetType="Border">
+                        <Setter Property="CornerRadius" Value="5"/>
+                    </Style>
+                </Button.Resources>
+            </Button>
+            <Button Command="{Binding StopCommand}" Content="⏹ СТОП" Width="100" Height="32" Background="#e74c3c" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
+            <Button Command="{Binding OptimizeStrategyCommand}" Content="🧠 ОПТИМИЗАЦИЯ" Width="130" Height="32" Background="#9b59b6" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
+            <Button Command="{Binding ExportDataCommand}" Content="📁 ЭКСПОРТ" Width="100" Height="32" Background="#3498db" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
 
-            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="5,0" Width="1" Background="#34495e"/>
+            <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0" Width="1" Background="#34495e"/>
+        </WrapPanel>
 
-            <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="10,0,5,0" VerticalAlignment="Center"/>
+        <!-- Панель параметров - строка 2 -->
+        <WrapPanel Grid.Row="1" Margin="0,0,0,8">
+            <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
             <TextBox Text="{Binding FastSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
             <TextBox Text="{Binding SlowSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
 
@@ -61,23 +78,34 @@
             <TextBox Text="{Binding TakeProfitPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
             <TextBlock Text="Trail %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
             <TextBox Text="{Binding TrailingStopPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
+
+            <TextBlock Text="Риск %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+            <TextBox Text="{Binding RiskPerTradePercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+
+            <CheckBox Content="Динамич. риск" IsChecked="{Binding DynamicRisk}" 
+          Foreground="#bdc3c7" Margin="10,0,5,0" VerticalAlignment="Center"/>
+            <CheckBox Content="Фильтр рынка" IsChecked="{Binding MarketFilter}" 
+          Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
         </WrapPanel>
 
-        <!-- Баланс и статус -->
-        <StackPanel Grid.Row="1" Orientation="Horizontal" Margin="0,0,0,5">
-            <Border Background="#2c3e50" CornerRadius="5" Padding="10,5">
-                <TextBlock Foreground="#2ecc71" FontWeight="Bold" FontSize="18">
-                    <Run Text="💰 USDC BALANCE: "/>
+        <!-- Баланс и статус - строка 3 -->
+        <WrapPanel Grid.Row="2" Margin="0,0,0,10">
+            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6">
+                <TextBlock Foreground="#2ecc71" FontWeight="Bold" FontSize="16">
+                    <Run Text="💰 USDC: "/>
                     <Run Text="{Binding WalletBalance}"/>
                 </TextBlock>
             </Border>
-            <Border Background="#2c3e50" CornerRadius="5" Padding="10,5" Margin="10,0,0,0">
-                <TextBlock Foreground="#f39c12" FontWeight="Bold" FontSize="14" Text="{Binding PositionsStatusText}"/>
+            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6" Margin="10,0,0,0">
+                <TextBlock Foreground="#f39c12" FontWeight="Bold" FontSize="13" Text="{Binding PositionsStatusText}"/>
             </Border>
-            <Border Background="#2c3e50" CornerRadius="5" Padding="10,5" Margin="10,0,0,0">
-                <TextBlock Foreground="#3498db" FontWeight="Bold" FontSize="14" Text="{Binding RiskPercentDisplay}"/>
+            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6" Margin="10,0,0,0">
+                <TextBlock Foreground="#3498db" FontWeight="Bold" FontSize="13" Text="{Binding RiskPercentDisplay}"/>
             </Border>
-        </StackPanel>
+            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6" Margin="10,0,0,0">
+                <TextBlock Foreground="#e74c3c" FontWeight="Bold" FontSize="13" Text="{Binding MaxDrawdownDisplay}"/>
+            </Border>
+        </WrapPanel>
 
         <!-- Вкладки -->
         <TabControl Grid.Row="3" Background="Transparent" Foreground="White">
@@ -86,7 +114,7 @@
                 <DataGrid x:Name="TradingDataGrid" ItemsSource="{Binding PairsList}" 
                           AutoGenerateColumns="False" HeadersVisibility="Column"
                           Background="#121212" Foreground="White"
-                          BorderThickness="0" FontSize="14"
+                          BorderThickness="0" FontSize="13"
                           GridLinesVisibility="Horizontal"
                           SelectionMode="Single" RowHeight="32"
                           CanUserAddRows="False" CanUserDeleteRows="False"
@@ -192,10 +220,10 @@
                     <DataGrid Grid.Row="1" ItemsSource="{Binding TradesHistory}" 
                               AutoGenerateColumns="False" HeadersVisibility="Column"
                               Background="#121212" Foreground="White"
-                              BorderThickness="0" FontSize="12"
+                              BorderThickness="0" FontSize="11"
                               GridLinesVisibility="Horizontal"
                               AlternationCount="2"
-                              RowHeight="30" CanUserAddRows="False" CanUserDeleteRows="False"
+                              RowHeight="28" CanUserAddRows="False" CanUserDeleteRows="False"
                               CanUserResizeColumns="True" CanUserSortColumns="True">
 
                         <DataGrid.Resources>
@@ -231,13 +259,13 @@
             <!-- Вкладка Акции США -->
             <TabItem Header="🇺🇸 Акции США" Background="#1e1e1e" Foreground="White">
                 <DataGrid ItemsSource="{Binding StocksList}" 
-                          AutoGenerateColumns="False" HeadersVisibility="Column"
-                          Background="#121212" Foreground="White"
-                          BorderThickness="0" FontSize="14"
-                          GridLinesVisibility="Horizontal"
-                          SelectionMode="Single" RowHeight="32"
-                          CanUserAddRows="False" CanUserDeleteRows="False"
-                          CanUserResizeColumns="True" CanUserSortColumns="True">
+              AutoGenerateColumns="False" HeadersVisibility="Column"
+              Background="#121212" Foreground="White"
+              BorderThickness="0" FontSize="13"
+              GridLinesVisibility="Horizontal"
+              SelectionMode="Single" RowHeight="32"
+              CanUserAddRows="False" CanUserDeleteRows="False"
+              CanUserResizeColumns="True" CanUserSortColumns="True">
 
                     <DataGrid.Resources>
                         <Style TargetType="DataGridRow">
@@ -261,9 +289,9 @@
                     </DataGrid.Resources>
 
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Символ" Binding="{Binding Symbol}" Width="120"/>
-                        <DataGridTextColumn Header="Цена, USDC" Binding="{Binding Price, StringFormat=F2}" Width="140"/>
-                        <DataGridTextColumn Header="Изм. за 24ч, %" Binding="{Binding ChangePercent, StringFormat=F2}" Width="140"/>
+                        <DataGridTextColumn Header="Символ" Binding="{Binding Symbol}" Width="100"/>
+                        <DataGridTextColumn Header="Цена, USDC" Binding="{Binding Price, StringFormat=F2}" Width="130"/>
+                        <DataGridTextColumn Header="Изм. за 24ч, %" Binding="{Binding ChangePercent, StringFormat=F2}" Width="130"/>
                         <DataGridTextColumn Header="Объём, USDC" Binding="{Binding Volume, StringFormat=N0}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>

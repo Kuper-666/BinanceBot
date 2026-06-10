@@ -178,5 +178,22 @@ namespace BinanceBotWpf.Services
             decimal quantity = positionUsdc / price;
             return quantity;
         }
+
+        /// <summary>
+        /// Проверка, разрешена ли торговля в текущее время
+        /// </summary>
+        public bool IsTradingTime(TradingSettings settings)
+        {
+            return settings.CanTradeNow ();
+        }
+
+        /// <summary>
+        /// Проверка новостного фона (заглушка - можно расширить)
+        /// </summary>
+        public bool IsNewsImpactLow()
+        {
+            // TODO: добавить проверку экономического календаря
+            return true;
+        }
     }
 }
