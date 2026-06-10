@@ -22,13 +22,6 @@ namespace BinanceBotWpf.Models
 
         private bool _isRebalancing = false;
 
-        /// <summary>
-        /// Автоматическая конвертация активов в USDC для поддержания баланса.
-        /// </summary>
-        /// <param name="client">Клиент Binance</param>
-        /// <param name="isRunning">Флаг работы бота</param>
-        /// <param name="openPositionSymbols">Список символов (пар), по которым есть открытые позиции – их не продаём</param>
-        /// <param name="targetUsdc">Целевой баланс USDC на споте</param>
         public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, HashSet<string> openPositionSymbols, decimal targetUsdc = 15m)
         {
             if (_isRebalancing)
@@ -42,7 +35,6 @@ namespace BinanceBotWpf.Models
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                 if (currentUsdc >= targetUsdc) return;
 
-                // 1. Пытаемся выкупить USDC из Earn
                 decimal need = targetUsdc - currentUsdc;
                 if (need >= 0.5m)
                 {
@@ -68,7 +60,6 @@ namespace BinanceBotWpf.Models
                     }
                 }
 
-                // 2. Собираем все балансы (спот + Earn) – теперь включает все активы благодаря пагинации
                 var allBalances = await GetAllBalancesAsync (client);
                 var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
 
@@ -81,7 +72,6 @@ namespace BinanceBotWpf.Models
                     if (asset == "USDC" || BlacklistedAssets.Contains (asset) || asset.StartsWith ("LD")) continue;
 
                     string pair = asset + "USDC";
-                    // Пропускаем активы с открытыми позициями
                     if (openPositionSymbols != null && openPositionSymbols.Contains (pair))
                     {
                         Log ($"⏸️ {asset} пропущен: есть открытая позиция ({pair})");
@@ -93,32 +83,12 @@ namespace BinanceBotWpf.Models
                     decimal price = klines.Last ().Close;
                     decimal estimatedValue = totalAmount * price;
 
-                    // Минимальная сумма для рыночного ордера на Binance (для USDC пар обычно 10 USDC)
-                    const decimal minNotional = 10.0m;
-                    if (estimatedValue < minNotional)
+                    // ИСПРАВЛЕНО: минимальная сумма продажи 10 USDC (было 6)
+                    if (estimatedValue < 10.0m)
                     {
-                        Log ($"⏭️ {asset}: стоимость {estimatedValue:F2} USDC ниже минимальной {minNotional}, пробую конвертировать пыль в BNB.");
-                        // Конвертация мелкого остатка в BNB через dust
-                        var dustAssets = await client.GetDustAssetsAsync ();
-                        var dustItem = dustAssets?.FirstOrDefault (d => d["asset"]?.ToString () == asset);
-                        if (dustItem != null)
-                        {
-                            string assetId = dustItem["assetId"]?.ToString ();
-                            if (!string.IsNullOrEmpty (assetId))
-                            {
-                                Log ($"🔄 Конвертирую {asset} в BNB через dust...");
-                                bool converted = await client.ConvertDustToBnbAsync (new List<string> { assetId });
-                                if (converted)
-                                {
-                                    Log ($"✅ {asset} конвертирован в BNB.");
-                                    continue;
-                                }
-                            }
-                        }
-                        else
-                        {
-                            Log ($"⚠️ {asset} не поддерживает dust-конвертацию, пропускаем.");
-                        }
+                        Log ($"⏭️ {asset}: стоимость {estimatedValue:F2} USDC ниже минимальной 10.0, пробую конвертировать пыль в USDC");
+                        // Пробуем сконвертировать через dust
+                        await client.ConvertDustToUsdcAsync (null);
                         continue;
                     }
 
@@ -126,7 +96,6 @@ namespace BinanceBotWpf.Models
                     decimal normalizedAmount = Math.Floor (totalAmount / stepSize) * stepSize;
                     if (normalizedAmount <= 0) continue;
 
-                    // Выкупаем из Earn, если на споте не хватает
                     decimal spotAmount = await client.GetAccountBalanceAsync (asset);
                     if (spotAmount < normalizedAmount)
                     {
@@ -152,40 +121,6 @@ namespace BinanceBotWpf.Models
                         Log ($"❌ Ошибка при продаже {asset}. Пробую следующий...");
                     }
                 }
-
-                // 3. Критический случай: если всё ещё нет USDC и есть открытые позиции – закрываем самую убыточную
-                currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                if (currentUsdc < 5 && openPositionSymbols != null && openPositionSymbols.Count > 0)
-                {
-                    var posToClose = openPositionSymbols.FirstOrDefault ();
-                    if (posToClose != null)
-                    {
-                        Log ($"🚨 Критически низкий USDC ({currentUsdc:F2}), принудительно закрываю позицию {posToClose}");
-                        string asset = posToClose.Replace ("USDC", "");
-                        decimal spotBalance = await client.GetAccountBalanceAsync (asset);
-                        if (spotBalance > 0)
-                        {
-                            decimal step = await client.GetStepSizeAsync (posToClose);
-                            decimal qty = Math.Floor (spotBalance / step) * step;
-                            if (qty > 0)
-                            {
-                                var order = await client.PlaceOrder (posToClose, "SELL", "MARKET", qty);
-                                if (order != null) Log ($"✅ Принудительно закрыта {posToClose}");
-                            }
-                        }
-                    }
-                }
-
-                // 4. Если после конвертации пыли появился BNB – продаём его в USDC
-                decimal bnbBalance = await client.GetAccountBalanceAsync ("BNB");
-                if (bnbBalance > 0.001m)
-                {
-                    Log ($"🔄 Конвертирую {bnbBalance} BNB в USDC...");
-                    await client.ConvertToUsdcAsync ("BNB", bnbBalance);
-                    currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                    if (currentUsdc >= targetUsdc) return;
-                }
-
                 Log ("❌ Не удалось пополнить USDC: нет ликвидных активов (или все активы с открытыми позициями).");
             }
             catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
