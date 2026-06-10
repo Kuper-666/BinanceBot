@@ -110,6 +110,7 @@ namespace BinanceBotWpf.ViewModels
         public ICommand StopCommand { get; }
         public ICommand ExportDataCommand { get; }
         public ICommand OptimizeStrategyCommand { get; }
+        public ICommand ClearLogCommand { get; }
 
         public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
         private Dictionary<string, PairAnalysisItem> _pairDict = new ();
@@ -165,6 +166,7 @@ namespace BinanceBotWpf.ViewModels
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
             OptimizeStrategyCommand = new RelayCommand (async _ => await RunOptimization (), _ => !IsRunning);
+            ClearLogCommand = new RelayCommand (_ => ClearLog (), _ => true);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -545,6 +547,11 @@ namespace BinanceBotWpf.ViewModels
                     UpdateRiskDisplay (value);
                 }
             }
+        }
+
+        private void ClearLog()
+        {
+            SystemLogs = "";
         }
     }
 }

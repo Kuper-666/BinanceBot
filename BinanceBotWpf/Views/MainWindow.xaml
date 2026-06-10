@@ -2,9 +2,10 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:oxy="http://oxyplot.org/wpf"
-        Title="Binance Trading Bot" 
-        Height="750" Width="1100" 
-        Background="#121212">
+        Title="Binance Trading Bot v2.0" 
+        Height="800" Width="1200" 
+        Background="#121212"
+        WindowStartupLocation="CenterScreen">
 
     <Window.Resources>
         <!-- Стиль для заголовков столбцов -->
@@ -29,10 +30,13 @@
             <Setter Property="Height" Value="28"/>
         </Style>
 
-        <!-- Стиль для Label -->
-        <Style TargetType="Label">
-            <Setter Property="Foreground" Value="#bdc3c7"/>
-            <Setter Property="VerticalAlignment" Value="Center"/>
+        <!-- Стиль для кнопок -->
+        <Style TargetType="Button" x:Key="ActionButton">
+            <Setter Property="Height" Value="32"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderThickness" Value="0"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Background" Value="#2c3e50"/>
         </Style>
     </Window.Resources>
 
@@ -41,74 +45,111 @@
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
             <RowDefinition Height="Auto"/>
+            <RowDefinition Height="Auto"/>
             <RowDefinition Height="*"/>
-            <RowDefinition Height="130"/>
+            <RowDefinition Height="180"/>
         </Grid.RowDefinitions>
 
         <!-- Панель управления - строка 1 -->
         <WrapPanel Grid.Row="0" Margin="0,0,0,8">
-            <Button Command="{Binding StartCommand}" Content="▶ ЗАПУСК" Width="100" Height="32" Background="#2ecc71" Foreground="White" BorderThickness="0" Margin="0,0,8,0">
-                <Button.Resources>
-                    <Style TargetType="Border">
-                        <Setter Property="CornerRadius" Value="5"/>
-                    </Style>
-                </Button.Resources>
-            </Button>
-            <Button Command="{Binding StopCommand}" Content="⏹ СТОП" Width="100" Height="32" Background="#e74c3c" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
-            <Button Command="{Binding OptimizeStrategyCommand}" Content="🧠 ОПТИМИЗАЦИЯ" Width="130" Height="32" Background="#9b59b6" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
-            <Button Command="{Binding ExportDataCommand}" Content="📁 ЭКСПОРТ" Width="100" Height="32" Background="#3498db" Foreground="White" BorderThickness="0" Margin="0,0,8,0"/>
+            <Button Command="{Binding StartCommand}" Content="▶ ЗАПУСК" Width="100" Style="{StaticResource ActionButton}" Background="#2ecc71" Margin="0,0,8,0"/>
+            <Button Command="{Binding StopCommand}" Content="⏹ СТОП" Width="100" Style="{StaticResource ActionButton}" Background="#e74c3c" Margin="0,0,8,0"/>
+            <Button Command="{Binding OptimizeStrategyCommand}" Content="🧠 ОПТИМИЗАЦИЯ" Width="130" Style="{StaticResource ActionButton}" Background="#9b59b6" Margin="0,0,8,0"/>
+            <Button Command="{Binding ExportDataCommand}" Content="📁 ЭКСПОРТ" Width="100" Style="{StaticResource ActionButton}" Background="#3498db" Margin="0,0,8,0"/>
 
             <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0" Width="1" Background="#34495e"/>
+
+            <!-- Очистить лог -->
+            <Button Command="{Binding ClearLogCommand}" Content="🗑 ОЧИСТИТЬ ЛОГ" Width="110" Height="32" Background="#7f8c8d" Foreground="White" BorderThickness="0" Margin="0,0,8,0" Cursor="Hand"/>
+
+            <!-- Статус подключения -->
+            <Border Background="#2c3e50" CornerRadius="5" Padding="8,4">
+                <StackPanel Orientation="Horizontal">
+                    <Ellipse Width="10" Height="10" Fill="#2ecc71" Margin="0,0,5,0"/>
+                    <TextBlock Text="Online" Foreground="#2ecc71" FontSize="11"/>
+                </StackPanel>
+            </Border>
         </WrapPanel>
 
         <!-- Панель параметров - строка 2 -->
-        <WrapPanel Grid.Row="1" Margin="0,0,0,8">
-            <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding FastSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
-            <TextBox Text="{Binding SlowSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
+        <Border Grid.Row="1" Background="#1e1e1e" CornerRadius="5" Padding="10" Margin="0,0,0,8">
+            <WrapPanel>
+                <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding FastSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+                <TextBox Text="{Binding SlowSma, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,20,0"/>
 
-            <TextBlock Text="RSI Buy &lt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding RsiBuyThreshold, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
-            <TextBlock Text="RSI Sell &gt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding RsiSellThreshold, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
+                <TextBlock Text="RSI Buy &lt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding RsiBuyThreshold, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+                <TextBlock Text="RSI Sell &gt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding RsiSellThreshold, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,20,0"/>
 
-            <TextBlock Text="SL %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding StopLossPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
-            <TextBlock Text="TP %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding TakeProfitPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
-            <TextBlock Text="Trail %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding TrailingStopPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,15,0"/>
+                <TextBlock Text="SL %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding StopLossPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+                <TextBlock Text="TP %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding TakeProfitPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+                <TextBlock Text="Trail %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding TrailingStopPercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,20,0"/>
 
-            <TextBlock Text="Риск %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-            <TextBox Text="{Binding RiskPerTradePercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
-
-            <CheckBox Content="Динамич. риск" IsChecked="{Binding DynamicRisk}" 
-          Foreground="#bdc3c7" Margin="10,0,5,0" VerticalAlignment="Center"/>
-            <CheckBox Content="Фильтр рынка" IsChecked="{Binding MarketFilter}" 
-          Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-        </WrapPanel>
+                <TextBlock Text="Риск %" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding RiskPerTradePercent, UpdateSourceTrigger=PropertyChanged}" Width="50" Margin="0,0,5,0"/>
+            </WrapPanel>
+        </Border>
 
         <!-- Баланс и статус - строка 3 -->
         <WrapPanel Grid.Row="2" Margin="0,0,0,10">
-            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6">
-                <TextBlock Foreground="#2ecc71" FontWeight="Bold" FontSize="16">
-                    <Run Text="💰 USDC: "/>
-                    <Run Text="{Binding WalletBalance}"/>
-                </TextBlock>
+            <Border Background="#2c3e50" CornerRadius="8" Padding="12,8">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="💰" FontSize="20" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock Text="USDC BALANCE" Foreground="#7f8c8d" FontSize="10"/>
+                        <TextBlock Text="{Binding WalletBalance}" Foreground="#2ecc71" FontWeight="Bold" FontSize="20"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
-            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6" Margin="10,0,0,0">
-                <TextBlock Foreground="#f39c12" FontWeight="Bold" FontSize="13" Text="{Binding PositionsStatusText}"/>
+
+            <Border Background="#2c3e50" CornerRadius="8" Padding="12,8" Margin="10,0,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="📊" FontSize="20" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock Text="POSITIONS" Foreground="#7f8c8d" FontSize="10"/>
+                        <TextBlock Text="{Binding PositionsStatusText}" Foreground="#f39c12" FontWeight="Bold" FontSize="14"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
-            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6" Margin="10,0,0,0">
-                <TextBlock Foreground="#3498db" FontWeight="Bold" FontSize="13" Text="{Binding RiskPercentDisplay}"/>
+
+            <Border Background="#2c3e50" CornerRadius="8" Padding="12,8" Margin="10,0,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="🎯" FontSize="20" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock Text="WIN RATE" Foreground="#7f8c8d" FontSize="10"/>
+                        <TextBlock Text="{Binding WinRate, StringFormat=F1}" Foreground="#2ecc71" FontWeight="Bold" FontSize="16"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
-            <Border Background="#2c3e50" CornerRadius="5" Padding="12,6" Margin="10,0,0,0">
-                <TextBlock Foreground="#e74c3c" FontWeight="Bold" FontSize="13" Text="{Binding MaxDrawdownDisplay}"/>
+
+            <Border Background="#2c3e50" CornerRadius="8" Padding="12,8" Margin="10,0,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="📉" FontSize="20" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock Text="MAX DRAWDOWN" Foreground="#7f8c8d" FontSize="10"/>
+                        <TextBlock Text="{Binding MaxDrawdownDisplay}" Foreground="#e74c3c" FontWeight="Bold" FontSize="14"/>
+                    </StackPanel>
+                </StackPanel>
+            </Border>
+
+            <Border Background="#2c3e50" CornerRadius="8" Padding="12,8" Margin="10,0,0,0">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="📈" FontSize="20" Margin="0,0,8,0"/>
+                    <StackPanel>
+                        <TextBlock Text="TOTAL PnL" Foreground="#7f8c8d" FontSize="10"/>
+                        <TextBlock Text="{Binding TotalPnL, StringFormat=F2}" Foreground="#3498db" FontWeight="Bold" FontSize="16"/>
+                    </StackPanel>
+                </StackPanel>
             </Border>
         </WrapPanel>
 
         <!-- Вкладки -->
-        <TabControl Grid.Row="3" Background="Transparent" Foreground="White">
+        <TabControl Grid.Row="3" Background="Transparent" Foreground="White" Margin="0,0,0,8">
             <!-- Вкладка Торговля -->
             <TabItem Header="📈 Торговля" Background="#1e1e1e" Foreground="White">
                 <DataGrid x:Name="TradingDataGrid" ItemsSource="{Binding PairsList}" 
@@ -143,7 +184,14 @@
 
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="ПАРА" Binding="{Binding Pair}" Width="120"/>
-                        <DataGridTextColumn Header="ЦЕНА" Binding="{Binding Price}" Width="140"/>
+                        <DataGridTextColumn Header="ЦЕНА" Binding="{Binding Price}" Width="140">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#f39c12"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
                         <DataGridTextColumn Header="СИГНАЛ" Binding="{Binding Analysis}" Width="*"/>
                     </DataGrid.Columns>
                 </DataGrid>
@@ -173,29 +221,29 @@
 
                             <StackPanel Grid.Column="0">
                                 <TextBlock Text="Общий PnL" Foreground="#bdc3c7" FontSize="11"/>
-                                <TextBlock Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0">
+                                <TextBlock Foreground="#2ecc71" FontSize="18" FontWeight="Bold" Margin="0,5,0,0">
                                     <Run Text="{Binding TotalPnL, StringFormat=F2}"/>
                                     <Run Text=" USDC"/>
                                 </TextBlock>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="Win Rate" Foreground="#bdc3c7" FontSize="11"/>
-                                <TextBlock Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0">
+                                <TextBlock Foreground="#2ecc71" FontSize="18" FontWeight="Bold" Margin="0,5,0,0">
                                     <Run Text="{Binding WinRate, StringFormat=F1}"/>
                                     <Run Text="%"/>
                                 </TextBlock>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
                                 <TextBlock Text="Сделок" Foreground="#bdc3c7" FontSize="11"/>
-                                <TextBlock Text="{Binding TotalTrades}" Foreground="#f39c12" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                                <TextBlock Text="{Binding TotalTrades}" Foreground="#f39c12" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="3">
                                 <TextBlock Text="Выигрышей" Foreground="#bdc3c7" FontSize="11"/>
-                                <TextBlock Text="{Binding WinningTrades}" Foreground="#2ecc71" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                                <TextBlock Text="{Binding WinningTrades}" Foreground="#2ecc71" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="4">
                                 <TextBlock Text="Проигрышей" Foreground="#bdc3c7" FontSize="11"/>
-                                <TextBlock Text="{Binding LosingTrades}" Foreground="#e74c3c" FontSize="16" FontWeight="Bold" Margin="0,5,0,0"/>
+                                <TextBlock Text="{Binding LosingTrades}" Foreground="#e74c3c" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="5">
                                 <TextBlock Text="Лучшая/Худшая" Foreground="#bdc3c7" FontSize="11"/>
@@ -247,7 +295,7 @@
                             <DataGridTextColumn Header="Цена входа" Binding="{Binding EntryPrice, StringFormat=F4}" Width="85"/>
                             <DataGridTextColumn Header="Цена выхода" Binding="{Binding ExitPrice, StringFormat=F4}" Width="85"/>
                             <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity, StringFormat=F6}" Width="90"/>
-                            <DataGridTextColumn Header="PnL (USDC)" Binding="{Binding PnL, StringFormat=F2}" Width="90"/>
+                            <DataGridTextColumn Header="PnL" Binding="{Binding PnL, StringFormat=F2}" Width="80"/>
                             <DataGridTextColumn Header="PnL %" Binding="{Binding PnLPercent, StringFormat=F2}" Width="70"/>
                             <DataGridTextColumn Header="Длительность" Binding="{Binding Duration, StringFormat='hh\\:mm\\:ss'}" Width="85"/>
                             <DataGridTextColumn Header="Причина" Binding="{Binding Reason}" Width="140"/>
@@ -259,13 +307,13 @@
             <!-- Вкладка Акции США -->
             <TabItem Header="🇺🇸 Акции США" Background="#1e1e1e" Foreground="White">
                 <DataGrid ItemsSource="{Binding StocksList}" 
-              AutoGenerateColumns="False" HeadersVisibility="Column"
-              Background="#121212" Foreground="White"
-              BorderThickness="0" FontSize="13"
-              GridLinesVisibility="Horizontal"
-              SelectionMode="Single" RowHeight="32"
-              CanUserAddRows="False" CanUserDeleteRows="False"
-              CanUserResizeColumns="True" CanUserSortColumns="True">
+                          AutoGenerateColumns="False" HeadersVisibility="Column"
+                          Background="#121212" Foreground="White"
+                          BorderThickness="0" FontSize="13"
+                          GridLinesVisibility="Horizontal"
+                          SelectionMode="Single" RowHeight="32"
+                          CanUserAddRows="False" CanUserDeleteRows="False"
+                          CanUserResizeColumns="True" CanUserSortColumns="True">
 
                     <DataGrid.Resources>
                         <Style TargetType="DataGridRow">
@@ -303,10 +351,29 @@
             </TabItem>
         </TabControl>
 
-        <!-- Лог -->
-        <TextBox Grid.Row="4" x:Name="LogTextBox" Text="{Binding SystemLogs, Mode=OneWay}" 
-                 Background="#1e1e1e" Foreground="#bdc3c7" 
-                 IsReadOnly="True" VerticalScrollBarVisibility="Auto" 
-                 Margin="0,10,0,0" Padding="5" FontSize="11" FontFamily="Consolas"/>
+        <!-- Увеличенная панель лога -->
+        <Border Grid.Row="4" Background="#1e1e1e" CornerRadius="5" Margin="0,0,0,8">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                </Grid.RowDefinitions>
+
+                <!-- Заголовок лога -->
+                <Border Grid.Row="0" Background="#2c3e50" CornerRadius="5,5,0,0" Padding="8,4">
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="📋 SYSTEM LOG" Foreground="#bdc3c7" FontWeight="Bold" FontSize="12"/>
+                        <TextBlock Text=" (последние сообщения)" Foreground="#7f8c8d" FontSize="10" Margin="8,0,0,0"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- Текст лога -->
+                <TextBox Grid.Row="1" x:Name="LogTextBox" Text="{Binding SystemLogs, Mode=OneWay}" 
+                         Background="#0d0d0d" Foreground="#bdc3c7" 
+                         IsReadOnly="True" VerticalScrollBarVisibility="Auto" 
+                         Padding="8" FontSize="11" FontFamily="Consolas"
+                         BorderThickness="0"/>
+            </Grid>
+        </Border>
     </Grid>
 </Window>
