@@ -15,6 +15,11 @@ namespace BinanceBotWpf.Services
         private readonly PositionManager _positionManager;
         private readonly Action<string> _logger;
 
+        public bool EnableDynamicTrailingStop { get; set; } = true;
+        public decimal ActivationProfitPercent { get; set; } = 0.02m; // Активация при +2%
+        public decimal TrailingStepPercent { get; set; } = 0.005m;    // Шаг трейлинга 0.5%
+        private readonly Dictionary<string, decimal> _lastTrailingPrice = new ();
+
         public decimal TrailingStopPercent { get; set; } = 0.02m;
         public decimal PartialClosePercent { get; set; } = 0.05m; // 5% профита -> частичная фиксация
         public TimeSpan MaxHoldTime { get; set; } = TimeSpan.FromHours (2);
@@ -48,17 +53,21 @@ namespace BinanceBotWpf.Services
                 decimal price = getCurrentPrice (sym);
                 if (price <= 0) continue;
 
-                // 1. Трейлинг-стоп
+                // Динамический трейлинг-стоп
+                await UpdateDynamicTrailingStopAsync (sym, pos, price);
+
+                // Стандартный трейлинг-стоп
                 await UpdateTrailingStopAsync (sym, pos, price);
 
-                // 2. Частичная фиксация при достижении профита
+                // Частичная фиксация
                 await CheckPartialCloseAsync (sym, pos, price);
 
-                // 3. Проверка условий закрытия
+                // Проверка условий закрытия
                 bool shouldClose = ShouldClosePosition (pos, price);
                 if (shouldClose)
                 {
                     toClose.Add (sym);
+                    _lastTrailingPrice.Remove (sym);
                 }
             }
 
@@ -179,6 +188,66 @@ namespace BinanceBotWpf.Services
             catch (Exception ex)
             {
                 _logger?.Invoke ($"⚠️ Ошибка обновления OCO {symbol}: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Динамический трейлинг-стоп (может как повышать, так и понижать SL)
+        /// </summary>
+        private async Task UpdateDynamicTrailingStopAsync(string symbol, OpenPosition pos, decimal currentPrice)
+        {
+            if (!EnableDynamicTrailingStop) return;
+
+            decimal profitPercent = ( currentPrice - pos.EntryPrice ) / pos.EntryPrice;
+
+            // Активация только после достижения порога прибыли
+            if (profitPercent < ActivationProfitPercent) return;
+
+            // Получаем последнюю зафиксированную цену
+            if (!_lastTrailingPrice.TryGetValue (symbol, out decimal lastPrice))
+                lastPrice = pos.EntryPrice;
+
+            // Проверяем, нужно ли обновить трейлинг-стоп
+            decimal priceIncrease = ( currentPrice - lastPrice ) / lastPrice;
+
+            if (priceIncrease >= TrailingStepPercent)
+            {
+                // Цена выросла на шаг трейлинга -> повышаем стоп-лосс
+                decimal newStopLoss = currentPrice * ( 1 - TrailingStopPercent );
+
+                if (newStopLoss > pos.StopLossPrice)
+                {
+                    pos.StopLossPrice = newStopLoss;
+                    _lastTrailingPrice[symbol] = currentPrice;
+
+                    _logger?.Invoke ($"📈 Динамический трейлинг {symbol}: SL повышен до {newStopLoss:F4} (прибыль {profitPercent:P1})");
+                    await UpdateOcoOrder (symbol, pos);
+                }
+            }
+            else if (priceIncrease < -TrailingStepPercent)
+            {
+                // Цена упала на шаг трейлинга -> фиксируем часть прибыли
+                decimal partialQty = pos.Quantity * 0.25m; // Закрываем 25%
+                decimal stepSize = await _client.GetStepSizeAsync (symbol);
+                decimal closeQty = Math.Floor (partialQty / stepSize) * stepSize;
+
+                if (closeQty > 0.000001m && closeQty < pos.Quantity)
+                {
+                    var order = await _client.PlaceOrder (symbol, "SELL", "MARKET", closeQty);
+                    if (order != null)
+                    {
+                        decimal pnl = ( currentPrice - pos.EntryPrice ) * closeQty;
+                        _logger?.Invoke ($"🎯 Частичная фиксация {symbol}: продано {closeQty} по {currentPrice:F4}, PnL {pnl:F2}");
+
+                        pos.Quantity -= closeQty;
+                        _lastTrailingPrice[symbol] = currentPrice;
+
+                        if (pos.Quantity <= 0.000001m)
+                        {
+                            _positionManager.Remove (symbol);
+                        }
+                    }
+                }
             }
         }
     }

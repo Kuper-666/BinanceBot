@@ -1,4 +1,6 @@
 ﻿using System;
+using System.Collections.Concurrent;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Telegram.Bot;
@@ -19,6 +21,9 @@ namespace BinanceBotWpf.Services
         private Func<string, string, Task> _commandHandler;
         private CancellationTokenSource _cts;
         public string GetChatId() => _chatId;
+
+        private readonly ConcurrentDictionary<string, DateTime> _lastCommandTime = new ();
+        private readonly TimeSpan _commandCooldown = TimeSpan.FromSeconds (2);
 
         public TelegramNotifier(string botToken, string chatId)
         {
@@ -127,12 +132,52 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        /// <summary>
+        /// Проверяет, не является ли команда дубликатом (дребезг)
+        /// </summary>
+        private bool IsDuplicateCommand(string chatId, string command)
+        {
+            string key = $"{chatId}:{command}";
+
+            if (_lastCommandTime.TryGetValue (key, out var lastTime) &&
+                DateTime.UtcNow - lastTime < _commandCooldown)
+            {
+                System.Diagnostics.Debug.WriteLine ($"⚠️ Дребезг: игнорирую повторную команду {command}");
+                return true;
+            }
+
+            _lastCommandTime[key] = DateTime.UtcNow;
+
+            // Очистка старых записей (раз в 100 команд)
+            if (_lastCommandTime.Count > 1000)
+            {
+                var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes (5);
+                foreach (var kv in _lastCommandTime.Where (x => x.Value < cutoff).ToList ())
+                {
+                    _lastCommandTime.TryRemove (kv.Key, out _);
+                }
+            }
+
+            return false;
+        }
+
+        // Измените метод HandleCallbackQuery:
         private async Task HandleCallbackQuery(CallbackQuery callbackQuery)
         {
             if (callbackQuery == null) return;
+
             var chatId = callbackQuery.Message.Chat.Id.ToString ();
             var data = callbackQuery.Data;
+
+            // Проверка на дребезг
+            if (IsDuplicateCommand (chatId, data))
+            {
+                await _botClient.AnswerCallbackQuery (callbackQuery.Id, "⏳ Подождите секунду...", showAlert: false);
+                return;
+            }
+
             await _botClient.AnswerCallbackQuery (callbackQuery.Id);
+
             string command = data switch
             {
                 "status" => "/status",
@@ -143,8 +188,10 @@ namespace BinanceBotWpf.Services
                 "stop_bot" => "/stop",
                 "pnl_chart" => "/chart",
                 "help" => "/help",
+                "optimize" => "/optimize",
                 _ => null
             };
+
             if (!string.IsNullOrEmpty (command))
                 await _commandHandler?.Invoke (command, chatId);
         }

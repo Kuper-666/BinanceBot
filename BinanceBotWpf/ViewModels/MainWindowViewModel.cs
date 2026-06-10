@@ -166,7 +166,6 @@ namespace BinanceBotWpf.ViewModels
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
             OptimizeStrategyCommand = new RelayCommand (async _ => await RunOptimization (), _ => !IsRunning);
-            ClearLogCommand = new RelayCommand (_ => ClearLog (), _ => true);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -415,15 +414,9 @@ namespace BinanceBotWpf.ViewModels
 
         public void AddLog(string message)
         {
-            Application.Current.Dispatcher.Invoke (() =>
-            {
-                SystemLogs += $"{DateTime.Now:HH:mm:ss} - {message}\n";
-                if (SystemLogs.Length > 50000)
-                {
-                    var idx = SystemLogs.IndexOf ('\n', SystemLogs.Length / 2);
-                    if (idx > 0) SystemLogs = SystemLogs.Substring (idx + 1);
-                }
-            });
+            // Логи больше не отображаются в UI
+            // Важные сообщения отправляются в Telegram через TelegramNotifier
+            // System.Diagnostics.Debug.WriteLine($"{DateTime.Now:HH:mm:ss} - {message}");
         }
 
         public void AddTradeToHistory(TradeLog trade)
@@ -547,11 +540,6 @@ namespace BinanceBotWpf.ViewModels
                     UpdateRiskDisplay (value);
                 }
             }
-        }
-
-        private void ClearLog()
-        {
-            SystemLogs = "";
         }
     }
 }

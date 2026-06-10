@@ -20,6 +20,7 @@ namespace BinanceBotWpf.Services
         private readonly BacktestEngine _backtest;
 
         private readonly string _settingsPath;
+        private readonly string _historyPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "optimization_history.json");
 
         public StrategyOptimizer(BinanceClient client, MainWindowViewModel ui, Action<string> logger)
         {
@@ -57,7 +58,7 @@ namespace BinanceBotWpf.Services
                         allKlines.AddRange (klines);
                         _logger?.Invoke ($"📥 Загружено {klines.Count} свечей для {pair}");
                     }
-                    await Task.Delay (1000); // Пауза между запросами
+                    await Task.Delay (1000);
                 }
 
                 if (allKlines.Count < 200)
@@ -66,7 +67,7 @@ namespace BinanceBotWpf.Services
                     return false;
                 }
 
-                // Оптимизация параметров
+                // Параметры для перебора
                 var fastPeriods = new List<int> { 5, 8, 9, 10, 13 };
                 var slowPeriods = new List<int> { 13, 17, 21, 34, 50 };
                 var rsiPeriods = new List<int> { 7, 14, 21 };
@@ -75,18 +76,55 @@ namespace BinanceBotWpf.Services
 
                 _logger?.Invoke ("🧮 Перебор параметров...");
 
-                var bestParams = await _backtest.OptimizeParametersAsync (
-                    allKlines, fastPeriods, slowPeriods, rsiPeriods, stopLosses, takeProfits);
+                // ОБЪЯВЛЯЕМ ПЕРЕМЕННУЮ bestResult
+                BacktestEngine.BacktestResult bestResult = null;
+                var bestParams = new Dictionary<string, object> ();
 
-                if (bestParams.Count > 0)
+                int totalCombinations = fastPeriods.Count * slowPeriods.Count * rsiPeriods.Count * stopLosses.Count * takeProfits.Count;
+                int current = 0;
+
+                foreach (var fast in fastPeriods)
                 {
-                    // Сохраняем результаты
-                    await SaveOptimizedParams (bestParams);
+                    foreach (var slow in slowPeriods.Where (s => s > fast))
+                    {
+                        foreach (var rsiP in rsiPeriods)
+                        {
+                            foreach (var sl in stopLosses)
+                            {
+                                foreach (var tp in takeProfits.Where (t => t > sl))
+                                {
+                                    current++;
 
-                    // Применяем параметры
+                                    var result = await _backtest.RunAsync (allKlines, fast, slow, rsiP, sl, tp);
+
+                                    if (result != null && ( bestResult == null || result.TotalReturn > bestResult.TotalReturn ) && result.TotalTrades >= 5)
+                                    {
+                                        bestResult = result;
+                                        bestParams["FastSma"] = fast;
+                                        bestParams["SlowSma"] = slow;
+                                        bestParams["RsiPeriod"] = rsiP;
+                                        bestParams["StopLossPercent"] = sl;
+                                        bestParams["TakeProfitPercent"] = tp;
+
+                                        _logger?.Invoke ($"📊 Новый лучший результат: доходность {result.TotalReturn:F2}%, win rate {result.WinRate:F1}%, сделок {result.TotalTrades}");
+                                    }
+
+                                    if (current % 50 == 0)
+                                    {
+                                        _logger?.Invoke ($"🔄 Оптимизация: {current}/{totalCombinations} ({current * 100 / totalCombinations}%)");
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (bestResult != null && bestParams.Count > 0)
+                {
+                    await SaveOptimizationResult (bestParams, bestResult);
                     ApplyParameters (bestParams);
 
-                    _logger?.Invoke ($"✅ Оптимизация завершена! Параметры сохранены.");
+                    _logger?.Invoke ($"✅ Оптимизация завершена! Доходность: {bestResult.TotalReturn:F2}%");
                     return true;
                 }
 
@@ -159,6 +197,85 @@ namespace BinanceBotWpf.Services
                 _logger?.Invoke ($"⚠️ Ошибка загрузки параметров: {ex.Message}");
                 return new Dictionary<string, object> ();
             }
+        }
+
+        // Класс для записи в историю:
+        public class OptimizationRecord
+        {
+            public DateTime Timestamp { get; set; }
+            public Dictionary<string, object> Parameters { get; set; }
+            public decimal TotalReturn { get; set; }
+            public decimal WinRate { get; set; }
+            public decimal MaxDrawdown { get; set; }
+            public int TotalTrades { get; set; }
+        }
+
+        // Метод сохранения результата:
+        public async Task SaveOptimizationResult(Dictionary<string, object> parameters, BacktestEngine.BacktestResult result)
+        {
+            try
+            {
+                var history = await LoadOptimizationHistoryAsync ();
+
+                history.Insert (0, new OptimizationRecord
+                {
+                    Timestamp = DateTime.UtcNow,
+                    Parameters = new Dictionary<string, object> (parameters),
+                    TotalReturn = result.TotalReturn,
+                    WinRate = result.WinRate,
+                    MaxDrawdown = result.MaxDrawdown,
+                    TotalTrades = result.TotalTrades
+                });
+
+                // Ограничиваем историю 50 записями
+                if (history.Count > 50)
+                    history.RemoveAt (history.Count - 1);
+
+                string json = JsonSerializer.Serialize (history, new JsonSerializerOptions { WriteIndented = true });
+                await File.WriteAllTextAsync (_historyPath, json);
+
+                _logger?.Invoke ($"💾 Результат оптимизации сохранён в историю");
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke ($"⚠️ Ошибка сохранения истории: {ex.Message}");
+            }
+        }
+
+        // Метод загрузки истории:
+        public async Task<List<OptimizationRecord>> LoadOptimizationHistoryAsync()
+        {
+            if (!File.Exists (_historyPath))
+                return new List<OptimizationRecord> ();
+
+            try
+            {
+                string json = await File.ReadAllTextAsync (_historyPath);
+                return JsonSerializer.Deserialize<List<OptimizationRecord>> (json) ?? new List<OptimizationRecord> ();
+            }
+            catch
+            {
+                return new List<OptimizationRecord> ();
+            }
+        }
+
+        // Метод отката к предыдущим параметрам:
+        public async Task<bool> RollbackToPreviousParameters()
+        {
+            var history = await LoadOptimizationHistoryAsync ();
+            if (history.Count < 2)
+            {
+                _logger?.Invoke ("⚠️ Нет предыдущих параметров для отката");
+                return false;
+            }
+
+            var previous = history[1];
+            ApplyParameters (previous.Parameters);
+
+            _logger?.Invoke ($"🔄 Откат к параметрам от {previous.Timestamp:yyyy-MM-dd HH:mm:ss}");
+            _logger?.Invoke ($"   Доходность была: {previous.TotalReturn:F2}%, Win Rate: {previous.WinRate:F1}%");
+
+            return true;
         }
     }
 }

@@ -1,13 +1,14 @@
+using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
-using System.Collections.Generic;
-using System.Linq;
-using System.Diagnostics;
 
 namespace BinanceBotWpf.Models
 {
@@ -26,6 +27,13 @@ namespace BinanceBotWpf.Models
         public bool IsTestnet => _useTestnet;
 
         private void Log(string message) => OnLogGenerated?.Invoke (message);
+
+        private readonly SemaphoreSlim _rateLimiter = new (20, 20);
+        private readonly Queue<DateTime> _requestTimes = new ();
+        private readonly int _maxRequestsPerSecond = 10; // Консервативное значение
+        private readonly int _maxWeightPerMinute = 1200;
+        private int _currentWeight = 0;
+        private DateTime _weightResetTime = DateTime.UtcNow;
 
         public BinanceClient(string apiKey, string apiSecret, bool useTestnet = false)
         {
@@ -638,6 +646,70 @@ namespace BinanceBotWpf.Models
             }
             catch (Exception ex) { Log ($"Subscribe exception: {ex.Message}"); }
             return false;
+        }
+
+        /// <summary>
+        /// Умное ограничение частоты запросов
+        /// </summary>
+        private async Task ThrottleAsync(int estimatedWeight = 1)
+        {
+            lock (_requestTimes)
+            {
+                var now = DateTime.UtcNow;
+
+                // Сброс веса каждую минуту
+                if (now - _weightResetTime > TimeSpan.FromMinutes (1))
+                {
+                    _currentWeight = 0;
+                    _weightResetTime = now;
+                }
+
+                // Проверка лимита веса
+                if (_currentWeight + estimatedWeight > _maxWeightPerMinute)
+                {
+                    int waitMs = (int)( _weightResetTime.AddMinutes (1) - now ).TotalMilliseconds + 100;
+                    System.Diagnostics.Debug.WriteLine ($"⏳ Rate limit: ждём {waitMs}мс (вес {_currentWeight}/{_maxWeightPerMinute})");
+                    Thread.Sleep (Math.Max (100, waitMs));
+                    _currentWeight = 0;
+                    _weightResetTime = DateTime.UtcNow;
+                }
+
+                // Очистка старых записей
+                while (_requestTimes.Count > 0 && _requestTimes.Peek () < now.AddSeconds (-1))
+                    _requestTimes.Dequeue ();
+
+                // Проверка лимита запросов в секунду
+                if (_requestTimes.Count >= _maxRequestsPerSecond)
+                {
+                    int delayMs = 1000 - (int)( now - _requestTimes.Peek () ).TotalMilliseconds;
+                    if (delayMs > 0 && delayMs < 5000)
+                    {
+                        System.Diagnostics.Debug.WriteLine ($"⏳ Throttle: ждём {delayMs}мс (запросов {_requestTimes.Count}/{_maxRequestsPerSecond})");
+                        Thread.Sleep (delayMs);
+                    }
+                }
+
+                _requestTimes.Enqueue (DateTime.UtcNow);
+                _currentWeight += estimatedWeight;
+            }
+
+            await _rateLimiter.WaitAsync ();
+            try
+            {
+                // Небольшая задержка между запросами
+                await Task.Delay (50);
+            }
+            finally
+            {
+                _rateLimiter.Release ();
+            }
+        }
+
+        // Обёртка для API методов с учётом веса:
+        private async Task<HttpResponseMessage> SendWithRetryAndThrottleAsync(HttpRequestMessage request, int estimatedWeight = 1)
+        {
+            await ThrottleAsync (estimatedWeight);
+            return await SendWithRetryAsync (request);
         }
     }
 }
