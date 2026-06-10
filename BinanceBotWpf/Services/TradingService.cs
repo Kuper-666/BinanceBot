@@ -139,6 +139,7 @@ namespace BinanceBotWpf.Services
 
             _ = Task.Run (BalanceLoop);
             _ = Task.Run (TradingLoop);
+            _ = Task.Run (AutoOptimizeLoop);
         }
 
         public void StopTrading()
@@ -209,6 +210,10 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        /// <summary>
+        /// Возвращает клиент Binance для доступа к API
+        /// </summary>
+        public BinanceClient GetBinanceClient() => _client;
         private async Task TradingLoop()
         {
             while (_isRunning)
@@ -482,6 +487,34 @@ namespace BinanceBotWpf.Services
             var wins = _ui?.WinningTrades ?? 0;
             var winRate = totalTrades > 0 ? wins * 100.0m / totalTrades : 0;
             return $"📊 Статистика торговли\n📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {winRate:F1}% ({wins}/{totalTrades})";
+        }
+
+        /// <summary>
+        /// Автоматическая оптимизация параметров (вызывается раз в сутки)
+        /// </summary>
+        private async Task AutoOptimizeLoop()
+        {
+            while (_isRunning)
+            {
+                // Ждём 24 часа
+                await Task.Delay (TimeSpan.FromHours (24));
+
+                if (!_isRunning) break;
+
+                _ui?.AddLog ("🧠 Запуск автоматической оптимизации параметров (ежедневная)...");
+
+                var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
+                bool success = await optimizer.RunOptimizationAsync ();
+
+                if (success)
+                {
+                    _ui?.AddLog ("✅ Ежедневная оптимизация завершена");
+                }
+                else
+                {
+                    _ui?.AddLog ("⚠️ Ежедневная оптимизация не дала результатов");
+                }
+            }
         }
     }
 }
