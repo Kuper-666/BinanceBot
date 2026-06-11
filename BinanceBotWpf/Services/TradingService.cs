@@ -444,6 +444,15 @@ namespace BinanceBotWpf.Services
                 case "/pnl":
                     await _telegram.SendMessageAsync ($"📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {_ui?.WinRate ?? 0:F1}%", chatId);
                     break;
+                case "/update":
+                    await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
+                    var updater = new UpdateManager (msg => _ui?.AddLog (msg));
+                    bool updated = await updater.CheckAndUpdateAsync (silent: false);
+                    if (updated)
+                        await _telegram.SendMessageAsync ("✅ Обновление установлено. Бот будет перезапущен.", chatId);
+                    else
+                        await _telegram.SendMessageAsync ("✅ Обновлений не найдено.", chatId);
+                    break;
                 case "/errors":
                     string errors;
                     lock (_recentErrors) { errors = _recentErrors.Count == 0 ? "✅ Нет ошибок" : string.Join ("\n", _recentErrors); }

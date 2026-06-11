@@ -37,11 +37,12 @@ namespace BinanceBotWpf.Services
         {
             return new ReplyKeyboardMarkup (new[]
             {
-                new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
-                new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
-                new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
-                new KeyboardButton[] { "📈 График PnL", "❓ Помощь" }
-            })
+        new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
+        new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
+        new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
+        new KeyboardButton[] { "📈 График PnL", "🔄 Обновить" },  // <-- Добавлена кнопка
+        new KeyboardButton[] { "❓ Помощь" }
+    })
             {
                 ResizeKeyboard = true,
                 OneTimeKeyboard = false
@@ -169,13 +170,6 @@ namespace BinanceBotWpf.Services
             var chatId = callbackQuery.Message.Chat.Id.ToString ();
             var data = callbackQuery.Data;
 
-            // Проверка на дребезг
-            if (IsDuplicateCommand (chatId, data))
-            {
-                await _botClient.AnswerCallbackQuery (callbackQuery.Id, "⏳ Подождите секунду...", showAlert: false);
-                return;
-            }
-
             await _botClient.AnswerCallbackQuery (callbackQuery.Id);
 
             string command = data switch
@@ -189,6 +183,7 @@ namespace BinanceBotWpf.Services
                 "pnl_chart" => "/chart",
                 "help" => "/help",
                 "optimize" => "/optimize",
+                "update" => "/update",
                 _ => null
             };
 
