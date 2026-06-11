@@ -346,7 +346,8 @@
                 <oxy:PlotView Model="{Binding PlotModel}" Background="#1e1e1e"/>
             </TabItem>
 
-            <TabItem Header="📋 Системные логи" Background="#1e1e1e" Foreground="White">
+            <TabItem Header="📋 Системные логи" Background="#1e1e1e" Foreground="White"
+                     x:Name="LogsTab">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -363,6 +364,10 @@
                                     Command="{Binding ClearLogsCommand}" 
                                     Background="#e74c3c" Foreground="White" 
                                     BorderThickness="0" Cursor="Hand"/>
+                            <Button Content="⬇ Прокрутить вниз" Width="120" Height="30" 
+                                    Command="{Binding ScrollLogsToEndCommand}" 
+                                    Background="#2c3e50" Foreground="White" 
+                                    BorderThickness="0" Cursor="Hand" Margin="10,0,0,0"/>
                             <TextBlock Text="Уровень логов:" Foreground="#bdc3c7" Margin="20,8,10,0"/>
                             <ComboBox ItemsSource="{Binding LogLevels}" 
                                       SelectedItem="{Binding SelectedLogLevel}" 
@@ -371,19 +376,24 @@
                         </WrapPanel>
                     </Border>
 
-                    <ListBox Grid.Row="1" 
-                             ItemsSource="{Binding SystemLogs}" 
-                             Background="#121212" 
-                             Foreground="#bdc3c7"
-                             BorderThickness="0"
-                             FontFamily="Consolas"
-                             FontSize="11">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <ScrollViewer Grid.Row="1" 
+                                  x:Name="LogsScrollViewer"
+                                  VerticalScrollBarVisibility="Auto"
+                                  HorizontalScrollBarVisibility="Auto"
+                                  Background="#121212">
+                        <ItemsControl ItemsSource="{Binding SystemLogs}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" 
+                                               TextWrapping="Wrap"
+                                               FontFamily="Consolas"
+                                               FontSize="11"
+                                               Foreground="#bdc3c7"
+                                               Margin="5,2"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </ScrollViewer>
                 </Grid>
             </TabItem>
         </TabControl>

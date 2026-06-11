@@ -101,6 +101,7 @@ namespace BinanceBotWpf.ViewModels
         private List<string> _allLogs = new ();
         private string _selectedLogLevel = "Все";
         private string _telegramStatus = "⚙️ Настройка...";
+        private bool _requestLogsScroll;
 
         // График
         private PlotModel _plotModel;
@@ -156,6 +157,12 @@ namespace BinanceBotWpf.ViewModels
             set { _telegramStatus = value; OnPropertyChanged (); }
         }
 
+        public bool RequestLogsScroll
+        {
+            get => _requestLogsScroll;
+            set { _requestLogsScroll = value; OnPropertyChanged (); }
+        }
+
         // Команды
         public ICommand StartCommand { get; }
         public ICommand StopCommand { get; }
@@ -163,6 +170,7 @@ namespace BinanceBotWpf.ViewModels
         public ICommand OptimizeStrategyCommand { get; }
         public ICommand ClearLogsCommand { get; }
         public ICommand CopyLogsCommand { get; }
+        public ICommand ScrollLogsToEndCommand { get; }
 
         private readonly string _settingsPath;
         private readonly object _settingsLock = new ();
@@ -183,6 +191,7 @@ namespace BinanceBotWpf.ViewModels
             OptimizeStrategyCommand = new RelayCommand (async _ => await RunOptimization (), _ => !IsRunning);
             ClearLogsCommand = new RelayCommand (_ => ClearLogs (), _ => true);
             CopyLogsCommand = new RelayCommand (_ => CopyLogs (), _ => true);
+            ScrollLogsToEndCommand = new RelayCommand (_ => ScrollLogsToEnd (), _ => true);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -194,7 +203,6 @@ namespace BinanceBotWpf.ViewModels
             _ = Task.Run (StocksLoop);
             _ = Task.Run (StartUiUpdateLoop);
 
-            // Обновляем статус Telegram
             UpdateTelegramStatus ();
         }
 
@@ -213,6 +221,11 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
+        private void ScrollLogsToEnd()
+        {
+            RequestLogsScroll = !RequestLogsScroll;
+        }
+
         public void AddLog(string message)
         {
             string timestamp = DateTime.Now.ToString ("HH:mm:ss");
@@ -227,9 +240,10 @@ namespace BinanceBotWpf.ViewModels
                 {
                     _allLogs.RemoveAt (0);
                 }
+
+                RequestLogsScroll = !RequestLogsScroll;
             });
 
-            // Отправка важных сообщений в Telegram
             SendImportantToTelegram (message);
         }
 
