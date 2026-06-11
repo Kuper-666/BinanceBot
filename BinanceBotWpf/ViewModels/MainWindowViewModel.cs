@@ -205,6 +205,7 @@ namespace BinanceBotWpf.ViewModels
             _ = Task.Run (StartUiUpdateLoop);
 
             UpdateTelegramStatus ();
+            Task.Delay (2000).ContinueWith (_ => UpdateTelegramStatus ());
         }
 
         private void UpdateTelegramStatus()
@@ -213,7 +214,7 @@ namespace BinanceBotWpf.ViewModels
             {
                 bool isEnabled = _tradingService.IsTelegramEnabled ();
                 TelegramStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
-                AddLog ($"Telegram статус: {TelegramStatus}");
+                AddLog ($"Telegram статус: {TelegramStatus} (isEnabled={isEnabled})");
             }
             catch (Exception ex)
             {
@@ -221,6 +222,7 @@ namespace BinanceBotWpf.ViewModels
                 AddLog ($"Ошибка Telegram: {ex.Message}");
             }
         }
+        
 
         private void ScrollLogsToEnd()
         {
@@ -240,7 +242,7 @@ namespace BinanceBotWpf.ViewModels
                 if (_allLogs.Count > 1000)
                     _allLogs.RemoveAt (0);
 
-                // Автоскролл
+                // Прокрутка вниз
                 MainWindow.Instance?.ScrollLogsToEnd ();
             });
 

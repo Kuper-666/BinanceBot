@@ -15,7 +15,6 @@ namespace BinanceBotWpf
             Instance = this;
         }
 
-        /// <summary>Прокручивает лог вниз</summary>
         public void ScrollLogsToEnd()
         {
             Dispatcher.BeginInvoke (new System.Action (() =>
