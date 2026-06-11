@@ -49,6 +49,7 @@ namespace BinanceBotWpf.Services
         private bool _balanceLoopEnabled = true;
         private bool _tradingLoopEnabled = true;
 
+        // TradingService.cs, конструктор:
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
                               decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
         {
@@ -67,6 +68,8 @@ namespace BinanceBotWpf.Services
             _strategy = new TradingStrategy (null);
             _signalFilter = new SignalFilter (null);
             _positionProtector = new PositionProtector (client, _positionManager, null);
+
+            _webSocketManager = new WebSocketPriceManager (null);
         }
 
         public void SetLogger(Action<string> logger)

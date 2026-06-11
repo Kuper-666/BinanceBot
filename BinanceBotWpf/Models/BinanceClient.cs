@@ -40,10 +40,20 @@ namespace BinanceBotWpf.Models
             _apiKey = apiKey;
             _apiSecret = apiSecret;
             _useTestnet = useTestnet;
-            _httpClient = new HttpClient ();
-            _httpClient.Timeout = TimeSpan.FromSeconds (15);
+
+            // Настройка HttpClient
+            var handler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true, // Для тестов
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+            };
+
+            _httpClient = new HttpClient (handler);
+            _httpClient.Timeout = TimeSpan.FromSeconds (30);
             _httpClient.BaseAddress = new Uri (useTestnet ? "https://testnet.binance.vision" : "https://api.binance.com");
             _httpClient.DefaultRequestHeaders.Add ("X-MBX-APIKEY", _apiKey);
+            _httpClient.DefaultRequestHeaders.Add ("Accept", "application/json");
+            _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf/1.0");
         }
 
         private long GetTimestamp() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds () + _serverTimeOffset;
@@ -391,8 +401,26 @@ namespace BinanceBotWpf.Models
 
         public async Task<string> GetServerInfo()
         {
-            var response = await _httpClient.GetAsync ("/api/v3/ping");
-            return response.IsSuccessStatusCode ? "Подключено успешно" : "Ошибка подключения";
+            try
+            {
+                var response = await _httpClient.GetAsync ("/api/v3/ping");
+                if (response.IsSuccessStatusCode)
+                {
+                    // Дополнительно проверяем время сервера
+                    var timeResponse = await _httpClient.GetStringAsync ("/api/v3/time");
+                    var timeJson = JObject.Parse (timeResponse);
+                    long serverTime = timeJson["serverTime"].Value<long> ();
+                    var localTime = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds ();
+                    var timeDiff = Math.Abs (serverTime - localTime);
+
+                    return $"OK (разница времени: {timeDiff}мс)";
+                }
+                return $"Ошибка: {response.StatusCode}";
+            }
+            catch (Exception ex)
+            {
+                return $"Исключение: {ex.Message}";
+            }
         }
 
         public async Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit = 500)

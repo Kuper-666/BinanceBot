@@ -402,12 +402,12 @@ namespace BinanceBotWpf.ViewModels
                                 pairItem.Price = price.ToString ("F4");
                         }
                     });
-                    await Task.Delay (1000);
+                    await Task.Delay (2000); // ✅ уменьшил частоту с 1с до 2с
                 }
                 catch (Exception ex)
                 {
-                    AddLog ($"❌ Ошибка обновления UI: {ex.Message}");
-                    await Task.Delay (5000);
+                    // ✅ не спамим в лог
+                    await Task.Delay (10000);
                 }
             }
         }

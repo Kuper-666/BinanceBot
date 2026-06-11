@@ -121,24 +121,98 @@ minUsdcBalance=5.50
             // Инициализация бота
             try
             {
+                // Создаем клиент Binance
                 var binanceClient = new BinanceClient (apiKey, apiSecret, isTestnet);
+
+                // Синхронизируем время с сервером Binance (важно для подписей)
                 await binanceClient.SyncTimeAsync ();
 
+                // Проверяем подключение к API
+                string serverInfo = await binanceClient.GetServerInfo ();
+
+                // Показываем статус подключения
+                string connectionStatus = isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ";
+                MessageBox.Show (
+                    $"Подключение к Binance: {serverInfo}\n" +
+                    $"Режим: {connectionStatus}\n" +
+                    $"API Key: {apiKey.Substring (0, Math.Min (8, apiKey.Length))}...\n\n" +
+                    $"Если подключение успешно, бот будет запущен.",
+                    "Статус подключения",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+
+                // Проверяем баланс (тестовый запрос)
+                try
+                {
+                    decimal testBalance = await binanceClient.GetAccountBalanceAsync ("USDC");
+                    System.Diagnostics.Debug.WriteLine ($"Тестовый баланс USDC: {testBalance}");
+                }
+                catch (Exception balanceEx)
+                {
+                    MessageBox.Show (
+                        $"Предупреждение: Не удалось получить баланс.\n" +
+                        $"Ошибка: {balanceEx.Message}\n\n" +
+                        $"Проверьте API ключи и права доступа.",
+                        "Предупреждение",
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+
+                // Инициализация сервисов
                 object consoleLock = new object ();
                 var walletManager = new WalletManager (binanceClient);
                 var earnManager = new EarnManager (consoleLock);
                 var rebalancer = new BalanceRebalancer (consoleLock, 0.1m);
 
-                var tradingService = new TradingService (binanceClient, walletManager, earnManager, rebalancer, minUsdcBalance, telegramBotToken, telegramChatId);
+                // Подписываемся на события логирования
+                walletManager.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Wallet] {msg}");
+                earnManager.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Earn] {msg}");
+                rebalancer.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Rebalancer] {msg}");
+                binanceClient.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Binance] {msg}");
+
+                // Создаем TradingService
+                var tradingService = new TradingService (
+                    binanceClient,
+                    walletManager,
+                    earnManager,
+                    rebalancer,
+                    minUsdcBalance,
+                    telegramBotToken,
+                    telegramChatId);
+
+                // Создаем ViewModel
                 var viewModel = new MainWindowViewModel (tradingService, isTestnet);
+
+                // Создаем и показываем главное окно
                 var mainWindow = new MainWindow (viewModel);
                 mainWindow.Show ();
+
+                // Добавляем сообщение о запуске в лог
+                viewModel.AddLog ($"🚀 Бот запущен в режиме: {( isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ" )}");
+                viewModel.AddLog ($"🔌 API Key: {apiKey.Substring (0, Math.Min (8, apiKey.Length))}...");
+                viewModel.AddLog ($"📡 Статус подключения: {serverInfo}");
             }
             catch (Exception ex)
             {
-                MessageBox.Show ($"Ошибка инициализации бота: {ex.Message}", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show (
+                    $"Ошибка инициализации бота:\n\n" +
+                    $"Сообщение: {ex.Message}\n" +
+                    $"Тип: {ex.GetType ().Name}\n" +
+                    $"Стек вызовов: {ex.StackTrace}\n\n" +
+                    $"Проверьте подключение к интернету и правильность API ключей.",
+                    "Критическая ошибка",
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
                 Current.Shutdown ();
             }
+        }
+
+        protected override void OnExit(ExitEventArgs e)
+        {
+            // Освобождаем мьютекс при выходе
+            _appMutex?.ReleaseMutex ();
+            _appMutex?.Dispose ();
+            base.OnExit (e);
         }
     }
 }
