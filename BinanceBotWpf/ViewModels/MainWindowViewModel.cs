@@ -211,16 +211,14 @@ namespace BinanceBotWpf.ViewModels
         {
             try
             {
-                bool isTelegramWorking = _tradingService.IsTelegramEnabled ();
-                TelegramStatus = isTelegramWorking ? "✅ Подключён" : "❌ Не настроен";
-
-                // Дополнительная отладка
-                System.Diagnostics.Debug.WriteLine ($"Telegram Status: {TelegramStatus}");
+                bool isEnabled = _tradingService.IsTelegramEnabled ();
+                TelegramStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
+                AddLog ($"Telegram статус: {TelegramStatus}");
             }
             catch (Exception ex)
             {
                 TelegramStatus = "❌ Ошибка";
-                System.Diagnostics.Debug.WriteLine ($"Telegram error: {ex.Message}");
+                AddLog ($"Ошибка Telegram: {ex.Message}");
             }
         }
 
@@ -240,11 +238,10 @@ namespace BinanceBotWpf.ViewModels
                 FilterLogs ();
 
                 if (_allLogs.Count > 1000)
-                {
                     _allLogs.RemoveAt (0);
-                }
 
-                RequestLogsScroll = !RequestLogsScroll;
+                // Автоскролл
+                MainWindow.Instance?.ScrollLogsToEnd ();
             });
 
             SendImportantToTelegram (message);
@@ -255,7 +252,6 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 SystemLogs.Clear ();
-
                 var filtered = _selectedLogLevel switch
                 {
                     "Ошибки" => _allLogs.Where (l => l.Contains ("❌") || l.Contains ("Ошибка") || l.Contains ("ERROR")),
@@ -264,11 +260,11 @@ namespace BinanceBotWpf.ViewModels
                     "Торговля" => _allLogs.Where (l => l.Contains ("🟢") || l.Contains ("🔴") || l.Contains ("КУПЛЕНО") || l.Contains ("ПРОДАНО")),
                     _ => _allLogs
                 };
-
                 foreach (var log in filtered.TakeLast (500))
-                {
                     SystemLogs.Add (log);
-                }
+
+                // Принудительная прокрутка
+                MainWindow.Instance?.ScrollLogsToEnd ();
             });
         }
 

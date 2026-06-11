@@ -92,8 +92,15 @@ minUsdcBalance=5.50
                         case "apisecret": apiSecret = value; break;
                         case "istestnet": isTestnet = bool.Parse (value); break;
                         case "minusdcbalance": minUsdcBalance = decimal.Parse (value, CultureInfo.InvariantCulture); break;
-                        case "telegrambottoken": telegramBotToken = value; break;
-                        case "telegramchatid": telegramChatId = value; break;
+                        case "telegrambottoken":
+                            telegramBotToken = value;
+                            System.Diagnostics.Debug.WriteLine ($"Read telegramBotToken: {value.Substring (0, Math.Min (10, value.Length))}...");
+                            break;
+                        case "telegramchatid":
+                            telegramChatId = value;
+                            System.Diagnostics.Debug.WriteLine ($"Read telegramChatId: {value}");
+                            break;
+
                     }
                 }
 
