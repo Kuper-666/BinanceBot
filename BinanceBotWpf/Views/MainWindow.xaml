@@ -381,18 +381,20 @@
                                   VerticalScrollBarVisibility="Auto"
                                   HorizontalScrollBarVisibility="Auto"
                                   Background="#121212">
-                        <ItemsControl ItemsSource="{Binding SystemLogs}">
-                            <ItemsControl.ItemTemplate>
+                        <ListBox Grid.Row="1" 
+                                 x:Name="LogsListBox"
+                                 ItemsSource="{Binding SystemLogs}"
+                                 Background="#121212"
+                                 Foreground="#bdc3c7"
+                                 BorderThickness="0"
+                                 FontFamily="Consolas"
+                                 FontSize="11">
+                            <ListBox.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding}" 
-                                               TextWrapping="Wrap"
-                                               FontFamily="Consolas"
-                                               FontSize="11"
-                                               Foreground="#bdc3c7"
-                                               Margin="5,2"/>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="5,2"/>
                                 </DataTemplate>
-                            </ItemsControl.ItemTemplate>
-                        </ItemsControl>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
                     </ScrollViewer>
                 </Grid>
             </TabItem>

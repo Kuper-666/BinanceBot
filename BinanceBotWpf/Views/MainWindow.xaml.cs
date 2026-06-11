@@ -1,4 +1,5 @@
 ﻿using BinanceBotWpf.ViewModels;
+using System.Collections.Specialized;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
@@ -14,33 +15,27 @@ namespace BinanceBotWpf
             InitializeComponent ();
             DataContext = viewModel;
 
-            // Подписываемся на событие прокрутки
-            viewModel.PropertyChanged += (s, e) =>
+            // Подписываемся на изменение коллекции логов
+            viewModel.SystemLogs.CollectionChanged += OnLogsCollectionChanged;
+
+            // Когда вкладка станет видимой, находим ScrollViewer
+            this.Loaded += (s, e) => FindLogsScrollViewer ();
+        }
+
+        private void OnLogsCollectionChanged(object sender, NotifyCollectionChangedEventArgs e)
+        {
+            if (e.Action == NotifyCollectionChangedAction.Add && LogsListBox != null)
             {
-                if (e.PropertyName == nameof (MainWindowViewModel.RequestLogsScroll) && _logsScrollViewer != null)
+                Dispatcher.BeginInvoke (new System.Action (() =>
                 {
-                    _logsScrollViewer.ScrollToEnd ();
-                }
-            };
-        }
-
-        private void TabControl_SelectionChanged(object sender, SelectionChangedEventArgs e)
-        {
-            // Находим ScrollViewer при переключении на вкладку логов
-            if (e.Source is TabControl tabControl && tabControl.SelectedItem is TabItem tabItem && tabItem.Name == "LogsTab")
-            {
-                FindAndScrollLogs ();
+                    LogsListBox.ScrollIntoView (LogsListBox.Items[LogsListBox.Items.Count - 1]);
+                }));
             }
         }
 
-        private void FindAndScrollLogs()
+        private void FindLogsScrollViewer()
         {
-            var scrollViewer = FindVisualChild<ScrollViewer> (this, "LogsScrollViewer");
-            if (scrollViewer != null)
-            {
-                _logsScrollViewer = scrollViewer;
-                _logsScrollViewer.ScrollToEnd ();
-            }
+            _logsScrollViewer = FindVisualChild<ScrollViewer> (this, "LogsScrollViewer");
         }
 
         private T FindVisualChild<T>(DependencyObject parent, string name) where T : FrameworkElement
