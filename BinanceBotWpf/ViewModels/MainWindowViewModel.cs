@@ -716,5 +716,15 @@ namespace BinanceBotWpf.ViewModels
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) =>
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
+
+        public string AppVersion
+        {
+            get
+            {
+                var version = System.Reflection.Assembly.GetExecutingAssembly ().GetName ().Version;
+                string versionStr = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "2.0";
+                return $"Binance Trading Bot v{versionStr}";
+            }
+        }
     }
 }
