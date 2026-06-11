@@ -49,6 +49,23 @@
             <Setter Property="Background" Value="Transparent"/>
             <Setter Property="BorderThickness" Value="0"/>
         </Style>
+
+        <Style TargetType="ComboBox">
+            <Setter Property="Background" Value="#2c3e50"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Setter Property="BorderBrush" Value="#34495e"/>
+            <Setter Property="Height" Value="28"/>
+        </Style>
+
+        <Style TargetType="ComboBoxItem">
+            <Setter Property="Background" Value="#2c3e50"/>
+            <Setter Property="Foreground" Value="White"/>
+            <Style.Triggers>
+                <Trigger Property="IsHighlighted" Value="True">
+                    <Setter Property="Background" Value="#3498db"/>
+                </Trigger>
+            </Style.Triggers>
+        </Style>
     </Window.Resources>
 
     <Grid Margin="10">
@@ -346,8 +363,7 @@
                 <oxy:PlotView Model="{Binding PlotModel}" Background="#1e1e1e"/>
             </TabItem>
 
-            <TabItem Header="📋 Системные логи" Background="#1e1e1e" Foreground="White"
-                     x:Name="LogsTab">
+            <TabItem Header="📋 Системные логи" Background="#1e1e1e" Foreground="White" x:Name="LogsTab">
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
@@ -357,45 +373,35 @@
                     <Border Grid.Row="0" Background="#252525" Margin="0,0,0,10" Padding="10" CornerRadius="5">
                         <WrapPanel>
                             <Button Content="📋 Копировать логи" Width="120" Height="30" 
-                                    Command="{Binding CopyLogsCommand}" 
-                                    Background="#3498db" Foreground="White" 
-                                    BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"/>
+                        Command="{Binding CopyLogsCommand}" 
+                        Background="#3498db" Foreground="White" 
+                        BorderThickness="0" Cursor="Hand" Margin="0,0,10,0"/>
                             <Button Content="🗑 Очистить логи" Width="120" Height="30" 
-                                    Command="{Binding ClearLogsCommand}" 
-                                    Background="#e74c3c" Foreground="White" 
-                                    BorderThickness="0" Cursor="Hand"/>
-                            <Button Content="⬇ Прокрутить вниз" Width="120" Height="30" 
-                                    Command="{Binding ScrollLogsToEndCommand}" 
-                                    Background="#2c3e50" Foreground="White" 
-                                    BorderThickness="0" Cursor="Hand" Margin="10,0,0,0"/>
+                        Command="{Binding ClearLogsCommand}" 
+                        Background="#e74c3c" Foreground="White" 
+                        BorderThickness="0" Cursor="Hand"/>
                             <TextBlock Text="Уровень логов:" Foreground="#bdc3c7" Margin="20,8,10,0"/>
                             <ComboBox ItemsSource="{Binding LogLevels}" 
-                                      SelectedItem="{Binding SelectedLogLevel}" 
-                                      Width="100" Height="28"
-                                      Background="#2c3e50" Foreground="White"/>
+                          SelectedItem="{Binding SelectedLogLevel}" 
+                          Width="100" Height="28"
+                          Background="#2c3e50" Foreground="White"/>
                         </WrapPanel>
                     </Border>
 
-                    <ScrollViewer Grid.Row="1" 
-                                  x:Name="LogsScrollViewer"
-                                  VerticalScrollBarVisibility="Auto"
-                                  HorizontalScrollBarVisibility="Auto"
-                                  Background="#121212">
-                        <ListBox Grid.Row="1" 
-                                 x:Name="LogsListBox"
-                                 ItemsSource="{Binding SystemLogs}"
-                                 Background="#121212"
-                                 Foreground="#bdc3c7"
-                                 BorderThickness="0"
-                                 FontFamily="Consolas"
-                                 FontSize="11">
-                            <ListBox.ItemTemplate>
-                                <DataTemplate>
-                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="5,2"/>
-                                </DataTemplate>
-                            </ListBox.ItemTemplate>
-                        </ListBox>
-                    </ScrollViewer>
+                    <ListBox Grid.Row="1" 
+                 x:Name="LogsListBox"
+                 ItemsSource="{Binding SystemLogs}"
+                 Background="#121212"
+                 Foreground="#bdc3c7"
+                 BorderThickness="0"
+                 FontFamily="Consolas"
+                 FontSize="11">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="5,2"/>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Grid>
             </TabItem>
         </TabControl>

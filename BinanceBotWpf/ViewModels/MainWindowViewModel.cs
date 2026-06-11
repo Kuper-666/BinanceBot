@@ -198,6 +198,7 @@ namespace BinanceBotWpf.ViewModels
             _plotModel.Axes.Add (new DateTimeAxis { Position = AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
+            AddBalancePoint (DateTime.Now, 50);
 
             _stockMonitor = new StockPriceMonitor (AddLog, _isTestnet);
             _ = Task.Run (StocksLoop);
@@ -210,14 +211,16 @@ namespace BinanceBotWpf.ViewModels
         {
             try
             {
-                bool isEnabled = _tradingService.IsTelegramEnabled ();
-                TelegramStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
-                AddLog ($"Telegram статус: {TelegramStatus}");
+                bool isTelegramWorking = _tradingService.IsTelegramEnabled ();
+                TelegramStatus = isTelegramWorking ? "✅ Подключён" : "❌ Не настроен";
+
+                // Дополнительная отладка
+                System.Diagnostics.Debug.WriteLine ($"Telegram Status: {TelegramStatus}");
             }
             catch (Exception ex)
             {
                 TelegramStatus = "❌ Ошибка";
-                AddLog ($"Ошибка проверки Telegram: {ex.Message}");
+                System.Diagnostics.Debug.WriteLine ($"Telegram error: {ex.Message}");
             }
         }
 
@@ -448,8 +451,13 @@ namespace BinanceBotWpf.ViewModels
                 {
                     series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
-                    if (series.Points.Count % 10 == 0)
-                        _plotModel.InvalidatePlot (true);
+                    // Принудительно обновляем график при каждом добавлении
+                    _plotModel.InvalidatePlot (true);
+                    AddLog ($"📈 Точка графика: {balance:F2} USDC в {time:HH:mm:ss}");
+                }
+                else
+                {
+                    AddLog ("⚠️ Ошибка: график не инициализирован");
                 }
             });
         }
