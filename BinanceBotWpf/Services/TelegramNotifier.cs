@@ -24,6 +24,7 @@ namespace BinanceBotWpf.Services
 
         private readonly ConcurrentDictionary<string, DateTime> _lastCommandTime = new ();
         private readonly TimeSpan _commandCooldown = TimeSpan.FromSeconds (2);
+
         public bool IsEnabled => _enabled;
 
         public TelegramNotifier(string botToken, string chatId)
@@ -31,6 +32,24 @@ namespace BinanceBotWpf.Services
             _botClient = new TelegramBotClient (botToken);
             _chatId = chatId;
             _enabled = !string.IsNullOrEmpty (botToken) && !string.IsNullOrEmpty (chatId);
+
+            // Отладочный вывод
+            System.Diagnostics.Debug.WriteLine ($"Telegram инициализация: Token={!string.IsNullOrEmpty (botToken)}, ChatId={!string.IsNullOrEmpty (chatId)}, Enabled={_enabled}");
+
+            if (_enabled)
+            {
+                try
+                {
+                    // Проверяем подключение синхронно (для старой версии библиотеки)
+                    var me = _botClient.GetMeAsync ().GetAwaiter ().GetResult ();
+                    System.Diagnostics.Debug.WriteLine ($"Telegram бот: @{me.Username}");
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine ($"Telegram ошибка: {ex.Message}");
+                    // Не отключаем _enabled, так как бот может работать позже
+                }
+            }
         }
 
         /// <summary>Клавиатура с кнопками для быстрых команд.</summary>
@@ -38,12 +57,12 @@ namespace BinanceBotWpf.Services
         {
             return new ReplyKeyboardMarkup (new[]
             {
-        new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
-        new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
-        new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
-        new KeyboardButton[] { "📈 График PnL", "🔄 Обновить" },  // <-- Добавлена кнопка
-        new KeyboardButton[] { "❓ Помощь" }
-    })
+                new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
+                new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
+                new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
+                new KeyboardButton[] { "📈 График PnL", "🔄 Обновить" },
+                new KeyboardButton[] { "❓ Помощь" }
+            })
             {
                 ResizeKeyboard = true,
                 OneTimeKeyboard = false
@@ -59,7 +78,7 @@ namespace BinanceBotWpf.Services
                           "Выберите действие (кнопки внизу) или введите команду:";
             try
             {
-                await _botClient.SendMessage (
+                await _botClient.SendTextMessageAsync (
                     chatId: chatId,
                     text: message,
                     parseMode: ParseMode.Markdown,
@@ -75,22 +94,21 @@ namespace BinanceBotWpf.Services
             if (!_enabled) return;
             try
             {
-                await _botClient.SendMessage (targetChatId ?? _chatId, text, parseMode: ParseMode.Html);
+                await _botClient.SendTextMessageAsync (targetChatId ?? _chatId, text, parseMode: ParseMode.Html);
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Telegram send error: {ex.Message}"); }
         }
 
-        /// <summary>Отправка изображения (заглушка, т.к. библиотека старая).</summary>
+        /// <summary>Отправка изображения (заглушка).</summary>
         public async Task SendPhotoAsync(string chatId, System.IO.Stream photoStream, string caption = null)
         {
-            // В текущей версии Telegram.Bot нет поддержки отправки фото из потока, поэтому отправляем текст
             await SendMessageAsync ($"📊 График временно недоступен. Используйте /performance для статистики. (caption: {caption})", chatId);
         }
 
         /// <summary>Запуск прослушивания входящих сообщений.</summary>
         public void StartListening(Func<string, string, Task> onCommandReceived)
         {
-            if (_commandHandler != null) return; // уже подписан
+            if (_commandHandler != null) return;
             _commandHandler = onCommandReceived;
             _cts = new CancellationTokenSource ();
             _ = Task.Run (() => ListenLoop (_cts.Token));
@@ -106,7 +124,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    var updates = await _botClient.GetUpdates (offset: offset, timeout: 30, cancellationToken: token);
+                    var updates = await _botClient.GetUpdatesAsync (offset: offset, timeout: 30, cancellationToken: token);
                     foreach (var update in updates)
                     {
                         offset = update.Id + 1;
@@ -134,7 +152,7 @@ namespace BinanceBotWpf.Services
                                 "📈 График PnL" => "/chart",
                                 "🔄 Обновить" => "/update",
                                 "❓ Помощь" => "/help",
-                                _ => text  // оставляем как есть, если это уже команда
+                                _ => text
                             };
 
                             await _commandHandler?.Invoke (command, chatId);
@@ -166,7 +184,6 @@ namespace BinanceBotWpf.Services
 
             _lastCommandTime[key] = DateTime.UtcNow;
 
-            // Очистка старых записей (раз в 100 команд)
             if (_lastCommandTime.Count > 1000)
             {
                 var cutoff = DateTime.UtcNow - TimeSpan.FromMinutes (5);
@@ -179,7 +196,6 @@ namespace BinanceBotWpf.Services
             return false;
         }
 
-        // Измените метод HandleCallbackQuery:
         private async Task HandleCallbackQuery(CallbackQuery callbackQuery)
         {
             if (callbackQuery == null) return;
@@ -187,7 +203,7 @@ namespace BinanceBotWpf.Services
             var chatId = callbackQuery.Message.Chat.Id.ToString ();
             var data = callbackQuery.Data;
 
-            await _botClient.AnswerCallbackQuery (callbackQuery.Id);
+            await _botClient.AnswerCallbackQueryAsync (callbackQuery.Id);
 
             string command = data switch
             {
@@ -235,6 +251,7 @@ namespace BinanceBotWpf.Services
             await SendMessageAsync (msg);
         }
 
+        /// <summary>Тест подключения</summary>
         public async Task<bool> TestConnectionAsync()
         {
             if (!_enabled) return false;

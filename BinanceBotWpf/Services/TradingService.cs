@@ -51,7 +51,7 @@ namespace BinanceBotWpf.Services
 
         // TradingService.cs, конструктор:
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
-                              decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
+                      decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
         {
             _client = client;
             _wallet = wallet;
@@ -69,6 +69,7 @@ namespace BinanceBotWpf.Services
             _signalFilter = new SignalFilter (null);
             _positionProtector = new PositionProtector (client, _positionManager, null);
 
+            // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
             _webSocketManager = new WebSocketPriceManager (null);
         }
 

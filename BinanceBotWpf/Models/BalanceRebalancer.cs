@@ -136,21 +136,28 @@ namespace BinanceBotWpf.Models
             try
             {
                 var account = await client.GetAccountInfoAsync ();
-                var earnData = await client.GetFlexibleEarnBalanceAsync ();
+                var earnData = await client.GetFlexibleEarnBalanceAsync (); // Теперь поддерживает пагинацию
+
                 if (account?["balances"] != null)
                 {
                     foreach (var b in account["balances"])
                     {
                         string asset = b["asset"].ToString ();
                         decimal free = decimal.Parse (b["free"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
-                        if (free > 0) result[asset] = (free, 0);
+                        decimal locked = decimal.Parse (b["locked"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                        decimal total = free + locked;
+                        if (total > 0)
+                            result[asset] = (total, 0);
                     }
                 }
+
                 if (earnData != null)
                 {
                     foreach (var item in earnData)
                     {
-                        string asset = item["asset"].ToString ();
+                        string asset = item["asset"]?.ToString ();
+                        if (string.IsNullOrEmpty (asset)) continue;
+
                         decimal amount = decimal.Parse (item["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                         if (amount > 0)
                         {
@@ -161,6 +168,8 @@ namespace BinanceBotWpf.Models
                         }
                     }
                 }
+
+                Log ($"📊 Получено {result.Count} активов с балансом");
             }
             catch (Exception ex) { Log ($"Ошибка получения балансов: {ex.Message}"); }
             return result;

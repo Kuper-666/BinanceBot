@@ -83,6 +83,9 @@ minUsdcBalance=5.50
                     string key = parts[0].Trim ().ToLower ();
                     string value = parts[1].Trim ();
 
+                    // Убираем кавычки если есть
+                    value = value.Trim ('"', '\'');
+
                     switch (key)
                     {
                         case "apikey": apiKey = value; break;
@@ -93,6 +96,10 @@ minUsdcBalance=5.50
                         case "telegramchatid": telegramChatId = value; break;
                     }
                 }
+
+                // Логируем для отладки
+                System.Diagnostics.Debug.WriteLine ($"Telegram Token: {( string.IsNullOrEmpty (telegramBotToken) ? "НЕ НАЙДЕН" : "НАЙДЕН" )}");
+                System.Diagnostics.Debug.WriteLine ($"Telegram ChatId: {( string.IsNullOrEmpty (telegramChatId) ? "НЕ НАЙДЕН" : "НАЙДЕН" )}");
             }
             catch (Exception ex)
             {

@@ -514,46 +514,79 @@ namespace BinanceBotWpf.Models
         }
 
         /// <summary>
-        /// Получает список активов в гибком Earn (Simple Earn Flexible).
+        /// Получает список активов в гибком Earn (Simple Earn Flexible) с поддержкой пагинации.
         /// </summary>
         public async Task<JArray> GetFlexibleEarnBalanceAsync()
         {
             try
             {
-                long timestamp = GetTimestamp ();
-                // Добавляем recvWindow (рекомендуется Binance)
-                int recvWindow = 5000;
-                string query = $"timestamp={timestamp}&recvWindow={recvWindow}";
-                string signature = CreateSignature (query);
+                var allRows = new JArray ();
+                int currentPage = 1;
+                int size = 100; // Максимум за раз
+                bool hasMore = true;
 
-                var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
-                request.Headers.Add ("X-MBX-APIKEY", _apiKey);
-
-                var response = await SendWithRetryAsync (request);
-                string jsonString = await response.Content.ReadAsStringAsync ();
-
-                // Логируем только ошибки, не спамим в лог
-                if (!response.IsSuccessStatusCode)
+                while (hasMore)
                 {
-                    Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
-                    return new JArray ();
+                    long timestamp = GetTimestamp ();
+                    int recvWindow = 5000;
+                    string query = $"timestamp={timestamp}&recvWindow={recvWindow}&size={size}&current={currentPage}";
+                    string signature = CreateSignature (query);
+
+                    var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
+                    request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+
+                    var response = await SendWithRetryAsync (request);
+                    string jsonString = await response.Content.ReadAsStringAsync ();
+
+                    if (!response.IsSuccessStatusCode)
+                    {
+                        Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
+                        break;
+                    }
+
+                    JToken token = JToken.Parse (jsonString);
+                    JArray rows = null;
+                    int total = 0;
+
+                    if (token is JArray array)
+                    {
+                        rows = array;
+                        total = rows.Count;
+                        hasMore = false; // Если пришёл массив, то это все данные
+                    }
+                    else if (token is JObject obj)
+                    {
+                        if (obj["rows"] != null)
+                        {
+                            rows = (JArray)obj["rows"];
+                            total = obj["total"]?.Value<int> () ?? 0;
+                            hasMore = currentPage * size < total;
+                        }
+                        else if (obj["list"] != null)
+                        {
+                            rows = (JArray)obj["list"];
+                            total = obj["total"]?.Value<int> () ?? 0;
+                            hasMore = currentPage * size < total;
+                        }
+                    }
+
+                    if (rows != null && rows.Count > 0)
+                    {
+                        foreach (var item in rows)
+                        {
+                            allRows.Add (item);
+                        }
+                    }
+
+                    currentPage++;
+
+                    if (hasMore)
+                    {
+                        await Task.Delay (200); // Небольшая задержка между запросами
+                    }
                 }
 
-                JToken token = JToken.Parse (jsonString);
-
-                // Ответ может быть в разных форматах
-                if (token is JArray array)
-                    return array;
-
-                if (token is JObject obj)
-                {
-                    if (obj["rows"] != null)
-                        return (JArray)obj["rows"];
-                    if (obj["list"] != null)
-                        return (JArray)obj["list"];
-                }
-
-                return new JArray ();
+                return allRows;
             }
             catch (Exception ex)
             {

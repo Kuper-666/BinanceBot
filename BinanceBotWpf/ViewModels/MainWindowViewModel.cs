@@ -194,6 +194,7 @@ namespace BinanceBotWpf.ViewModels
             _ = Task.Run (StocksLoop);
             _ = Task.Run (StartUiUpdateLoop);
 
+            // Обновляем статус Telegram
             UpdateTelegramStatus ();
         }
 
@@ -201,12 +202,14 @@ namespace BinanceBotWpf.ViewModels
         {
             try
             {
-                var isEnabled = _tradingService.IsTelegramEnabled ();
+                bool isEnabled = _tradingService.IsTelegramEnabled ();
                 TelegramStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
+                AddLog ($"Telegram статус: {TelegramStatus}");
             }
-            catch
+            catch (Exception ex)
             {
                 TelegramStatus = "❌ Ошибка";
+                AddLog ($"Ошибка проверки Telegram: {ex.Message}");
             }
         }
 
@@ -226,6 +229,7 @@ namespace BinanceBotWpf.ViewModels
                 }
             });
 
+            // Отправка важных сообщений в Telegram
             SendImportantToTelegram (message);
         }
 
@@ -362,8 +366,19 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        private async Task Start() { IsRunning = true; await _tradingService.StartTradingAsync (this); }
-        private void Stop() { _tradingService.StopTrading (); IsRunning = false; }
+        private async Task Start()
+        {
+            IsRunning = true;
+            AddLog ("🚀 Запуск торгового бота...");
+            await _tradingService.StartTradingAsync (this);
+        }
+
+        private void Stop()
+        {
+            _tradingService.StopTrading ();
+            IsRunning = false;
+            AddLog ("⏹ Торговля остановлена");
+        }
 
         private async Task RunOptimization()
         {
@@ -402,7 +417,14 @@ namespace BinanceBotWpf.ViewModels
             catch (Exception ex) { AddLog ($"Ошибка экспорта: {ex.Message}"); }
         }
 
-        public void UpdateWalletDisplay(string balance) => Application.Current.Dispatcher.Invoke (() => WalletBalance = balance);
+        public void UpdateWalletDisplay(string balance)
+        {
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                WalletBalance = balance;
+                AddLog ($"💰 Баланс USDC: {balance}");
+            });
+        }
 
         public void AddBalancePoint(DateTime time, decimal balance)
         {
@@ -438,7 +460,14 @@ namespace BinanceBotWpf.ViewModels
                 }
                 else
                 {
-                    var newItem = new PairAnalysisItem { Pair = pair, Price = price, Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}", RowColor = bgBrush, ForegroundBrush = fgBrush };
+                    var newItem = new PairAnalysisItem
+                    {
+                        Pair = pair,
+                        Price = price,
+                        Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}",
+                        RowColor = bgBrush,
+                        ForegroundBrush = fgBrush
+                    };
                     _pairDict[pair] = newItem;
                     PairsList.Add (newItem);
                 }
@@ -450,7 +479,11 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 var toRemove = PairsList.Where (p => !activePairs.Contains (p.Pair)).ToList ();
-                foreach (var item in toRemove) { _pairDict.Remove (item.Pair); PairsList.Remove (item); }
+                foreach (var item in toRemove)
+                {
+                    _pairDict.Remove (item.Pair);
+                    PairsList.Remove (item);
+                }
             });
         }
 
@@ -554,6 +587,8 @@ namespace BinanceBotWpf.ViewModels
                 decimal avgP = WinningTrades > 0 ? _totalProfitSum / WinningTrades : 0;
                 decimal avgL = LosingTrades > 0 ? Math.Abs (_totalLossSum / LosingTrades) : 0;
                 AvgProfitLossDisplay = $"Ср. приб/убыток: {avgP:F2} / {avgL:F2}";
+
+                AddLog ($"📊 Сделка {trade.Symbol}: {trade.Action} PnL={trade.PnL:F2} ({trade.PnLPercent:F2}%)");
             });
         }
 
@@ -595,7 +630,12 @@ namespace BinanceBotWpf.ViewModels
             OnPropertyChanged (nameof (MaxRiskPercent));
         }
 
-        public void UpdateRiskDisplay(decimal riskPercent) => Application.Current.Dispatcher.Invoke (() => RiskPercentDisplay = $"Риск: {riskPercent * 100:F0}%");
+        public void UpdateRiskDisplay(decimal riskPercent)
+        {
+            Application.Current.Dispatcher.Invoke (() =>
+                RiskPercentDisplay = $"Риск: {riskPercent * 100:F0}%"
+            );
+        }
 
         public int RsiPeriod
         {
@@ -654,6 +694,7 @@ namespace BinanceBotWpf.ViewModels
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
+        protected void OnPropertyChanged([CallerMemberName] string name = null) =>
+            PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
     }
 }
