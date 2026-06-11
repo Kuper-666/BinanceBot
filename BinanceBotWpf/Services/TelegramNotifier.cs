@@ -108,7 +108,6 @@ namespace BinanceBotWpf.Services
                     var updates = await _botClient.GetUpdates (offset: offset, timeout: 30, cancellationToken: token);
                     foreach (var update in updates)
                     {
-                        // Увеличиваем offset ПЕРЕД обработкой, чтобы не получить это же обновление снова
                         offset = update.Id + 1;
 
                         if (update.CallbackQuery != null)
@@ -116,11 +115,28 @@ namespace BinanceBotWpf.Services
                             await HandleCallbackQuery (update.CallbackQuery);
                             continue;
                         }
+
                         if (update.Message?.Text != null)
                         {
                             string text = update.Message.Text.Trim ();
                             string chatId = update.Message.Chat.Id.ToString ();
-                            await _commandHandler?.Invoke (text, chatId);
+
+                            // Преобразуем русские тексты кнопок в команды
+                            string command = text switch
+                            {
+                                "📊 Статус" => "/status",
+                                "💼 Баланс" => "/balance",
+                                "🧠 Переобучить ML" => "/retrain",
+                                "📁 Экспорт" => "/export",
+                                "▶️ Запуск" => "/start",
+                                "⏹️ Стоп" => "/stop",
+                                "📈 График PnL" => "/chart",
+                                "🔄 Обновить" => "/update",
+                                "❓ Помощь" => "/help",
+                                _ => text  // оставляем как есть, если это уже команда
+                            };
+
+                            await _commandHandler?.Invoke (command, chatId);
                         }
                     }
                 }
