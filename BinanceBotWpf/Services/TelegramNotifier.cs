@@ -24,6 +24,7 @@ namespace BinanceBotWpf.Services
 
         private readonly ConcurrentDictionary<string, DateTime> _lastCommandTime = new ();
         private readonly TimeSpan _commandCooldown = TimeSpan.FromSeconds (2);
+        public bool IsEnabled => _enabled;
 
         public TelegramNotifier(string botToken, string chatId)
         {
@@ -232,6 +233,20 @@ namespace BinanceBotWpf.Services
                          $"🎯 Win Rate: {winRate:F1}%\n" +
                          $"📈 Сделок: {totalTrades} (✅{winningTrades} / ❌{losingTrades})";
             await SendMessageAsync (msg);
+        }
+
+        public async Task<bool> TestConnectionAsync()
+        {
+            if (!_enabled) return false;
+            try
+            {
+                await SendMessageAsync ("✅ Бот подключён к Telegram");
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
         }
     }
 }

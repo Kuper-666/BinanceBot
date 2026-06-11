@@ -529,5 +529,16 @@ namespace BinanceBotWpf.Services
                 }
             }
         }
+
+        public bool IsTelegramEnabled()
+        {
+            return _telegram != null && _telegram.IsEnabled;
+        }
+
+        public async Task<bool> TestTelegramAsync()
+        {
+            if (_telegram == null) return false;
+            return await _telegram.TestConnectionAsync ();
+        }
     }
 }

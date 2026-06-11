@@ -61,7 +61,6 @@ namespace BinanceBotWpf.ViewModels
         private readonly TradingService _tradingService;
         private readonly bool _isTestnet;
         private StockPriceMonitor _stockMonitor;
-        private string _systemLogs = "";
         private string _walletBalance = "0.00";
         private bool _isRunning = false;
 
@@ -97,39 +96,34 @@ namespace BinanceBotWpf.ViewModels
         private string _riskPercentDisplay = "Риск: 0%";
         private TradingSettings _tradingSettings;
 
+        // Логи
+        private ObservableCollection<string> _systemLogs = new ();
+        private List<string> _allLogs = new ();
+        private string _selectedLogLevel = "Все";
+        private string _telegramStatus = "⚙️ Настройка...";
+
         // График
         private PlotModel _plotModel;
-        public PlotModel PlotModel
-        {
-            get => _plotModel;
-            set { _plotModel = value; OnPropertyChanged (); }
-        }
 
-        // Команды
-        public ICommand StartCommand { get; }
-        public ICommand StopCommand { get; }
-        public ICommand ExportDataCommand { get; }
-        public ICommand OptimizeStrategyCommand { get; }
-        public ICommand ClearLogCommand { get; }
-
+        // Коллекции для UI
         public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
         private Dictionary<string, PairAnalysisItem> _pairDict = new ();
         public ObservableCollection<StockListItem> StocksList { get; set; } = new ();
         private Dictionary<string, StockListItem> _stockDict = new ();
 
-        public string SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
+        // Свойства
         public string WalletBalance { get => _walletBalance; set { _walletBalance = value; OnPropertyChanged (); } }
         public bool IsRunning { get => _isRunning; set { _isRunning = value; OnPropertyChanged (); } }
 
-        public int FastSma { get => _fastSma; set { if (_fastSma != value) { _fastSma = value; OnPropertyChanged (); SaveSettings (); } } }
-        public int SlowSma { get => _slowSma; set { if (_slowSma != value) { _slowSma = value; OnPropertyChanged (); SaveSettings (); } } }
-        public int RsiBuyThreshold { get => _rsiBuyThreshold; set { if (_rsiBuyThreshold != value) { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } } }
-        public int RsiSellThreshold { get => _rsiSellThreshold; set { if (_rsiSellThreshold != value) { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } } }
-        public decimal StopLossPercent { get => _stopLossPercent; set { if (_stopLossPercent != value) { _stopLossPercent = value; OnPropertyChanged (); SaveSettings (); } } }
-        public decimal TakeProfitPercent { get => _takeProfitPercent; set { if (_takeProfitPercent != value) { _takeProfitPercent = value; OnPropertyChanged (); SaveSettings (); } } }
-        public decimal TrailingStopPercent { get => _trailingStopPercent; set { if (_trailingStopPercent != value) { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } } }
-        public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { if (_minBalanceForTrading != value) { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } } }
-        public decimal MaxRiskPercent { get => _maxRiskPercent; set { if (_maxRiskPercent != value) { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } } }
+        public int FastSma { get => _fastSma; set { _fastSma = value; OnPropertyChanged (); SaveSettings (); } }
+        public int SlowSma { get => _slowSma; set { _slowSma = value; OnPropertyChanged (); SaveSettings (); } }
+        public int RsiBuyThreshold { get => _rsiBuyThreshold; set { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } }
+        public int RsiSellThreshold { get => _rsiSellThreshold; set { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } }
+        public decimal StopLossPercent { get => _stopLossPercent; set { _stopLossPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        public decimal TakeProfitPercent { get => _takeProfitPercent; set { _takeProfitPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        public decimal TrailingStopPercent { get => _trailingStopPercent; set { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } }
+        public decimal MaxRiskPercent { get => _maxRiskPercent; set { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } }
 
         public ObservableCollection<TradeLog> TradesHistory { get => _tradesHistory; set { _tradesHistory = value; OnPropertyChanged (); } }
         public decimal TotalPnL { get => _totalPnL; set { _totalPnL = value; OnPropertyChanged (); } }
@@ -145,6 +139,30 @@ namespace BinanceBotWpf.ViewModels
         public string RiskPercentDisplay { get => _riskPercentDisplay; set { _riskPercentDisplay = value; OnPropertyChanged (); } }
         public int CurrentPositionsCount { get => _currentPositionsCount; set { _currentPositionsCount = value; OnPropertyChanged (); } }
         public int MaxPositions { get => _maxPositions; set { _maxPositions = value; OnPropertyChanged (); } }
+        public PlotModel PlotModel { get => _plotModel; set { _plotModel = value; OnPropertyChanged (); } }
+
+        public ObservableCollection<string> SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
+        public List<string> LogLevels { get; } = new List<string> { "Все", "Ошибки", "Предупреждения", "Инфо", "Торговля" };
+
+        public string SelectedLogLevel
+        {
+            get => _selectedLogLevel;
+            set { _selectedLogLevel = value; OnPropertyChanged (); FilterLogs (); }
+        }
+
+        public string TelegramStatus
+        {
+            get => _telegramStatus;
+            set { _telegramStatus = value; OnPropertyChanged (); }
+        }
+
+        // Команды
+        public ICommand StartCommand { get; }
+        public ICommand StopCommand { get; }
+        public ICommand ExportDataCommand { get; }
+        public ICommand OptimizeStrategyCommand { get; }
+        public ICommand ClearLogsCommand { get; }
+        public ICommand CopyLogsCommand { get; }
 
         private readonly string _settingsPath;
         private readonly object _settingsLock = new ();
@@ -156,16 +174,15 @@ namespace BinanceBotWpf.ViewModels
             _isTestnet = isTestnet;
             _settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
 
-            // Синхронная загрузка настроек (не асинхронная)
             LoadSettings ();
-
-            // Загружаем TradingSettings синхронно
             _tradingSettings = LoadTradingSettingsSync ();
 
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
             OptimizeStrategyCommand = new RelayCommand (async _ => await RunOptimization (), _ => !IsRunning);
+            ClearLogsCommand = new RelayCommand (_ => ClearLogs (), _ => true);
+            CopyLogsCommand = new RelayCommand (_ => CopyLogs (), _ => true);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -173,12 +190,121 @@ namespace BinanceBotWpf.ViewModels
             _plotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
 
-            // Мониторинг акций
             _stockMonitor = new StockPriceMonitor (AddLog, _isTestnet);
             _ = Task.Run (StocksLoop);
-
-            // Запускаем цикл обновления UI через WebSocket
             _ = Task.Run (StartUiUpdateLoop);
+
+            UpdateTelegramStatus ();
+        }
+
+        private void UpdateTelegramStatus()
+        {
+            try
+            {
+                var isEnabled = _tradingService.IsTelegramEnabled ();
+                TelegramStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
+            }
+            catch
+            {
+                TelegramStatus = "❌ Ошибка";
+            }
+        }
+
+        public void AddLog(string message)
+        {
+            string timestamp = DateTime.Now.ToString ("HH:mm:ss");
+            string formattedMessage = $"[{timestamp}] {message}";
+
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                _allLogs.Add (formattedMessage);
+                FilterLogs ();
+
+                if (_allLogs.Count > 1000)
+                {
+                    _allLogs.RemoveAt (0);
+                }
+            });
+
+            SendImportantToTelegram (message);
+        }
+
+        private void FilterLogs()
+        {
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                SystemLogs.Clear ();
+
+                var filtered = _selectedLogLevel switch
+                {
+                    "Ошибки" => _allLogs.Where (l => l.Contains ("❌") || l.Contains ("Ошибка") || l.Contains ("ERROR")),
+                    "Предупреждения" => _allLogs.Where (l => l.Contains ("⚠️") || l.Contains ("WARNING")),
+                    "Инфо" => _allLogs.Where (l => l.Contains ("✅") || l.Contains ("ℹ️") || l.Contains ("INFO")),
+                    "Торговля" => _allLogs.Where (l => l.Contains ("🟢") || l.Contains ("🔴") || l.Contains ("КУПЛЕНО") || l.Contains ("ПРОДАНО")),
+                    _ => _allLogs
+                };
+
+                foreach (var log in filtered.TakeLast (500))
+                {
+                    SystemLogs.Add (log);
+                }
+            });
+        }
+
+        public void ClearLogs()
+        {
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                _allLogs.Clear ();
+                SystemLogs.Clear ();
+                AddLog ("🧹 Логи очищены");
+            });
+        }
+
+        public void CopyLogs()
+        {
+            try
+            {
+                var logsText = string.Join (Environment.NewLine, SystemLogs);
+                Clipboard.SetText (logsText);
+                AddLog ("📋 Логи скопированы в буфер обмена");
+            }
+            catch (Exception ex)
+            {
+                AddLog ($"❌ Ошибка копирования логов: {ex.Message}");
+            }
+        }
+
+        private void SendImportantToTelegram(string message)
+        {
+            bool isImportant = message.Contains ("❌") ||
+                               message.Contains ("✅ КУПЛЕНО") ||
+                               message.Contains ("🔒 ЗАКРЫТА") ||
+                               message.Contains ("Ошибка") ||
+                               message.Contains ("⚠️ Баланс") ||
+                               message.Contains ("Ребаланс") ||
+                               message.Contains ("Подключение");
+
+            if (isImportant && _tradingService != null)
+            {
+                _ = Task.Run (async () =>
+                {
+                    try
+                    {
+                        var telegramField = typeof (TradingService).GetField ("_telegram",
+                            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                        if (telegramField != null)
+                        {
+                            var telegram = telegramField.GetValue (_tradingService) as TelegramNotifier;
+                            if (telegram != null && telegram.IsEnabled)
+                            {
+                                await telegram.SendMessageAsync (message);
+                            }
+                        }
+                    }
+                    catch { }
+                });
+            }
         }
 
         private void LoadSettings()
@@ -402,21 +528,13 @@ namespace BinanceBotWpf.ViewModels
                                 pairItem.Price = price.ToString ("F4");
                         }
                     });
-                    await Task.Delay (2000); // ✅ уменьшил частоту с 1с до 2с
+                    await Task.Delay (2000);
                 }
                 catch (Exception ex)
                 {
-                    // ✅ не спамим в лог
                     await Task.Delay (10000);
                 }
             }
-        }
-
-        public void AddLog(string message)
-        {
-            // Логи больше не отображаются в UI
-            // Важные сообщения отправляются в Telegram через TelegramNotifier
-            // System.Diagnostics.Debug.WriteLine($"{DateTime.Now:HH:mm:ss} - {message}");
         }
 
         public void AddTradeToHistory(TradeLog trade)
@@ -479,10 +597,6 @@ namespace BinanceBotWpf.ViewModels
 
         public void UpdateRiskDisplay(decimal riskPercent) => Application.Current.Dispatcher.Invoke (() => RiskPercentDisplay = $"Риск: {riskPercent * 100:F0}%");
 
-        public event PropertyChangedEventHandler PropertyChanged;
-        protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
-        // Добавьте в конец секции свойств (перед конструктором)
-
         public int RsiPeriod
         {
             get => _tradingSettings?.RsiPeriod ?? 14;
@@ -499,6 +613,21 @@ namespace BinanceBotWpf.ViewModels
         {
             get => _tradingSettings?.MaxTradeAmount ?? 50;
             set { if (_tradingSettings != null) { _tradingSettings.MaxTradeAmount = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal RiskPerTradePercent
+        {
+            get => _tradingSettings?.RiskPerTradePercent ?? 0.02m;
+            set
+            {
+                if (_tradingSettings != null)
+                {
+                    _tradingSettings.RiskPerTradePercent = value;
+                    OnPropertyChanged ();
+                    SaveTradingSettings ();
+                    UpdateRiskDisplay (value);
+                }
+            }
         }
 
         private async void SaveTradingSettings()
@@ -524,22 +653,7 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        // Добавьте эти свойства в класс MainWindowViewModel (после других свойств)
-
-        // Добавьте это свойство в класс MainWindowViewModel
-        public decimal RiskPerTradePercent
-        {
-            get => _tradingSettings?.RiskPerTradePercent ?? 0.02m;
-            set
-            {
-                if (_tradingSettings != null)
-                {
-                    _tradingSettings.RiskPerTradePercent = value;
-                    OnPropertyChanged ();
-                    SaveTradingSettings ();
-                    UpdateRiskDisplay (value);
-                }
-            }
-        }
+        public event PropertyChangedEventHandler PropertyChanged;
+        protected void OnPropertyChanged([CallerMemberName] string name = null) => PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
     }
 }

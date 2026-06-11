@@ -8,6 +8,10 @@ namespace BinanceBotWpf
         public MainWindow(MainWindowViewModel viewModel)
         {
             InitializeComponent ();
+
+            // Добавляем конвертер в ресурсы
+            Resources.Add ("LogLevelToColorConverter", new LogLevelToColorConverter ());
+
             DataContext = viewModel;
         }
     }
