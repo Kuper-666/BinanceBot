@@ -457,28 +457,60 @@ namespace BinanceBotWpf.Models
 
         public async Task<JObject> GetAccountInfoAsync()
         {
-            long timestamp = GetTimestamp ();
-            string query = $"timestamp={timestamp}";
-            string signature = CreateSignature (query);
-            var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/account?{query}&signature={signature}");
-            var response = await SendWithRetryAsync (request);
-            if (response.IsSuccessStatusCode)
-                return JObject.Parse (await response.Content.ReadAsStringAsync ());
-            return null;
+            try
+            {
+                long timestamp = GetTimestamp ();
+                string query = $"timestamp={timestamp}";
+                string signature = CreateSignature (query);
+                var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/account?{query}&signature={signature}");
+                request.Headers.Add ("X-MBX-APIKEY", _apiKey);
+
+                var response = await _httpClient.SendAsync (request);
+                string body = await response.Content.ReadAsStringAsync ();
+
+                if (response.IsSuccessStatusCode)
+                {
+                    return JObject.Parse (body);
+                }
+                else
+                {
+                    Log ($"GetAccountInfoAsync ошибка: {response.StatusCode}, {body}");
+                    return null;
+                }
+            }
+            catch (Exception ex)
+            {
+                Log ($"GetAccountInfoAsync исключение: {ex.Message}");
+                return null;
+            }
         }
 
         public async Task<decimal> GetAccountBalanceAsync(string asset)
         {
-            var accountInfo = await GetAccountInfoAsync ();
-            if (accountInfo != null && accountInfo["balances"] != null)
+            try
             {
-                foreach (var balance in accountInfo["balances"])
+                var accountInfo = await GetAccountInfoAsync ();
+                if (accountInfo != null && accountInfo["balances"] != null)
                 {
-                    if (balance["asset"]?.ToString () == asset)
-                        return balance["free"]?.Value<decimal> () ?? 0m;
+                    foreach (var balance in accountInfo["balances"])
+                    {
+                        string assetStr = balance["asset"]?.ToString ();
+                        if (assetStr == asset)
+                        {
+                            if (decimal.TryParse (balance["free"]?.ToString (), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal free))
+                            {
+                                return free;
+                            }
+                        }
+                    }
                 }
+                return 0;
             }
-            return 0m;
+            catch (Exception ex)
+            {
+                Log ($"GetAccountBalanceAsync ошибка: {ex.Message}");
+                return 0;
+            }
         }
 
         /// <summary>
