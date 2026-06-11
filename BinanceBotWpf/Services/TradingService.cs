@@ -470,6 +470,7 @@ namespace BinanceBotWpf.Services
                         "/export – экспорт\n" +
                         "/retrain – переобучить ML\n" +
                         "/pnl – статистика PnL\n" +
+                        "/update – проверить обновления\n" +
                         "/errors – ошибки\n" +
                         "/performance – детальная статистика\n" +
                         "/help – помощь";
