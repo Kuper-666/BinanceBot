@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media.Imaging;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.ViewModels;
@@ -39,10 +40,9 @@ namespace BinanceBotWpf
 
 ApiKey=YOUR_API_KEY_HERE
 ApiSecret=YOUR_API_SECRET_HERE
-isTestnet=true
+isTestnet=false
 
 # Telegram notifications (optional)
-# Получите токен у @BotFather в Telegram
 telegramBotToken=
 telegramChatId=
 
@@ -83,30 +83,16 @@ minUsdcBalance=5.50
                     string key = parts[0].Trim ().ToLower ();
                     string value = parts[1].Trim ();
 
-                    // Убираем кавычки если есть
-                    value = value.Trim ('"', '\'');
-
                     switch (key)
                     {
                         case "apikey": apiKey = value; break;
                         case "apisecret": apiSecret = value; break;
                         case "istestnet": isTestnet = bool.Parse (value); break;
                         case "minusdcbalance": minUsdcBalance = decimal.Parse (value, CultureInfo.InvariantCulture); break;
-                        case "telegrambottoken":
-                            telegramBotToken = value;
-                            System.Diagnostics.Debug.WriteLine ($"Read telegramBotToken: {value.Substring (0, Math.Min (10, value.Length))}...");
-                            break;
-                        case "telegramchatid":
-                            telegramChatId = value;
-                            System.Diagnostics.Debug.WriteLine ($"Read telegramChatId: {value}");
-                            break;
-
+                        case "telegrambottoken": telegramBotToken = value; break;
+                        case "telegramchatid": telegramChatId = value; break;
                     }
                 }
-
-                // Логируем для отладки
-                System.Diagnostics.Debug.WriteLine ($"Telegram Token: {( string.IsNullOrEmpty (telegramBotToken) ? "НЕ НАЙДЕН" : "НАЙДЕН" )}");
-                System.Diagnostics.Debug.WriteLine ($"Telegram ChatId: {( string.IsNullOrEmpty (telegramChatId) ? "НЕ НАЙДЕН" : "НАЙДЕН" )}");
             }
             catch (Exception ex)
             {
@@ -135,42 +121,15 @@ minUsdcBalance=5.50
             // Инициализация бота
             try
             {
-                // Создаем клиент Binance
+                // Создаём клиент Binance
                 var binanceClient = new BinanceClient (apiKey, apiSecret, isTestnet);
 
-                // Синхронизируем время с сервером Binance (важно для подписей)
+                // Синхронизируем время с сервером Binance
                 await binanceClient.SyncTimeAsync ();
 
-                // Проверяем подключение к API
+                // Проверяем подключение (опционально, но полезно)
                 string serverInfo = await binanceClient.GetServerInfo ();
-
-                // Показываем статус подключения
-                string connectionStatus = isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ";
-                MessageBox.Show (
-                    $"Подключение к Binance: {serverInfo}\n" +
-                    $"Режим: {connectionStatus}\n" +
-                    $"API Key: {apiKey.Substring (0, Math.Min (8, apiKey.Length))}...\n\n" +
-                    $"Если подключение успешно, бот будет запущен.",
-                    "Статус подключения",
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-
-                // Проверяем баланс (тестовый запрос)
-                try
-                {
-                    decimal testBalance = await binanceClient.GetAccountBalanceAsync ("USDC");
-                    System.Diagnostics.Debug.WriteLine ($"Тестовый баланс USDC: {testBalance}");
-                }
-                catch (Exception balanceEx)
-                {
-                    MessageBox.Show (
-                        $"Предупреждение: Не удалось получить баланс.\n" +
-                        $"Ошибка: {balanceEx.Message}\n\n" +
-                        $"Проверьте API ключи и права доступа.",
-                        "Предупреждение",
-                        MessageBoxButton.OK,
-                        MessageBoxImage.Warning);
-                }
+                System.Diagnostics.Debug.WriteLine ($"Сервер: {serverInfo}");
 
                 // Инициализация сервисов
                 object consoleLock = new object ();
@@ -178,13 +137,13 @@ minUsdcBalance=5.50
                 var earnManager = new EarnManager (consoleLock);
                 var rebalancer = new BalanceRebalancer (consoleLock, 0.1m);
 
-                // Подписываемся на события логирования
+                // Подписываемся на события логирования (вывод в Debug)
                 walletManager.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Wallet] {msg}");
                 earnManager.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Earn] {msg}");
                 rebalancer.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Rebalancer] {msg}");
                 binanceClient.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Binance] {msg}");
 
-                // Создаем TradingService
+                // Создаём TradingService
                 var tradingService = new TradingService (
                     binanceClient,
                     walletManager,
@@ -194,14 +153,27 @@ minUsdcBalance=5.50
                     telegramBotToken,
                     telegramChatId);
 
-                // Создаем ViewModel
+                // Создаём ViewModel
                 var viewModel = new MainWindowViewModel (tradingService, isTestnet);
 
-                // Создаем и показываем главное окно
+                // Создаём и показываем главное окно
                 var mainWindow = new MainWindow (viewModel);
+
+                // Устанавливаем иконку окна
+                try
+                {
+                    string iconPath = System.IO.Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "binance_bot.ico");
+                    if (File.Exists (iconPath))
+                        mainWindow.Icon = new BitmapImage (new Uri (iconPath));
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine ($"Не удалось загрузить иконку: {ex.Message}");
+                }
+
                 mainWindow.Show ();
 
-                // Добавляем сообщение о запуске в лог
+                // Логируем запуск
                 viewModel.AddLog ($"🚀 Бот запущен в режиме: {( isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ" )}");
                 viewModel.AddLog ($"🔌 API Key: {apiKey.Substring (0, Math.Min (8, apiKey.Length))}...");
                 viewModel.AddLog ($"📡 Статус подключения: {serverInfo}");
@@ -223,7 +195,6 @@ minUsdcBalance=5.50
 
         protected override void OnExit(ExitEventArgs e)
         {
-            // Освобождаем мьютекс при выходе
             _appMutex?.ReleaseMutex ();
             _appMutex?.Dispose ();
             base.OnExit (e);
