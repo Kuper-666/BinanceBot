@@ -222,7 +222,7 @@ namespace BinanceBotWpf.ViewModels
                 AddLog ($"Ошибка Telegram: {ex.Message}");
             }
         }
-        
+
 
         private void ScrollLogsToEnd()
         {
@@ -238,11 +238,9 @@ namespace BinanceBotWpf.ViewModels
             {
                 _allLogs.Add (formattedMessage);
                 FilterLogs ();
+                if (_allLogs.Count > 1000) _allLogs.RemoveAt (0);
 
-                if (_allLogs.Count > 1000)
-                    _allLogs.RemoveAt (0);
-
-                // Прокрутка вниз
+                // Автоскролл
                 MainWindow.Instance?.ScrollLogsToEnd ();
             });
 

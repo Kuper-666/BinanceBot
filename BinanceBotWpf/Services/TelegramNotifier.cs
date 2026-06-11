@@ -14,7 +14,7 @@ namespace BinanceBotWpf.Services
     {
         private readonly TelegramBotClient _botClient;
         private readonly string _chatId;
-        private bool _enabled;                     // <-- без readonly, чтобы можно было изменить
+        private bool _enabled;
         private Func<string, string, Task> _commandHandler;
         private CancellationTokenSource _cts;
 
@@ -28,16 +28,20 @@ namespace BinanceBotWpf.Services
         {
             _botClient = new TelegramBotClient (botToken);
             _chatId = chatId;
-            _enabled = !string.IsNullOrEmpty (botToken) && !string.IsNullOrEmpty (chatId);
+            _enabled = false; // сначала false
 
-            if (_enabled)
+            if (!string.IsNullOrEmpty (botToken) && !string.IsNullOrEmpty (chatId))
             {
+                // Асинхронная проверка подключения
                 _ = Task.Run (async () =>
                 {
                     try
                     {
                         var me = await _botClient.GetMeAsync ();
                         System.Diagnostics.Debug.WriteLine ($"Telegram бот @{me.Username} готов");
+                        _enabled = true; // успех!
+                        // Отправляем приветственное сообщение (опционально)
+                        await SendWelcomeMessageAsync (_chatId);
                     }
                     catch (Exception ex)
                     {
@@ -48,7 +52,6 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        // ---------- Публичные методы, вызываемые из других сервисов ----------
         public async Task SendMessageAsync(string text, string targetChatId = null)
         {
             if (!_enabled) return;
@@ -65,7 +68,6 @@ namespace BinanceBotWpf.Services
             _commandHandler = onCommandReceived;
             _cts = new CancellationTokenSource ();
             _ = Task.Run (() => ListenLoop (_cts.Token));
-            _ = Task.Run (async () => { await Task.Delay (2000); await SendWelcomeMessageAsync (_chatId); });
         }
 
         public async Task<bool> TestConnectionAsync()
@@ -81,6 +83,7 @@ namespace BinanceBotWpf.Services
 
         public async Task SendTradeNotification(string symbol, string action, decimal price, decimal quantity, decimal pnl = 0, string reason = "")
         {
+            if (!_enabled) return;
             string emoji = action == "BUY" ? "🟢" : "🔴";
             string pnlText = pnl != 0 ? $"\n💰 PnL: {( pnl >= 0 ? "+" : "" )}{pnl:F2} USDC" : "";
             string msg = $"{emoji} <b>{action}</b> {symbol}\n" +
@@ -96,25 +99,12 @@ namespace BinanceBotWpf.Services
 
         public async Task SendDailyReport(decimal totalPnL, decimal winRate, int totalTrades, int winningTrades, int losingTrades)
         {
+            if (!_enabled) return;
             string msg = $"📊 <b>Ежедневный отчёт</b>\n" +
                          $"💰 Общий PnL: {totalPnL:F2} USDC\n" +
                          $"🎯 Win Rate: {winRate:F1}%\n" +
                          $"📈 Сделок: {totalTrades} (✅{winningTrades} / ❌{losingTrades})";
             await SendMessageAsync (msg);
-        }
-
-        // ---------- Приватные вспомогательные методы ----------
-        private ReplyKeyboardMarkup GetMainKeyboard()
-        {
-            return new ReplyKeyboardMarkup (new[]
-            {
-                new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
-                new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
-                new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
-                new KeyboardButton[] { "📈 График PnL", "🔄 Обновить" },
-                new KeyboardButton[] { "❓ Помощь" }
-            })
-            { ResizeKeyboard = true, OneTimeKeyboard = false };
         }
 
         private async Task SendWelcomeMessageAsync(string chatId)
@@ -129,6 +119,19 @@ namespace BinanceBotWpf.Services
                     parseMode: ParseMode.Markdown, replyMarkup: GetMainKeyboard ());
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"SendWelcomeMessage error: {ex.Message}"); }
+        }
+
+        private ReplyKeyboardMarkup GetMainKeyboard()
+        {
+            return new ReplyKeyboardMarkup (new[]
+            {
+                new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
+                new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
+                new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
+                new KeyboardButton[] { "📈 График PnL", "🔄 Обновить" },
+                new KeyboardButton[] { "❓ Помощь" }
+            })
+            { ResizeKeyboard = true, OneTimeKeyboard = false };
         }
 
         private async Task ListenLoop(CancellationToken token)
