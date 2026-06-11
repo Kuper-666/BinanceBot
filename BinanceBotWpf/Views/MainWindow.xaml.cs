@@ -1,6 +1,7 @@
 ﻿using BinanceBotWpf.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
 
 namespace BinanceBotWpf
 {
@@ -15,14 +16,27 @@ namespace BinanceBotWpf
             Instance = this;
         }
 
-        public void ScrollLogsToEnd()
+        public void AppendLog(string text)
         {
-            Dispatcher.BeginInvoke (new System.Action (() =>
+            Dispatcher.Invoke (() =>
             {
-                var listBox = FindName ("LogsListBox") as ListBox;
-                if (listBox != null && listBox.Items.Count > 0)
-                    listBox.ScrollIntoView (listBox.Items[listBox.Items.Count - 1]);
-            }));
+                var run = new Run (text + "\n");
+                var paragraph = new Paragraph (run);
+                LogsRichTextBox.Document.Blocks.Add (paragraph);
+                LogsRichTextBox.ScrollToEnd ();
+                // Ограничиваем количество строк (оставляем последние 1000)
+                while (LogsRichTextBox.Document.Blocks.Count > 1000)
+                    LogsRichTextBox.Document.Blocks.Remove (LogsRichTextBox.Document.Blocks.FirstBlock);
+            });
+        }
+
+        public void ClearLogs()
+        {
+            Dispatcher.Invoke (() =>
+            {
+                LogsRichTextBox.Document.Blocks.Clear ();
+                LogsRichTextBox.Document.Blocks.Add (new Paragraph (new Run ("")));
+            });
         }
     }
 }

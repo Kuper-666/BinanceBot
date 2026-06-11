@@ -14,7 +14,7 @@ namespace BinanceBotWpf.Services
     {
         private readonly TelegramBotClient _botClient;
         private readonly string _chatId;
-        private bool _enabled;
+        private readonly bool _enabled;
         private Func<string, string, Task> _commandHandler;
         private CancellationTokenSource _cts;
 
@@ -26,29 +26,31 @@ namespace BinanceBotWpf.Services
 
         public TelegramNotifier(string botToken, string chatId)
         {
-            _botClient = new TelegramBotClient (botToken);
             _chatId = chatId;
-            _enabled = false; // сначала false
+            _enabled = false;
 
-            if (!string.IsNullOrEmpty (botToken) && !string.IsNullOrEmpty (chatId))
+            if (string.IsNullOrEmpty (botToken) || string.IsNullOrEmpty (chatId))
+                return;
+
+            try
             {
-                // Асинхронная проверка подключения
-                _ = Task.Run (async () =>
+                _botClient = new TelegramBotClient (botToken);
+                // Синхронная проверка с таймаутом 5 секунд
+                var task = _botClient.GetMeAsync ();
+                if (task.Wait (TimeSpan.FromSeconds (5)))
                 {
-                    try
-                    {
-                        var me = await _botClient.GetMeAsync ();
-                        System.Diagnostics.Debug.WriteLine ($"Telegram бот @{me.Username} готов");
-                        _enabled = true; // успех!
-                        // Отправляем приветственное сообщение (опционально)
-                        await SendWelcomeMessageAsync (_chatId);
-                    }
-                    catch (Exception ex)
-                    {
-                        System.Diagnostics.Debug.WriteLine ($"Telegram init error: {ex.Message}");
-                        _enabled = false;
-                    }
-                });
+                    var me = task.Result;
+                    System.Diagnostics.Debug.WriteLine ($"Telegram бот @{me.Username} готов");
+                    _enabled = true;
+                }
+                else
+                {
+                    System.Diagnostics.Debug.WriteLine ("Telegram: таймаут подключения");
+                }
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"Telegram init error: {ex.Message}");
             }
         }
 
@@ -64,10 +66,11 @@ namespace BinanceBotWpf.Services
 
         public void StartListening(Func<string, string, Task> onCommandReceived)
         {
-            if (_commandHandler != null) return;
+            if (!_enabled || _commandHandler != null) return;
             _commandHandler = onCommandReceived;
             _cts = new CancellationTokenSource ();
             _ = Task.Run (() => ListenLoop (_cts.Token));
+            _ = Task.Run (async () => { await Task.Delay (2000); await SendWelcomeMessageAsync (_chatId); });
         }
 
         public async Task<bool> TestConnectionAsync()

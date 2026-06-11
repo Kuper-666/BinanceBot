@@ -198,12 +198,12 @@ namespace BinanceBotWpf.ViewModels
             _plotModel.Axes.Add (new DateTimeAxis { Position = AxisPosition.Bottom, StringFormat = "HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Axes.Add (new LinearAxis { Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Series.Add (new LineSeries { Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
-            AddBalancePoint (DateTime.Now, 50);
 
             _stockMonitor = new StockPriceMonitor (AddLog, _isTestnet);
             _ = Task.Run (StocksLoop);
             _ = Task.Run (StartUiUpdateLoop);
 
+            // Обновляем статус Telegram (с задержкой для асинхронной инициализации)
             UpdateTelegramStatus ();
             Task.Delay (2000).ContinueWith (_ => UpdateTelegramStatus ());
         }
@@ -223,7 +223,6 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-
         private void ScrollLogsToEnd()
         {
             RequestLogsScroll = !RequestLogsScroll;
@@ -240,8 +239,11 @@ namespace BinanceBotWpf.ViewModels
                 FilterLogs ();
                 if (_allLogs.Count > 1000) _allLogs.RemoveAt (0);
 
-                // Автоскролл
-                MainWindow.Instance?.ScrollLogsToEnd ();
+                // Вывод в RichTextBox (MainWindow)
+                MainWindow.Instance?.AppendLog (formattedMessage);
+
+                // Альтернативный автоскролл через свойство
+                RequestLogsScroll = !RequestLogsScroll;
             });
 
             SendImportantToTelegram (message);
@@ -252,19 +254,32 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 SystemLogs.Clear ();
-                var filtered = _selectedLogLevel switch
-                {
-                    "Ошибки" => _allLogs.Where (l => l.Contains ("❌") || l.Contains ("Ошибка") || l.Contains ("ERROR")),
-                    "Предупреждения" => _allLogs.Where (l => l.Contains ("⚠️") || l.Contains ("WARNING")),
-                    "Инфо" => _allLogs.Where (l => l.Contains ("✅") || l.Contains ("ℹ️") || l.Contains ("INFO")),
-                    "Торговля" => _allLogs.Where (l => l.Contains ("🟢") || l.Contains ("🔴") || l.Contains ("КУПЛЕНО") || l.Contains ("ПРОДАНО")),
-                    _ => _allLogs
-                };
-                foreach (var log in filtered.TakeLast (500))
-                    SystemLogs.Add (log);
 
-                // Принудительная прокрутка
-                MainWindow.Instance?.ScrollLogsToEnd ();
+                // Исправленный switch без многоточия
+                IEnumerable<string> filtered;
+                switch (_selectedLogLevel)
+                {
+                    case "Ошибки":
+                        filtered = _allLogs.Where (l => l.Contains ("❌") || l.Contains ("Ошибка") || l.Contains ("ERROR"));
+                        break;
+                    case "Предупреждения":
+                        filtered = _allLogs.Where (l => l.Contains ("⚠️") || l.Contains ("WARNING"));
+                        break;
+                    case "Инфо":
+                        filtered = _allLogs.Where (l => l.Contains ("✅") || l.Contains ("ℹ️") || l.Contains ("INFO"));
+                        break;
+                    case "Торговля":
+                        filtered = _allLogs.Where (l => l.Contains ("🟢") || l.Contains ("🔴") || l.Contains ("КУПЛЕНО") || l.Contains ("ПРОДАНО"));
+                        break;
+                    default:
+                        filtered = _allLogs;
+                        break;
+                }
+
+                foreach (var log in filtered.TakeLast (500))
+                {
+                    SystemLogs.Add (log);
+                }
             });
         }
 
@@ -274,6 +289,7 @@ namespace BinanceBotWpf.ViewModels
             {
                 _allLogs.Clear ();
                 SystemLogs.Clear ();
+                MainWindow.Instance?.ClearLogs ();
                 AddLog ("🧹 Логи очищены");
             });
         }
@@ -447,13 +463,8 @@ namespace BinanceBotWpf.ViewModels
                 {
                     series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
-                    // Принудительно обновляем график при каждом добавлении
                     _plotModel.InvalidatePlot (true);
                     AddLog ($"📈 Точка графика: {balance:F2} USDC в {time:HH:mm:ss}");
-                }
-                else
-                {
-                    AddLog ("⚠️ Ошибка: график не инициализирован");
                 }
             });
         }
@@ -714,15 +725,5 @@ namespace BinanceBotWpf.ViewModels
         public event PropertyChangedEventHandler PropertyChanged;
         protected void OnPropertyChanged([CallerMemberName] string name = null) =>
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
-
-        public string AppVersion
-        {
-            get
-            {
-                var version = System.Reflection.Assembly.GetExecutingAssembly ().GetName ().Version;
-                string versionStr = version != null ? $"{version.Major}.{version.Minor}.{version.Build}" : "2.0";
-                return $"Binance Trading Bot v{versionStr}";
-            }
-        }
     }
 }

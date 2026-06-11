@@ -389,20 +389,23 @@
                         </WrapPanel>
                     </Border>
 
-                    <ListBox Grid.Row="1" 
-                 x:Name="LogsListBox"
-                 ItemsSource="{Binding SystemLogs}"
-                 Background="#121212"
-                 Foreground="#bdc3c7"
-                 BorderThickness="0"
-                 FontFamily="Consolas"
-                 FontSize="11">
-                        <ListBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="5,2"/>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
+                    <RichTextBox Grid.Row="1" 
+                     x:Name="LogsRichTextBox"
+                     Background="#121212"
+                     Foreground="#bdc3c7"
+                     BorderThickness="0"
+                     FontFamily="Consolas"
+                     FontSize="11"
+                     IsReadOnly="True"
+                     VerticalScrollBarVisibility="Auto">
+                        <RichTextBox.Document>
+                            <FlowDocument>
+                                <Paragraph>
+                                    <Run Text=""/>
+                                </Paragraph>
+                            </FlowDocument>
+                        </RichTextBox.Document>
+                    </RichTextBox>
                 </Grid>
             </TabItem>
         </TabControl>
