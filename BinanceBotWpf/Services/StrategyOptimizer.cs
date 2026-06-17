@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -83,41 +83,44 @@ namespace BinanceBotWpf.Services
                 int totalCombinations = fastPeriods.Count * slowPeriods.Count * rsiPeriods.Count * stopLosses.Count * takeProfits.Count;
                 int current = 0;
 
-                foreach (var fast in fastPeriods)
+                await Task.Run (() =>
                 {
-                    foreach (var slow in slowPeriods.Where (s => s > fast))
+                    foreach (var fast in fastPeriods)
                     {
-                        foreach (var rsiP in rsiPeriods)
+                        foreach (var slow in slowPeriods.Where (s => s > fast))
                         {
-                            foreach (var sl in stopLosses)
+                            foreach (var rsiP in rsiPeriods)
                             {
-                                foreach (var tp in takeProfits.Where (t => t > sl))
+                                foreach (var sl in stopLosses)
                                 {
-                                    current++;
-
-                                    var result = await _backtest.RunAsync (allKlines, fast, slow, rsiP, sl, tp);
-
-                                    if (result != null && ( bestResult == null || result.TotalReturn > bestResult.TotalReturn ) && result.TotalTrades >= 5)
+                                    foreach (var tp in takeProfits.Where (t => t > sl))
                                     {
-                                        bestResult = result;
-                                        bestParams["FastSma"] = fast;
-                                        bestParams["SlowSma"] = slow;
-                                        bestParams["RsiPeriod"] = rsiP;
-                                        bestParams["StopLossPercent"] = sl;
-                                        bestParams["TakeProfitPercent"] = tp;
+                                        current++;
 
-                                        _logger?.Invoke ($"📊 Новый лучший результат: доходность {result.TotalReturn:F2}%, win rate {result.WinRate:F1}%, сделок {result.TotalTrades}");
-                                    }
+                                        var result = _backtest.Run (allKlines, fast, slow, rsiP, sl, tp);
 
-                                    if (current % 50 == 0)
-                                    {
-                                        _logger?.Invoke ($"🔄 Оптимизация: {current}/{totalCombinations} ({current * 100 / totalCombinations}%)");
+                                        if (result != null && ( bestResult == null || result.TotalReturn > bestResult.TotalReturn ) && result.TotalTrades >= 5)
+                                        {
+                                            bestResult = result;
+                                            bestParams["FastSma"] = fast;
+                                            bestParams["SlowSma"] = slow;
+                                            bestParams["RsiPeriod"] = rsiP;
+                                            bestParams["StopLossPercent"] = sl;
+                                            bestParams["TakeProfitPercent"] = tp;
+
+                                            _logger?.Invoke ($"📊 Новый лучший результат: доходность {result.TotalReturn:F2}%, win rate {result.WinRate:F1}%, сделок {result.TotalTrades}");
+                                        }
+
+                                        if (current % 50 == 0)
+                                        {
+                                            _logger?.Invoke ($"🔄 Оптимизация: {current}/{totalCombinations} ({current * 100 / totalCombinations}%)");
+                                        }
                                     }
                                 }
                             }
                         }
                     }
-                }
+                });
 
                 if (bestResult != null && bestParams.Count > 0)
                 {
@@ -165,7 +168,7 @@ namespace BinanceBotWpf.Services
                 if (parameters.TryGetValue ("SlowSma", out var slow))
                     _ui.SlowSma = Convert.ToInt32 (slow);
                 if (parameters.TryGetValue ("RsiPeriod", out var rsiPeriod))
-                    _ui.RsiBuyThreshold = Convert.ToInt32 (rsiPeriod);
+                    _ui.RsiPeriod = Convert.ToInt32 (rsiPeriod);
                 if (parameters.TryGetValue ("StopLossPercent", out var sl))
                     _ui.StopLossPercent = Convert.ToDecimal (sl);
                 if (parameters.TryGetValue ("TakeProfitPercent", out var tp))

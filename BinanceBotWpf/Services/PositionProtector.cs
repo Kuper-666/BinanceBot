@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -175,7 +175,12 @@ namespace BinanceBotWpf.Services
             {
                 if (pos.OcoOrderListId != 0)
                 {
-                    await _client.CancelOcoOrder (symbol, pos.OcoOrderListId);
+                    bool cancelled = await _client.CancelOcoOrder (symbol, pos.OcoOrderListId);
+                    if (!cancelled)
+                    {
+                        _logger?.Invoke ($"⚠️ Не удалось отменить старый OCO ордер {pos.OcoOrderListId} для {symbol}");
+                    }
+                    pos.OcoOrderListId = 0;
                 }
 
                 var newOco = await _client.PlaceOcoOrder (symbol, pos.Quantity, pos.StopLossPrice, pos.TakeProfitPrice);
@@ -184,10 +189,15 @@ namespace BinanceBotWpf.Services
                     pos.OcoOrderListId = (long)newOco["orderListId"];
                     _logger?.Invoke ($"🔄 OCO ордер {symbol} обновлён: SL={pos.StopLossPrice:F4}, TP={pos.TakeProfitPrice:F4}");
                 }
+                else
+                {
+                    _logger?.Invoke ($"🚨 КРИТИЧЕСКАЯ ОШИБКА: Не удалось разместить новый OCO ордер для {symbol}. Позиция БЕЗ защиты на бирже!");
+                }
             }
             catch (Exception ex)
             {
-                _logger?.Invoke ($"⚠️ Ошибка обновления OCO {symbol}: {ex.Message}");
+                pos.OcoOrderListId = 0;
+                _logger?.Invoke ($"⚠️ Ошибка обновления OCO {symbol}: {ex.Message}. Позиция БЕЗ защиты на бирже!");
             }
         }
 

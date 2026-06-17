@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -137,6 +137,7 @@ namespace BinanceBotWpf.Services
             if (_isRunning) return;
             _ui = vm;
             _isRunning = true;
+            if (_ui != null) _ui.IsRunning = true;
 
             SetLogger (vm.AddLog);
             await InitAsync ();
@@ -149,7 +150,9 @@ namespace BinanceBotWpf.Services
         public void StopTrading()
         {
             _isRunning = false;
+            if (_ui != null) _ui.IsRunning = false;
             _webSocketManager?.Dispose ();
+            _webSocketManager = null;
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
@@ -252,6 +255,13 @@ namespace BinanceBotWpf.Services
                         var klines = await _client.GetKlinesAsync (sym, "5m", 50);
                         if (klines == null || klines.Count < 30) continue;
 
+                        if (_ui != null)
+                        {
+                            _strategy.FastSmaPeriod = _ui.FastSma;
+                            _strategy.SlowSmaPeriod = _ui.SlowSma;
+                            _strategy.RsiPeriod = _ui.RsiPeriod;
+                        }
+
                         var analysis = await _strategy.AnalyzeAsync (sym, klines);
                         bool hasPosition = _positionManager.TryGet (sym, out _);
 
@@ -298,7 +308,7 @@ namespace BinanceBotWpf.Services
             decimal macdHist = indicators.ContainsKey ("macdHist") ? indicators["macdHist"] : 0;
 
             // Фильтрация сигнала (упрощённо)
-            bool shouldBuy = rsi < 30 && fastSma > slowSma;
+            bool shouldBuy = rsi < ( _ui?.RsiBuyThreshold ?? 30 ) && fastSma > slowSma;
             if (!shouldBuy) return;
 
             // Расчёт размера позиции (фиксированный для простоты)
@@ -394,6 +404,13 @@ namespace BinanceBotWpf.Services
         {
             if (_telegram == null) return;
 
+            // Защита от несанкционированного доступа (только для владельца)
+            if (chatId != _telegram.GetChatId())
+            {
+                _ui?.AddLog ($"⚠️ Попытка несанкционированного управления от ChatId {chatId} заблокирована.");
+                return;
+            }
+
             string cmd = command.Trim ();
 
             // Обработка кнопок
@@ -430,8 +447,7 @@ namespace BinanceBotWpf.Services
                     if (!_isRunning && _ui != null)
                     {
                         await _telegram.SendMessageAsync ("🔄 Перезапуск бота...", chatId);
-                        _isRunning = true;
-                        _ = Task.Run (TradingLoop);
+                        await StartTradingAsync (_ui);
                         await _telegram.SendMessageAsync ("✅ Бот запущен.", chatId);
                     }
                     else

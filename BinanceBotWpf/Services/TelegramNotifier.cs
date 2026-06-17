@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Threading;
@@ -14,7 +14,7 @@ namespace BinanceBotWpf.Services
     {
         private readonly TelegramBotClient _botClient;
         private readonly string _chatId;
-        private readonly bool _enabled;
+        private bool _enabled;
         private Func<string, string, Task> _commandHandler;
         private CancellationTokenSource _cts;
 
@@ -35,18 +35,6 @@ namespace BinanceBotWpf.Services
             try
             {
                 _botClient = new TelegramBotClient (botToken);
-                // Синхронная проверка с таймаутом 5 секунд
-                var task = _botClient.GetMeAsync ();
-                if (task.Wait (TimeSpan.FromSeconds (5)))
-                {
-                    var me = task.Result;
-                    System.Diagnostics.Debug.WriteLine ($"Telegram бот @{me.Username} готов");
-                    _enabled = true;
-                }
-                else
-                {
-                    System.Diagnostics.Debug.WriteLine ("Telegram: таймаут подключения");
-                }
             }
             catch (Exception ex)
             {
@@ -66,11 +54,31 @@ namespace BinanceBotWpf.Services
 
         public void StartListening(Func<string, string, Task> onCommandReceived)
         {
-            if (!_enabled || _commandHandler != null) return;
+            if (_botClient == null || _commandHandler != null) return;
             _commandHandler = onCommandReceived;
             _cts = new CancellationTokenSource ();
-            _ = Task.Run (() => ListenLoop (_cts.Token));
-            _ = Task.Run (async () => { await Task.Delay (2000); await SendWelcomeMessageAsync (_chatId); });
+
+            _ = Task.Run (async () =>
+            {
+                try
+                {
+                    // Асинхронно проверяем подключение без зависания UI-потока
+                    var me = await _botClient.GetMeAsync ();
+                    _enabled = true;
+                    System.Diagnostics.Debug.WriteLine ($"Telegram бот @{me.Username} готов");
+                    
+                    // Запуск цикла получения обновлений
+                    _ = Task.Run (() => ListenLoop (_cts.Token));
+                    
+                    // Отправка приветствия
+                    await Task.Delay (2000);
+                    await SendWelcomeMessageAsync (_chatId);
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine ($"Telegram connection failed: {ex.Message}");
+                }
+            });
         }
 
         public async Task<bool> TestConnectionAsync()

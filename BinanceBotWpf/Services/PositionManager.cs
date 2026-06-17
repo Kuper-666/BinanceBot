@@ -1,11 +1,13 @@
-﻿using BinanceBotWpf.Models;
+using BinanceBotWpf.Models;
 using Newtonsoft.Json.Linq;
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
@@ -15,17 +17,18 @@ namespace BinanceBotWpf.Services
     {
         private readonly string _positionsFilePath;
         private readonly Action<string> _logger;
-        private Dictionary<string, OpenPosition> _positions = new ();
+        private readonly ConcurrentDictionary<string, OpenPosition> _positions = new ();
+        private readonly SemaphoreSlim _fileSemaphore = new (1, 1);
         public bool IsBreakevenSet { get; set; } = false;
-
+ 
         public IReadOnlyDictionary<string, OpenPosition> Positions => _positions;
-
+ 
         public PositionManager(string positionsFilePath, Action<string> logger)
         {
             _positionsFilePath = positionsFilePath;
             _logger = logger;
         }
-
+ 
         /// <summary>Загружает позиции из файла, проверяет балансы на споте и в Earn.</summary>
         public async Task LoadAsync(BinanceClient client, Func<string, Task<decimal>> getPrice, Func<decimal, decimal> getStopLossPercent, Func<decimal, decimal> getTakeProfitPercent)
         {
@@ -35,7 +38,7 @@ namespace BinanceBotWpf.Services
                 string json = await File.ReadAllTextAsync (_positionsFilePath);
                 var saved = JsonSerializer.Deserialize<Dictionary<string, OpenPosition>> (json);
                 if (saved == null) return;
-
+ 
                 var toRemove = new List<string> ();
                 foreach (var kv in saved)
                 {
@@ -47,14 +50,14 @@ namespace BinanceBotWpf.Services
                     if (earnPos != null)
                         earnBalance = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                     decimal totalBalance = spotBalance + earnBalance;
-
+ 
                     if (totalBalance < kv.Value.Quantity - 0.000001m)
                     {
                         _logger?.Invoke ($"⚠️ Позиция {kv.Key} удалена: недостаточно монет (баланс {totalBalance}, требуется {kv.Value.Quantity}).");
                         toRemove.Add (kv.Key);
                         continue;
                     }
-
+ 
                     decimal currentPrice = await getPrice (kv.Key);
                     if (currentPrice > 0)
                     {
@@ -70,9 +73,10 @@ namespace BinanceBotWpf.Services
             }
             catch (Exception ex) { _logger?.Invoke ($"Ошибка загрузки позиций: {ex.Message}"); }
         }
-
+ 
         public async Task SaveAsync()
         {
+            await _fileSemaphore.WaitAsync ();
             try
             {
                 string dir = Path.GetDirectoryName (_positionsFilePath);
@@ -81,14 +85,18 @@ namespace BinanceBotWpf.Services
                 await File.WriteAllTextAsync (_positionsFilePath, json);
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Save positions error: {ex.Message}"); }
+            finally
+            {
+                _fileSemaphore.Release ();
+            }
         }
-
+ 
         public bool TryGet(string symbol, out OpenPosition pos) => _positions.TryGetValue (symbol, out pos);
-        public void AddOrUpdate(string symbol, OpenPosition pos) { _positions[symbol] = pos; SaveAsync ().ConfigureAwait (false); }
-        public bool Remove(string symbol) { var removed = _positions.Remove (symbol); if (removed) SaveAsync ().ConfigureAwait (false); return removed; }
+        public void AddOrUpdate(string symbol, OpenPosition pos) { _positions[symbol] = pos; _ = SaveAsync (); }
+        public bool Remove(string symbol) { var removed = _positions.TryRemove (symbol, out _); if (removed) _ = SaveAsync (); return removed; }
         public int Count => _positions.Count;
         public List<string> GetSymbols() => new List<string> (_positions.Keys);
-        public void Clear() { _positions.Clear (); SaveAsync ().ConfigureAwait (false); }
+        public void Clear() { _positions.Clear (); _ = SaveAsync (); }
     }
 
     public class OpenPosition

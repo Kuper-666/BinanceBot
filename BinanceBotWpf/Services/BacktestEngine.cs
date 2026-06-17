@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -37,7 +37,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Запуск бэктеста на исторических данных
         /// </summary>
-        public async Task<BacktestResult> RunAsync(
+        public BacktestResult Run(
             List<BinanceKline> klines,
             int fastSmaPeriod,
             int slowSmaPeriod,
@@ -214,7 +214,7 @@ namespace BinanceBotWpf.Services
                             {
                                 current++;
 
-                                var result = await RunAsync (klines, fast, slow, rsiP, sl, tp);
+                                var result = Run (klines, fast, slow, rsiP, sl, tp);
 
                                 if (result != null && result.TotalReturn > bestResult.TotalReturn && result.TotalTrades >= 5)
                                 {
@@ -244,13 +244,21 @@ namespace BinanceBotWpf.Services
 
         private List<decimal> CalculateSmaList(List<decimal> data, int period)
         {
-            var result = new List<decimal> ();
+            var result = new List<decimal> (data.Count);
+            decimal sum = 0;
             for (int i = 0; i < data.Count; i++)
             {
+                sum += data[i];
                 if (i < period - 1)
+                {
                     result.Add (0);
+                }
                 else
-                    result.Add (data.Skip (i - period + 1).Take (period).Average ());
+                {
+                    if (i >= period)
+                        sum -= data[i - period];
+                    result.Add (sum / period);
+                }
             }
             return result;
         }
