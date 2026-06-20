@@ -171,6 +171,10 @@ namespace BinanceBotWpf.ViewModels
         public ICommand ClearLogsCommand { get; }
         public ICommand CopyLogsCommand { get; }
         public ICommand ScrollLogsToEndCommand { get; }
+        public ICommand CheckForUpdatesCommand { get; }
+
+        private bool _isCheckingForUpdate = false;
+        public bool IsCheckingForUpdate { get => _isCheckingForUpdate; set { _isCheckingForUpdate = value; OnPropertyChanged (); } }
 
         private readonly string _settingsPath;
         private readonly object _settingsLock = new ();
@@ -192,6 +196,7 @@ namespace BinanceBotWpf.ViewModels
             ClearLogsCommand = new RelayCommand (_ => ClearLogs (), _ => true);
             CopyLogsCommand = new RelayCommand (_ => CopyLogs (), _ => true);
             ScrollLogsToEndCommand = new RelayCommand (_ => ScrollLogsToEnd (), _ => true);
+            CheckForUpdatesCommand = new RelayCommand (async _ => await CheckForUpdatesAsync (silent: false), _ => !IsCheckingForUpdate);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -206,6 +211,13 @@ namespace BinanceBotWpf.ViewModels
             // Обновляем статус Telegram (с задержкой для асинхронной инициализации)
             UpdateTelegramStatus ();
             Task.Delay (2000).ContinueWith (_ => UpdateTelegramStatus ());
+
+            // Тихая проверка обновлений при запуске (без диалога, само обновится при наличии новой версии)
+            _ = Task.Run (async () =>
+            {
+                await Task.Delay (5000);
+                await CheckForUpdatesAsync (silent: true);
+            });
         }
 
         private void UpdateTelegramStatus()
@@ -220,6 +232,27 @@ namespace BinanceBotWpf.ViewModels
             {
                 TelegramStatus = "❌ Ошибка";
                 AddLog ($"Ошибка Telegram: {ex.Message}");
+            }
+        }
+
+        public async Task CheckForUpdatesAsync(bool silent)
+        {
+            if (IsCheckingForUpdate) return;
+            IsCheckingForUpdate = true;
+            try
+            {
+                var updater = new UpdateManager (AddLog);
+                bool updated = await updater.CheckAndUpdateAsync (silent: silent);
+                if (!updated && !silent)
+                    AddLog ("✅ Обновлений не найдено, установлена актуальная версия.");
+            }
+            catch (Exception ex)
+            {
+                AddLog ($"❌ Ошибка проверки обновлений: {ex.Message}");
+            }
+            finally
+            {
+                IsCheckingForUpdate = false;
             }
         }
 
