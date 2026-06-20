@@ -3,7 +3,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:oxy="http://oxyplot.org/wpf"
         Title="{Binding AppVersion}"
-        Icon="/Resources/binance_bot.ico"
+        Icon="/Resources/favicon.ico"
         Height="700" Width="1300" 
         Background="#121212"
         WindowStartupLocation="CenterScreen"

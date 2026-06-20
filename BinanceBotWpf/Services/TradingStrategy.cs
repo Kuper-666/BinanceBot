@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -21,6 +21,13 @@ namespace BinanceBotWpf.Services
         public TradingStrategy(Action<string> logger)
         {
             _logger = logger;
+        }
+
+        private MlModelManager _mlManager;
+
+        public void SetMlManager(MlModelManager mlManager)
+        {
+            _mlManager = mlManager;
         }
 
         // Публичный метод для установки логгера (если нужно обновить после создания)
@@ -79,6 +86,24 @@ namespace BinanceBotWpf.Services
                 result.Indicators["prevMacdHist"] = prevMacdHist;
                 result.Indicators["bbUpper"] = bbUpper;
                 result.Indicators["bbLower"] = bbLower;
+
+                // Дополнительно для ML
+                var atrList = TechnicalAnalysis.ATR(highs, lows, closes, 14);
+                decimal atr = atrList.LastOrDefault() ?? currentPrice * 0.02m;
+                var obvList = TechnicalAnalysis.OBV(klines);
+                decimal obv = obvList.LastOrDefault();
+                
+                // Предсказание ИИ
+                if (_mlManager != null)
+                {
+                    var riskPrediction = _mlManager.PredictRisk(fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv);
+                    result.Indicators["aiProbability"] = (decimal)riskPrediction.Probability;
+                    
+                    // Сохраняем RiskLevel как число (например: Low=1, Medium=2, High=3) или просто логгируем, 
+                    // так как в Dictionary<string, decimal> нельзя сохранить строку.
+                    decimal riskVal = riskPrediction.RiskLevel == "Low Risk" ? 1 : (riskPrediction.RiskLevel == "Medium Risk" ? 2 : 3);
+                    result.Indicators["aiRiskLevel"] = riskVal;
+                }
 
                 // Базовый сигнал от SMA
                 var baseSignal = _strategyEngine.AnalyzePairWithWallet (symbol, closes, FastSmaPeriod, SlowSmaPeriod, currentPrice);

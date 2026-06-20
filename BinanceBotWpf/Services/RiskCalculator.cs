@@ -1,4 +1,4 @@
-﻿using BinanceBotWpf.Models;
+using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -20,12 +20,17 @@ namespace BinanceBotWpf.Services
             _logger = logger;
         }
 
-        public Task<decimal> CalculateDynamicRiskAsync(decimal totalBalance, decimal baseRisk, decimal volatility)
+        public Task<decimal> CalculateDynamicRiskAsync(decimal totalBalance, decimal baseRisk, decimal volatility, int aiRiskLevel = 2)
         {
             volatility = Math.Clamp (volatility, 0.005m, 0.30m);
             decimal riskMultiplier = Math.Max (0.2m, 1 - ( volatility - 0.02m ) * 10);
-            decimal adjustedRisk = Math.Clamp (baseRisk * riskMultiplier, 0.05m, 0.25m);
-            _logger?.Invoke ($"📊 Волатильность: {volatility:P2}, скорректированный риск: {adjustedRisk:P2}");
+            
+            // Учитываем ИИ уровень риска (1 = Low, 2 = Medium, 3 = High)
+            if (aiRiskLevel == 1) riskMultiplier *= 1.2m; // Повышаем риск
+            else if (aiRiskLevel == 3) riskMultiplier *= 0.5m; // Снижаем риск
+
+            decimal adjustedRisk = Math.Clamp (baseRisk * riskMultiplier, 0.02m, 0.25m);
+            _logger?.Invoke ($"📊 Волатильность: {volatility:P2}, ИИ Риск: {(aiRiskLevel == 1 ? "Низкий" : (aiRiskLevel == 3 ? "Высокий" : "Средний"))}, скорректированный риск: {adjustedRisk:P2}");
             return Task.FromResult (totalBalance * adjustedRisk);
         }
 

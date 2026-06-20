@@ -8,11 +8,11 @@
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
     <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
     <Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
-    <ApplicationIcon>Resources\binance_bot.ico</ApplicationIcon>
+    <ApplicationIcon>Resources\favicon.ico</ApplicationIcon>
   </PropertyGroup>
   <ItemGroup>
     <None Remove="bot_icon.svg" />
-    <None Remove="Resources\binance_bot.ico" />
+    <None Remove="Resources\favicon.ico" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Binance.Net" Version="12.13.0" />
@@ -29,7 +29,7 @@
   </ItemGroup>
   <ItemGroup>
     <Resource Include="bot_icon.svg" />
-    <Resource Include="Resources\binance_bot.ico">
+    <Resource Include="Resources\favicon.ico">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </Resource>
   </ItemGroup>

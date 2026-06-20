@@ -88,6 +88,7 @@ namespace BinanceBotWpf.Services
             // Пересоздаём MlModelManager с логгером
             string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
             _mlManager = new MlModelManager (modelPath, logger);
+            _strategy.SetMlManager(_mlManager);
 
             // У новых сервисов логгер уже установлен в конструкторе
             if (_webSocketManager == null)
@@ -315,12 +316,21 @@ namespace BinanceBotWpf.Services
             decimal slowSma = indicators.ContainsKey ("slowSma") ? indicators["slowSma"] : 0;
             decimal macdHist = indicators.ContainsKey ("macdHist") ? indicators["macdHist"] : 0;
 
-            // Фильтрация сигнала (упрощённо)
-            bool shouldBuy = rsi < ( _ui?.RsiBuyThreshold ?? 30 ) && fastSma > slowSma;
-            if (!shouldBuy) return;
+            // Убран жесткий фильтр, полагаемся на анализ стратегии и ИИ
+            int aiRiskLevel = indicators.ContainsKey("aiRiskLevel") ? (int)indicators["aiRiskLevel"] : 2;
 
-            // Расчёт размера позиции (фиксированный для простоты)
-            decimal qty = 10m / price; // Покупаем на 10 USDC
+            if (aiRiskLevel == 3) 
+            {
+                _ui?.AddLog($"⚠️ {symbol}: Сигнал проигнорирован из-за высокого риска (ИИ)");
+                return;
+            }
+
+            // Расчёт динамического риска с учетом ИИ
+            var riskCalc = new RiskCalculator(_client, _ui, msg => _ui?.AddLog(msg));
+            decimal volatility = indicators.ContainsKey("bbWidth") ? indicators["bbWidth"] : 0.05m;
+            decimal riskAmount = await riskCalc.CalculateDynamicRiskAsync(currentBalance, 0.10m, volatility, aiRiskLevel);
+
+            decimal qty = riskAmount / price; 
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             qty = Math.Floor (qty / stepSize) * stepSize;
 
