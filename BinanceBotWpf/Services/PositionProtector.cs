@@ -53,6 +53,13 @@ namespace BinanceBotWpf.Services
                 decimal price = getCurrentPrice (sym);
                 if (price <= 0) continue;
 
+                // Если позиция осталась без OCO-защиты на бирже после прошлого сбоя — пробуем восстановить в первую очередь
+                if (pos.IsUnprotected)
+                {
+                    _logger?.Invoke ($"🔁 Повторная попытка восстановить защиту для {sym} (позиция без OCO на бирже)");
+                    await UpdateOcoOrder (sym, pos);
+                }
+
                 // Динамический трейлинг-стоп
                 await UpdateDynamicTrailingStopAsync (sym, pos, price);
 
@@ -184,20 +191,32 @@ namespace BinanceBotWpf.Services
                 }
 
                 var newOco = await _client.PlaceOcoOrder (symbol, pos.Quantity, pos.StopLossPrice, pos.TakeProfitPrice);
+
+                // Одна повторная попытка через 2 секунды, если первая не удалась
+                if (newOco == null)
+                {
+                    _logger?.Invoke ($"⚠️ Не удалось разместить OCO для {symbol}, повторная попытка...");
+                    await Task.Delay (2000);
+                    newOco = await _client.PlaceOcoOrder (symbol, pos.Quantity, pos.StopLossPrice, pos.TakeProfitPrice);
+                }
+
                 if (newOco != null)
                 {
                     pos.OcoOrderListId = (long)newOco["orderListId"];
+                    pos.IsUnprotected = false;
                     _logger?.Invoke ($"🔄 OCO ордер {symbol} обновлён: SL={pos.StopLossPrice:F4}, TP={pos.TakeProfitPrice:F4}");
                 }
                 else
                 {
-                    _logger?.Invoke ($"🚨 КРИТИЧЕСКАЯ ОШИБКА: Не удалось разместить новый OCO ордер для {symbol}. Позиция БЕЗ защиты на бирже!");
+                    pos.IsUnprotected = true;
+                    _logger?.Invoke ($"🚨 КРИТИЧЕСКАЯ ОШИБКА: Не удалось разместить новый OCO ордер для {symbol} (2 попытки). Позиция БЕЗ защиты на бирже! Будет предпринята повторная попытка на следующем цикле.");
                 }
             }
             catch (Exception ex)
             {
                 pos.OcoOrderListId = 0;
-                _logger?.Invoke ($"⚠️ Ошибка обновления OCO {symbol}: {ex.Message}. Позиция БЕЗ защиты на бирже!");
+                pos.IsUnprotected = true;
+                _logger?.Invoke ($"⚠️ Ошибка обновления OCO {symbol}: {ex.Message}. Позиция БЕЗ защиты на бирже! Будет предпринята повторная попытка на следующем цикле.");
             }
         }
 

@@ -188,7 +188,7 @@ namespace BinanceBotWpf.Services
         {
             await _positionManager.LoadAsync (_client, sym => Task.FromResult (GetCurrentPrice (sym)),
                 p => _ui?.StopLossPercent ?? 0.02m, p => _ui?.TakeProfitPercent ?? 0.04m);
-            _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+            _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
         }
 
         private decimal GetCurrentPrice(string sym) => _webSocketManager?.GetCurrentPrice (sym) ?? 0;
@@ -275,7 +275,7 @@ namespace BinanceBotWpf.Services
                         }
 
                         // 5. Исполнение сигналов
-                        if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < 3)
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             await ExecuteBuy (sym, analysis.Indicators, spotBalance);
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
@@ -344,7 +344,7 @@ namespace BinanceBotWpf.Services
 
                 _positionManager.AddOrUpdate (symbol, pos);
                 _ui?.AddLog ($"✅ Куплено {qty} {symbol}");
-                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
         }
 
@@ -395,7 +395,7 @@ namespace BinanceBotWpf.Services
 
                 _ui.AddTradeToHistory (trade);
                 _positionManager.Remove (symbol);
-                _ui?.UpdatePositionsStatus (_positionManager.Count, 3, _positionManager.GetSymbols ());
+                _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
         }
 

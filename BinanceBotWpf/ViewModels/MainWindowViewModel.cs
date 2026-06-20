@@ -699,6 +699,7 @@ namespace BinanceBotWpf.ViewModels
             OnPropertyChanged (nameof (TrailingStopPercent));
             OnPropertyChanged (nameof (MinBalanceForTrading));
             OnPropertyChanged (nameof (MaxRiskPercent));
+            OnPropertyChanged (nameof (MaxConcurrentTrades));
         }
 
         public void UpdateRiskDisplay(decimal riskPercent)
@@ -724,6 +725,12 @@ namespace BinanceBotWpf.ViewModels
         {
             get => _tradingSettings?.MaxTradeAmount ?? 50;
             set { if (_tradingSettings != null) { _tradingSettings.MaxTradeAmount = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public int MaxConcurrentTrades
+        {
+            get => _tradingSettings?.MaxConcurrentTrades ?? 2;
+            set { if (_tradingSettings != null) { _tradingSettings.MaxConcurrentTrades = value; OnPropertyChanged (); SaveTradingSettings (); } }
         }
 
         public decimal RiskPerTradePercent

@@ -117,7 +117,10 @@
                 <TextBox Text="{Binding TrailingStopPercent, StringFormat=F2}" Width="50" Margin="0,0,20,0"/>
 
                 <TextBlock Text="Риск" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                <TextBox Text="{Binding RiskPerTradePercent, StringFormat=F2}" Width="50" Margin="0,0,5,0"/>
+                <TextBox Text="{Binding RiskPerTradePercent, StringFormat=F2}" Width="50" Margin="0,0,20,0"/>
+
+                <TextBlock Text="Макс. позиций" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBox Text="{Binding MaxConcurrentTrades}" Width="50" Margin="0,0,5,0"/>
             </WrapPanel>
         </Border>
 
