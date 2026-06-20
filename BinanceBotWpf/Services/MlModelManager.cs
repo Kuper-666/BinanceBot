@@ -1,4 +1,4 @@
-﻿using BinanceBotWpf.Models;
+using BinanceBotWpf.Models;
 using Microsoft.ML;
 using Microsoft.ML.Data;
 using System;
@@ -46,9 +46,9 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public bool IsProfitable(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth, decimal obv)
+        public (bool IsProfitable, float Probability, string RiskLevel) PredictRisk(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth, decimal obv)
         {
-            if (!_mlModelLoaded) return true;
+            if (!_mlModelLoaded) return (true, 1.0f, "Low Risk");
             try
             {
                 var input = new ModelInput
@@ -64,9 +64,14 @@ namespace BinanceBotWpf.Services
                 };
                 var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
                 var result = predEngine.Predict (input);
-                return result.IsProfitable && result.Probability > 0.6f;
+                
+                string riskLevel = "High Risk";
+                if (result.Probability >= 0.75f) riskLevel = "Low Risk";
+                else if (result.Probability >= 0.60f) riskLevel = "Medium Risk";
+
+                return (result.IsProfitable && result.Probability > 0.6f, result.Probability, riskLevel);
             }
-            catch { return true; }
+            catch { return (true, 1.0f, "Low Risk"); }
         }
 
         public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> features, Action<string> logger)
