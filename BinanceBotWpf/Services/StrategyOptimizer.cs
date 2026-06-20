@@ -48,22 +48,24 @@ namespace BinanceBotWpf.Services
                     return false;
                 }
 
-                // Собираем исторические данные
-                var allKlines = new List<BinanceKline> ();
+                // Собираем исторические данные ОТДЕЛЬНО по каждой паре
+                // (нельзя склеивать свечи разных пар в один список — разные ценовые шкалы
+                // ломают расчёт доходности при пересечении границ между парами)
+                var klinesByPair = new Dictionary<string, List<BinanceKline>> ();
                 foreach (var pair in topPairs)
                 {
                     var klines = await _client.GetKlinesAsync (pair, "5m", 500);
                     if (klines != null && klines.Count > 100)
                     {
-                        allKlines.AddRange (klines);
+                        klinesByPair[pair] = klines;
                         _logger?.Invoke ($"📥 Загружено {klines.Count} свечей для {pair}");
                     }
                     await Task.Delay (1000);
                 }
 
-                if (allKlines.Count < 200)
+                if (klinesByPair.Count == 0)
                 {
-                    _logger?.Invoke ($"❌ Недостаточно исторических данных: {allKlines.Count} свечей");
+                    _logger?.Invoke ("❌ Недостаточно исторических данных");
                     return false;
                 }
 
@@ -97,18 +99,50 @@ namespace BinanceBotWpf.Services
                                     {
                                         current++;
 
-                                        var result = _backtest.Run (allKlines, fast, slow, rsiP, sl, tp);
-
-                                        if (result != null && ( bestResult == null || result.TotalReturn > bestResult.TotalReturn ) && result.TotalTrades >= 5)
+                                        // Прогоняем параметры по каждой паре ОТДЕЛЬНО и агрегируем результат
+                                        var perPairResults = new List<BacktestEngine.BacktestResult> ();
+                                        foreach (var pairKlines in klinesByPair.Values)
                                         {
-                                            bestResult = result;
+                                            var r = _backtest.Run (pairKlines, fast, slow, rsiP, sl, tp);
+                                            if (r != null) perPairResults.Add (r);
+                                        }
+
+                                        if (perPairResults.Count == 0)
+                                        {
+                                            continue;
+                                        }
+
+                                        int totalTrades = perPairResults.Sum (r => r.TotalTrades);
+                                        int totalWins = perPairResults.Sum (r => r.WinningTrades);
+                                        int totalLosses = perPairResults.Sum (r => r.LosingTrades);
+                                        // Средняя доходность по парам (а не сумма — иначе 5 пар искусственно завышают результат)
+                                        decimal avgReturn = perPairResults.Average (r => r.TotalReturn);
+                                        decimal maxDrawdown = perPairResults.Max (r => r.MaxDrawdown);
+                                        decimal winRate = totalTrades > 0 ? (decimal) totalWins / totalTrades * 100 : 0;
+
+                                        var aggregated = new BacktestEngine.BacktestResult
+                                        {
+                                            TotalReturn = avgReturn,
+                                            WinRate = winRate,
+                                            TotalTrades = totalTrades,
+                                            WinningTrades = totalWins,
+                                            LosingTrades = totalLosses,
+                                            MaxDrawdown = maxDrawdown
+                                        };
+
+                                        // Требуем минимум сделок по совокупности всех пар и отсекаем нереалистичные значения
+                                        bool isPlausible = aggregated.TotalReturn > -100 && aggregated.TotalReturn < 200;
+
+                                        if (isPlausible && ( bestResult == null || aggregated.TotalReturn > bestResult.TotalReturn ) && aggregated.TotalTrades >= 5)
+                                        {
+                                            bestResult = aggregated;
                                             bestParams["FastSma"] = fast;
                                             bestParams["SlowSma"] = slow;
                                             bestParams["RsiPeriod"] = rsiP;
                                             bestParams["StopLossPercent"] = sl;
                                             bestParams["TakeProfitPercent"] = tp;
 
-                                            _logger?.Invoke ($"📊 Новый лучший результат: доходность {result.TotalReturn:F2}%, win rate {result.WinRate:F1}%, сделок {result.TotalTrades}");
+                                            _logger?.Invoke ($"📊 Новый лучший результат: средняя доходность {aggregated.TotalReturn:F2}%, win rate {aggregated.WinRate:F1}%, сделок {aggregated.TotalTrades}");
                                         }
 
                                         if (current % 50 == 0)
