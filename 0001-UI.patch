@@ -1,0 +1,102 @@
+From 6ad23d0a719a894a22cf18f18bee962d08cbb475 Mon Sep 17 00:00:00 2001
+From: Claude <claude@anthropic.com>
+Date: Sat, 20 Jun 2026 07:38:12 +0000
+Subject: [PATCH 1/2] =?UTF-8?q?=D0=94=D0=BE=D0=B1=D0=B0=D0=B2=D0=BB=D0=B5?=
+ =?UTF-8?q?=D0=BD=D0=B0=20=D0=BA=D0=BD=D0=BE=D0=BF=D0=BA=D0=B0=20=D0=BE?=
+ =?UTF-8?q?=D0=B1=D0=BD=D0=BE=D0=B2=D0=BB=D0=B5=D0=BD=D0=B8=D1=8F=20=D0=B2?=
+ =?UTF-8?q?=20UI=20=D0=B8=20=D0=B0=D0=B2=D1=82=D0=BE=D0=BF=D1=80=D0=BE?=
+ =?UTF-8?q?=D0=B2=D0=B5=D1=80=D0=BA=D0=B0=20=D0=BE=D0=B1=D0=BD=D0=BE=D0=B2?=
+ =?UTF-8?q?=D0=BB=D0=B5=D0=BD=D0=B8=D0=B9=20=D0=BF=D1=80=D0=B8=20=D0=B7?=
+ =?UTF-8?q?=D0=B0=D0=BF=D1=83=D1=81=D0=BA=D0=B5?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+- Кнопка '🔄 ОБНОВИТЬ' в панели управления (CheckForUpdatesCommand)
+- Тихая проверка обновлений через 5 сек после старта (silent=true)
+- При ручном нажатии показывается диалог подтверждения (silent=false)
+- Использует существующий UpdateManager (GitHub Releases API)
+---
+ .../ViewModels/MainWindowViewModel.cs         | 33 +++++++++++++++++++
+ BinanceBotWpf/Views/MainWindow.xaml           |  1 +
+ 2 files changed, 34 insertions(+)
+
+diff --git a/BinanceBotWpf/ViewModels/MainWindowViewModel.cs b/BinanceBotWpf/ViewModels/MainWindowViewModel.cs
+index c01be20..ff56f3f 100644
+--- a/BinanceBotWpf/ViewModels/MainWindowViewModel.cs
++++ b/BinanceBotWpf/ViewModels/MainWindowViewModel.cs
+@@ -171,6 +171,10 @@ namespace BinanceBotWpf.ViewModels
+         public ICommand ClearLogsCommand { get; }
+         public ICommand CopyLogsCommand { get; }
+         public ICommand ScrollLogsToEndCommand { get; }
++        public ICommand CheckForUpdatesCommand { get; }
++
++        private bool _isCheckingForUpdate = false;
++        public bool IsCheckingForUpdate { get => _isCheckingForUpdate; set { _isCheckingForUpdate = value; OnPropertyChanged (); } }
+ 
+         private readonly string _settingsPath;
+         private readonly object _settingsLock = new ();
+@@ -192,6 +196,7 @@ namespace BinanceBotWpf.ViewModels
+             ClearLogsCommand = new RelayCommand (_ => ClearLogs (), _ => true);
+             CopyLogsCommand = new RelayCommand (_ => CopyLogs (), _ => true);
+             ScrollLogsToEndCommand = new RelayCommand (_ => ScrollLogsToEnd (), _ => true);
++            CheckForUpdatesCommand = new RelayCommand (async _ => await CheckForUpdatesAsync (silent: false), _ => !IsCheckingForUpdate);
+ 
+             // График
+             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
+@@ -206,6 +211,13 @@ namespace BinanceBotWpf.ViewModels
+             // Обновляем статус Telegram (с задержкой для асинхронной инициализации)
+             UpdateTelegramStatus ();
+             Task.Delay (2000).ContinueWith (_ => UpdateTelegramStatus ());
++
++            // Тихая проверка обновлений при запуске (без диалога, само обновится при наличии новой версии)
++            _ = Task.Run (async () =>
++            {
++                await Task.Delay (5000);
++                await CheckForUpdatesAsync (silent: true);
++            });
+         }
+ 
+         private void UpdateTelegramStatus()
+@@ -223,6 +235,27 @@ namespace BinanceBotWpf.ViewModels
+             }
+         }
+ 
++        public async Task CheckForUpdatesAsync(bool silent)
++        {
++            if (IsCheckingForUpdate) return;
++            IsCheckingForUpdate = true;
++            try
++            {
++                var updater = new UpdateManager (AddLog);
++                bool updated = await updater.CheckAndUpdateAsync (silent: silent);
++                if (!updated && !silent)
++                    AddLog ("✅ Обновлений не найдено, установлена актуальная версия.");
++            }
++            catch (Exception ex)
++            {
++                AddLog ($"❌ Ошибка проверки обновлений: {ex.Message}");
++            }
++            finally
++            {
++                IsCheckingForUpdate = false;
++            }
++        }
++
+         private void ScrollLogsToEnd()
+         {
+             RequestLogsScroll = !RequestLogsScroll;
+diff --git a/BinanceBotWpf/Views/MainWindow.xaml b/BinanceBotWpf/Views/MainWindow.xaml
+index b030bd5..8dc9e7f 100644
+--- a/BinanceBotWpf/Views/MainWindow.xaml
++++ b/BinanceBotWpf/Views/MainWindow.xaml
+@@ -85,6 +85,7 @@
+             <Button Command="{Binding OptimizeStrategyCommand}" Content="🧠 ОПТИМИЗАЦИЯ" Width="130" Style="{StaticResource ActionButton}" Background="#9b59b6" Margin="0,0,8,0"/>
+             <Button Command="{Binding ExportDataCommand}" Content="📁 ЭКСПОРТ" Width="100" Style="{StaticResource ActionButton}" Background="#3498db" Margin="0,0,8,0"/>
+             <Button Command="{Binding ClearLogsCommand}" Content="🗑 ОЧИСТИТЬ ЛОГИ" Width="120" Style="{StaticResource ActionButton}" Background="#e67e22" Margin="0,0,8,0"/>
++            <Button Command="{Binding CheckForUpdatesCommand}" Content="🔄 ОБНОВИТЬ" Width="110" Style="{StaticResource ActionButton}" Background="#16a085" Margin="0,0,8,0"/>
+ 
+             <Separator Style="{StaticResource {x:Static ToolBar.SeparatorStyleKey}}" Margin="8,0" Width="1" Background="#34495e"/>
+ 
+-- 
+2.43.0
