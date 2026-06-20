@@ -26,24 +26,44 @@ namespace BinanceBotWpf.Services
             LoadModel ();
         }
 
+        // ✅ Ищем в нескольких местах
+        private static readonly string[] _candidatePaths = new[]
+        {
+    "trading_model.zip",
+    "ML/trading_model.zip",
+    "Models/trading_model.zip",
+};
+
         private void LoadModel()
         {
-            if (!File.Exists (_modelPath))
+            string? foundPath = null;
+            if (File.Exists (_modelPath))
+                foundPath = _modelPath;
+            else
+            {
+                string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+                foreach (var candidate in _candidatePaths)
+                {
+                    string full = Path.Combine (baseDir, candidate);
+                    if (File.Exists (full)) { foundPath = full; break; }
+                }
+            }
+
+            if (foundPath == null)
             {
                 _logger?.Invoke ("⚠️ ML модель не найдена, фильтрация отключена.");
+                _logger?.Invoke ("ℹ️ Нажмите «Переобучить ML» или /retrain в Telegram.");
                 return;
             }
+
             try
             {
                 _mlContext = new MLContext ();
-                _mlModel = _mlContext.Model.Load (_modelPath, out _);
+                _mlModel = _mlContext.Model.Load (foundPath, out _);
                 _mlModelLoaded = true;
-                _logger?.Invoke ("✅ ML модель загружена");
+                _logger?.Invoke ($"✅ ML модель загружена из: {foundPath}");
             }
-            catch (Exception ex)
-            {
-                _logger?.Invoke ($"❌ Ошибка загрузки ML: {ex.Message}");
-            }
+            catch (Exception ex) { _logger?.Invoke ($"❌ Ошибка загрузки ML: {ex.Message}"); }
         }
 
         public (bool IsProfitable, float Probability, string RiskLevel) PredictRisk(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth, decimal obv)

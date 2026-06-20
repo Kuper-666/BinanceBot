@@ -176,47 +176,80 @@ namespace BinanceBotWpf.Services
             return false;
         }
 
+        // ✅ Счётчики ошибок добавлены как поля класса:
+         private readonly Dictionary<string, int> _ocoFailCount = new();
+         private readonly Dictionary<string, DateTime> _ocoNextRetry = new();
+
         private async Task UpdateOcoOrder(string symbol, OpenPosition pos)
         {
+            // ✅ Кулдаун: пропускаем если ещё не время
+            if (_ocoNextRetry.TryGetValue (symbol, out var nextRetry) && DateTime.UtcNow < nextRetry)
+            {
+                _logger?.Invoke ($"⏳ {symbol}: OCO в кулдауне, следующая попытка в {nextRetry:HH:mm:ss}");
+                return;
+            }
+
             try
             {
                 if (pos.OcoOrderListId != 0)
                 {
                     bool cancelled = await _client.CancelOcoOrder (symbol, pos.OcoOrderListId);
                     if (!cancelled)
-                    {
-                        _logger?.Invoke ($"⚠️ Не удалось отменить старый OCO ордер {pos.OcoOrderListId} для {symbol}");
-                    }
+                        _logger?.Invoke ($"⚠️ Не удалось отменить старый OCO {pos.OcoOrderListId} для {symbol}");
                     pos.OcoOrderListId = 0;
                 }
 
-                var newOco = await _client.PlaceOcoOrder (symbol, pos.Quantity, pos.StopLossPrice, pos.TakeProfitPrice);
+                // ✅ Проверяем реальный свободный баланс АКТИВА (не USDC!)
+                string baseAsset = symbol.Replace ("USDC", "").Replace ("USDT", "");
+                decimal freeAsset = await _client.GetAccountBalanceAsync (baseAsset);
 
-                // Одна повторная попытка через 2 секунды, если первая не удалась
-                if (newOco == null)
+                if (freeAsset < pos.Quantity * 0.99m)
                 {
-                    _logger?.Invoke ($"⚠️ Не удалось разместить OCO для {symbol}, повторная попытка...");
-                    await Task.Delay (2000);
-                    newOco = await _client.PlaceOcoOrder (symbol, pos.Quantity, pos.StopLossPrice, pos.TakeProfitPrice);
-                }
-
-                if (newOco != null)
-                {
-                    pos.OcoOrderListId = (long)newOco["orderListId"];
-                    pos.IsUnprotected = false;
-                    _logger?.Invoke ($"🔄 OCO ордер {symbol} обновлён: SL={pos.StopLossPrice:F4}, TP={pos.TakeProfitPrice:F4}");
-                }
-                else
-                {
+                    _logger?.Invoke ($"⚠️ {symbol}: Баланс {baseAsset}={freeAsset:F6} < нужного {pos.Quantity:F6}." +
+                                    $" Актив ещё заблокирован в ордере. OCO отложен.");
                     pos.IsUnprotected = true;
-                    _logger?.Invoke ($"🚨 КРИТИЧЕСКАЯ ОШИБКА: Не удалось разместить новый OCO ордер для {symbol} (2 попытки). Позиция БЕЗ защиты на бирже! Будет предпринята повторная попытка на следующем цикле.");
+                    return;
                 }
+
+                // ✅ Exponential Backoff: 3 попытки (2с, 4с)
+                _ocoFailCount.TryGetValue (symbol, out int failCount);
+
+                for (int attempt = 1; attempt <= 3; attempt++)
+                {
+                    var newOco = await _client.PlaceOcoOrder (
+                        symbol, pos.Quantity, pos.StopLossPrice, pos.TakeProfitPrice);
+
+                    if (newOco != null)
+                    {
+                        pos.OcoOrderListId = (long)newOco["orderListId"];
+                        pos.IsUnprotected = false;
+                        _ocoFailCount[symbol] = 0;   // ✅ Сброс счётчика при успехе
+                        _ocoNextRetry.Remove (symbol);
+                        _logger?.Invoke ($"✅ OCO ордер {symbol}: SL={pos.StopLossPrice:F4}, TP={pos.TakeProfitPrice:F4}");
+                        return;
+                    }
+
+                    if (attempt < 3)
+                    {
+                        int delaySec = (int)Math.Pow (2, attempt); // 2с, 4с
+                        _logger?.Invoke ($"⚠️ {symbol}: Попытка OCO {attempt}/3 не удалась, повтор через {delaySec}с...");
+                        await Task.Delay (delaySec * 1000);
+                    }
+                }
+
+                // ✅ Кулдаун: после 3 неудач ждём 2..10 минут
+                _ocoFailCount[symbol] = ++failCount;
+                int cooldownMin = Math.Min (failCount * 2, 10);
+                _ocoNextRetry[symbol] = DateTime.UtcNow.AddMinutes (cooldownMin);
+
+                pos.IsUnprotected = true;
+                _logger?.Invoke ($"🚨 {symbol}: OCO провалился 3/3. Следующая попытка через {cooldownMin}мин.");
             }
             catch (Exception ex)
             {
                 pos.OcoOrderListId = 0;
                 pos.IsUnprotected = true;
-                _logger?.Invoke ($"⚠️ Ошибка обновления OCO {symbol}: {ex.Message}. Позиция БЕЗ защиты на бирже! Будет предпринята повторная попытка на следующем цикле.");
+                _logger?.Invoke ($"⚠️ Исключение OCO {symbol}: {ex.Message}");
             }
         }
 
