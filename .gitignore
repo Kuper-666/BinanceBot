@@ -13,5 +13,7 @@ Export/
 HistoricalData/
 Archives/
 config.txt
+config.txt.bak
+config.json
 *.user
 *.suo

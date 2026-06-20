@@ -88,7 +88,7 @@ namespace BinanceBotWpf.Services
             // Пересоздаём MlModelManager с логгером
             string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
             _mlManager = new MlModelManager (modelPath, logger);
-            _strategy.SetMlManager (_mlManager);
+            _strategy.SetMlManager(_mlManager);
 
             // У новых сервисов логгер уже установлен в конструкторе
             if (_webSocketManager == null)
@@ -103,19 +103,18 @@ namespace BinanceBotWpf.Services
 
             if (string.IsNullOrEmpty (tgToken) || string.IsNullOrEmpty (tgChatId))
             {
-                string configPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "config.txt");
-                if (File.Exists (configPath))
+                try
                 {
-                    var lines = File.ReadAllLines (configPath);
-                    foreach (var line in lines)
+                    var fallbackConfig = BotConfig.LoadOrMigrate (out _);
+                    if (fallbackConfig != null)
                     {
-                        if (string.IsNullOrWhiteSpace (line) || !line.Contains ("=")) continue;
-                        var parts = line.Split ('=', 2);
-                        string key = parts[0].Trim ().ToLower ();
-                        string value = parts[1].Trim ();
-                        if (key == "telegrambottoken") tgToken = value;
-                        if (key == "telegramchatid") tgChatId = value;
+                        if (string.IsNullOrEmpty (tgToken)) tgToken = fallbackConfig.TelegramBotToken;
+                        if (string.IsNullOrEmpty (tgChatId)) tgChatId = fallbackConfig.TelegramChatId;
                     }
+                }
+                catch (Exception ex)
+                {
+                    logger ($"⚠️ Не удалось прочитать config.json для Telegram: {ex.Message}");
                 }
             }
 
@@ -289,7 +288,7 @@ namespace BinanceBotWpf.Services
                         }
 
                         // 5. Исполнение сигналов
-                        if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < ( _ui?.MaxConcurrentTrades ?? 3 ))
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             await ExecuteBuy (sym, analysis.Indicators, spotBalance);
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
@@ -322,57 +321,42 @@ namespace BinanceBotWpf.Services
             decimal macdHist = indicators.ContainsKey ("macdHist") ? indicators["macdHist"] : 0;
 
             // Убран жесткий фильтр, полагаемся на анализ стратегии и ИИ
-            int aiRiskLevel = indicators.ContainsKey ("aiRiskLevel") ? (int)indicators["aiRiskLevel"] : 2;
+            int aiRiskLevel = indicators.ContainsKey("aiRiskLevel") ? (int)indicators["aiRiskLevel"] : 2;
 
-            if (aiRiskLevel == 3)
+            if (aiRiskLevel == 3) 
             {
-                _ui?.AddLog ($"⚠️ {symbol}: Сигнал проигнорирован из-за высокого риска (ИИ)");
+                _ui?.AddLog($"⚠️ {symbol}: Сигнал проигнорирован из-за высокого риска (ИИ)");
                 return;
             }
 
             // Расчёт динамического риска с учетом ИИ
-            var riskCalc = new RiskCalculator (_client, _ui, msg => _ui?.AddLog (msg));
-            decimal volatility = indicators.ContainsKey ("bbWidth") ? indicators["bbWidth"] : 0.05m;
-            decimal riskAmount = await riskCalc.CalculateDynamicRiskAsync (currentBalance, 0.10m, volatility, aiRiskLevel);
+            var riskCalc = new RiskCalculator(_client, _ui, msg => _ui?.AddLog(msg));
+            decimal volatility = indicators.ContainsKey("bbWidth") ? indicators["bbWidth"] : 0.05m;
+            decimal riskAmount = await riskCalc.CalculateDynamicRiskAsync(currentBalance, 0.10m, volatility, aiRiskLevel);
 
-            decimal qty = riskAmount / price;
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
-            qty = Math.Floor (qty / stepSize) * stepSize;
+            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, currentBalance);
 
-            // Binance отклоняет ордера дешевле минимального notional (обычно $5-10 на спотовых парах).
-            // Если расчётный риск ниже минимума, но баланс позволяет — поднимаем сумму ордера до минимума,
-            // вместо того чтобы молча отправлять заведомо отклоняемый ордер.
-            const decimal minNotional = 6m; // запас над типичным минимумом Binance в $5
-            if (qty * price < minNotional)
+            switch (qtyResult)
             {
-                if (currentBalance >= minNotional)
-                {
-                    decimal minQty = minNotional / price;
-                    qty = Math.Ceiling (minQty / stepSize) * stepSize;
-                    _ui?.AddLog ($"ℹ️ {symbol}: расчётный риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
-                }
-                else
-                {
-                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — баланс {currentBalance:F2} USDC недостаточен для минимального ордера ({minNotional:F2} USDC)");
+                case RiskCalculator.QuantityResult.InsufficientBalanceForMinNotional:
+                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — баланс {currentBalance:F2} USDC недостаточен для минимального ордера (6.00 USDC)");
                     return;
-                }
+                case RiskCalculator.QuantityResult.ZeroQuantityAfterRounding:
+                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — нулевое количество после округления по шагу лота");
+                    return;
+                case RiskCalculator.QuantityResult.ExceedsAvailableBalance:
+                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — стоимость ордера превышает доступный баланс {currentBalance:F2} USDC");
+                    return;
             }
 
-            if (qty <= 0)
-            {
-                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — нулевое количество после округления по шагу лота");
-                return;
-            }
-            if (qty * price > currentBalance)
-            {
-                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — стоимость ордера {qty * price:F2} USDC превышает доступный баланс {currentBalance:F2} USDC");
-                return;
-            }
+            if (qty * price > riskAmount * 1.01m) // подняли сумму до минимального notional
+                _ui?.AddLog ($"ℹ️ {symbol}: расчётный риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
 
             // Проверка кулдауна
             if (_lastBuyTime.TryGetValue (symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (2))
             {
-                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — кулдаун после прошлой покупки ({( TimeSpan.FromMinutes (2) - ( DateTime.UtcNow - lastTime ) ).TotalSeconds:F0} сек осталось)");
+                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — кулдаун после прошлой покупки ({(TimeSpan.FromMinutes (2) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек осталось)");
                 return;
             }
             _lastBuyTime[symbol] = DateTime.UtcNow;
@@ -459,7 +443,7 @@ namespace BinanceBotWpf.Services
             if (_telegram == null) return;
 
             // Защита от несанкционированного доступа (только для владельца)
-            if (chatId != _telegram.GetChatId ())
+            if (chatId != _telegram.GetChatId())
             {
                 _ui?.AddLog ($"⚠️ Попытка несанкционированного управления от ChatId {chatId} заблокирована.");
                 return;

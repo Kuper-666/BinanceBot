@@ -39,6 +39,45 @@ namespace BinanceBotWpf.Services
             return await _client.GetATRAsync (symbol, period);
         }
 
+        public enum QuantityResult
+        {
+            Ok,
+            InsufficientBalanceForMinNotional,
+            ZeroQuantityAfterRounding,
+            ExceedsAvailableBalance
+        }
+
+        /// <summary>
+        /// Чистая, легко тестируемая функция расчёта количества актива для покупки
+        /// с учётом минимального notional биржи и шага лота. Вынесена отдельно от
+        /// ExecuteBuy, чтобы её можно было покрыть юнит-тестами без мока биржевого клиента.
+        /// </summary>
+        public static (decimal Quantity, QuantityResult Result) CalculatePositionQuantity(
+            decimal riskAmount, decimal price, decimal stepSize, decimal currentBalance, decimal minNotional = 6m)
+        {
+            if (price <= 0 || stepSize <= 0)
+                return (0, QuantityResult.ZeroQuantityAfterRounding);
+
+            decimal qty = Math.Floor (( riskAmount / price ) / stepSize) * stepSize;
+
+            if (qty * price < minNotional)
+            {
+                if (currentBalance < minNotional)
+                    return (0, QuantityResult.InsufficientBalanceForMinNotional);
+
+                decimal minQty = minNotional / price;
+                qty = Math.Ceiling (minQty / stepSize) * stepSize;
+            }
+
+            if (qty <= 0)
+                return (0, QuantityResult.ZeroQuantityAfterRounding);
+
+            if (qty * price > currentBalance)
+                return (0, QuantityResult.ExceedsAvailableBalance);
+
+            return (qty, QuantityResult.Ok);
+        }
+
         public async Task<decimal> CalculatePositionSizeAsync(string symbol, decimal riskCapital, decimal price)
         {
             decimal atr = await CalculateAtrAsync (symbol);

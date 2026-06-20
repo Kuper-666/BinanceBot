@@ -62,7 +62,11 @@ jobs:
 
       - name: Restore
         if: steps.skip.outputs.skip == 'false'
-        run: dotnet restore BinanceBotWpf/BinanceBotWpf.csproj
+        run: dotnet restore BinanceBotWpf.sln
+
+      - name: Run unit tests
+        if: steps.skip.outputs.skip == 'false'
+        run: dotnet test BinanceBotWpf.Tests/BinanceBotWpf.Tests.csproj -c Release --no-restore --verbosity normal
 
       - name: Publish
         if: steps.skip.outputs.skip == 'false'

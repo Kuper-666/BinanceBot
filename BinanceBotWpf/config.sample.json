@@ -1,0 +1,17 @@
+{
+  "_comment": "Переименуйте/скопируйте этот файл в config.json в корне приложения. ApiKey/ApiSecret/TelegramBotToken будут автоматически зашифрованы (Windows DPAPI) при первом сохранении ботом — можно ввести их сюда в открытом виде один раз, бот сам перешифрует при следующем запуске.",
+  "ApiKeyEncrypted": "YOUR_API_KEY_HERE",
+  "ApiSecretEncrypted": "YOUR_API_SECRET_HERE",
+  "TelegramBotTokenEncrypted": "",
+  "IsTestnet": false,
+  "MinUsdcBalance": 5.50,
+  "TelegramChatId": "",
+  "MinBalanceForZeroPercent": 30,
+  "TargetBalanceForFullPercent": 100,
+  "MaxTradePercent": 0.25,
+  "AbsoluteMaxPercent": 0.30,
+  "MinBalanceForRisk": 50,
+  "MaxBalanceForRisk": 300,
+  "MinRiskPercent": 0.10,
+  "MaxRiskPercent": 0.30
+}

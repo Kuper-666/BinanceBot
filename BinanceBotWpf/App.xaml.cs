@@ -31,81 +31,60 @@ namespace BinanceBotWpf
 
             base.OnStartup (e);
 
-            string configPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "config.txt");
-
-            // Создание config.txt при первом запуске
-            if (!File.Exists (configPath))
+            // Загрузка конфигурации: новый зашифрованный config.json,
+            // либо миграция со старого открытого config.txt при первом запуске после обновления
+            BotConfig config;
+            try
             {
-                string sample = @"# Binance Bot Configuration
-# Получите API ключи на https://www.binance.com/ru/support/faq/how-to-create-api-keys-on-binance-360002502072
+                config = BotConfig.LoadOrMigrate (out bool wasMigrated);
+                if (wasMigrated)
+                {
+                    MessageBox.Show (
+                        "Конфигурация перенесена из config.txt в зашифрованный config.json.\n\n" +
+                        "Старый файл переименован в config.txt.bak — он больше не используется ботом " +
+                        "и хранит ключи в открытом виде. Рекомендуем удалить его вручную после проверки, " +
+                        "что бот запускается корректно.",
+                        "Миграция конфигурации", MessageBoxButton.OK, MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show ($"Ошибка чтения конфигурации: {ex.Message}\n\nПроверьте формат файла config.json.",
+                    "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                Current.Shutdown ();
+                return;
+            }
 
-ApiKey=YOUR_API_KEY_HERE
-ApiSecret=YOUR_API_SECRET_HERE
-isTestnet=false
-
-# Telegram notifications (optional)
-telegramBotToken=
-telegramChatId=
-
-# Trading parameters
-minUsdcBalance=5.50
-";
+            // Создание config.json при первом запуске (ни config.json, ни config.txt не найдены)
+            if (config == null)
+            {
                 try
                 {
-                    File.WriteAllText (configPath, sample);
-                    MessageBox.Show ("Создан файл config.txt.\n\nПожалуйста, заполните свои API-ключи и перезапустите бота.\n\nДля тестирования оставьте isTestnet=true",
+                    BotConfig.CreateDefault ();
+                    MessageBox.Show ("Создан файл config.json.\n\nПожалуйста, заполните свои API-ключи и перезапустите бота.\n\nКлючи будут автоматически зашифрованы при сохранении через интерфейс или при первом успешном запуске после ручного редактирования.",
                                     "Настройка", MessageBoxButton.OK, MessageBoxImage.Information);
                     Current.Shutdown ();
                     return;
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show ($"Не удалось создать config.txt: {ex.Message}");
+                    MessageBox.Show ($"Не удалось создать config.json: {ex.Message}");
                     Current.Shutdown ();
                     return;
                 }
             }
 
-            // Чтение конфигурации
-            string apiKey = "";
-            string apiSecret = "";
-            bool isTestnet = true;
-            decimal minUsdcBalance = 5.50m;
-            string telegramBotToken = "";
-            string telegramChatId = "";
-
-            try
-            {
-                var lines = File.ReadAllLines (configPath);
-                foreach (var line in lines)
-                {
-                    if (string.IsNullOrWhiteSpace (line) || line.StartsWith ("#") || !line.Contains ("=")) continue;
-                    var parts = line.Split ('=', 2);
-                    string key = parts[0].Trim ().ToLower ();
-                    string value = parts[1].Trim ();
-
-                    switch (key)
-                    {
-                        case "apikey": apiKey = value; break;
-                        case "apisecret": apiSecret = value; break;
-                        case "istestnet": isTestnet = bool.Parse (value); break;
-                        case "minusdcbalance": minUsdcBalance = decimal.Parse (value, CultureInfo.InvariantCulture); break;
-                        case "telegrambottoken": telegramBotToken = value; break;
-                        case "telegramchatid": telegramChatId = value; break;
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                MessageBox.Show ($"Ошибка чтения config.txt: {ex.Message}\n\nПроверьте формат файла.", "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
-                Current.Shutdown ();
-                return;
-            }
+            string apiKey = config.ApiKey;
+            string apiSecret = config.ApiSecret;
+            bool isTestnet = config.IsTestnet;
+            decimal minUsdcBalance = config.MinUsdcBalance;
+            string telegramBotToken = config.TelegramBotToken;
+            string telegramChatId = config.TelegramChatId;
 
             // Проверка наличия API ключей
             if (string.IsNullOrEmpty (apiKey) || string.IsNullOrEmpty (apiSecret))
             {
-                MessageBox.Show ("В config.txt не указаны ApiKey или ApiSecret.\n\nЗаполните их и перезапустите бота.",
+                MessageBox.Show ("В config.json не указаны ApiKey или ApiSecret.\n\nЗаполните их и перезапустите бота.",
                                 "Ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
                 Current.Shutdown ();
                 return;
@@ -113,7 +92,7 @@ minUsdcBalance=5.50
 
             if (apiKey == "YOUR_API_KEY_HERE" || apiSecret == "YOUR_API_SECRET_HERE")
             {
-                MessageBox.Show ("Пожалуйста, замените YOUR_API_KEY_HERE и YOUR_API_SECRET_HERE на реальные API ключи в config.txt",
+                MessageBox.Show ("Пожалуйста, замените YOUR_API_KEY_HERE и YOUR_API_SECRET_HERE на реальные API ключи в config.json",
                                 "Настройка", MessageBoxButton.OK, MessageBoxImage.Warning);
                 Current.Shutdown ();
                 return;
