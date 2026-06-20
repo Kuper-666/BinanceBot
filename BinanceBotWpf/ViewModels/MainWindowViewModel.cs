@@ -210,12 +210,12 @@ namespace BinanceBotWpf.ViewModels
 
             // Обновляем статус Telegram 
             UpdateTelegramStatus ();
-            Task.Run(async () => 
+            Task.Run (async () =>
             {
-                while(true) 
+                while (true)
                 {
-                    await Task.Delay(3000);
-                    Application.Current.Dispatcher.Invoke(() => UpdateTelegramStatus());
+                    await Task.Delay (3000);
+                    Application.Current.Dispatcher.Invoke (() => UpdateTelegramStatus ());
                 }
             });
 
@@ -227,13 +227,21 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
+        public void RefreshTelegramStatus()
+        {
+            if (Application.Current?.Dispatcher.CheckAccess () == true)
+                UpdateTelegramStatus ();
+            else
+                Application.Current?.Dispatcher.Invoke (UpdateTelegramStatus);
+        }
+
         private void UpdateTelegramStatus()
         {
             try
             {
                 bool isEnabled = _tradingService.IsTelegramEnabled ();
                 string newStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
-                
+
                 if (TelegramStatus != newStatus)
                 {
                     TelegramStatus = newStatus;
@@ -288,18 +296,18 @@ namespace BinanceBotWpf.ViewModels
                 bool matchesFilter = false;
                 switch (_selectedLogLevel)
                 {
-                    case "Ошибки": matchesFilter = formattedMessage.Contains("❌") || formattedMessage.Contains("Ошибка") || formattedMessage.Contains("ERROR"); break;
-                    case "Предупреждения": matchesFilter = formattedMessage.Contains("⚠️") || formattedMessage.Contains("WARNING"); break;
-                    case "Инфо": matchesFilter = formattedMessage.Contains("✅") || formattedMessage.Contains("ℹ️") || formattedMessage.Contains("INFO"); break;
-                    case "Торговля": matchesFilter = formattedMessage.Contains("🟢") || formattedMessage.Contains("🔴") || formattedMessage.Contains("КУПЛЕНО") || formattedMessage.Contains("ПРОДАНО"); break;
+                    case "Ошибки": matchesFilter = formattedMessage.Contains ("❌") || formattedMessage.Contains ("Ошибка") || formattedMessage.Contains ("ERROR"); break;
+                    case "Предупреждения": matchesFilter = formattedMessage.Contains ("⚠️") || formattedMessage.Contains ("WARNING"); break;
+                    case "Инфо": matchesFilter = formattedMessage.Contains ("✅") || formattedMessage.Contains ("ℹ️") || formattedMessage.Contains ("INFO"); break;
+                    case "Торговля": matchesFilter = formattedMessage.Contains ("🟢") || formattedMessage.Contains ("🔴") || formattedMessage.Contains ("КУПЛЕНО") || formattedMessage.Contains ("ПРОДАНО"); break;
                     default: matchesFilter = true; break;
                 }
 
                 if (matchesFilter)
                 {
-                    SystemLogs.Add(formattedMessage);
-                    if (SystemLogs.Count > 500) SystemLogs.RemoveAt(0);
-                    MainWindow.Instance?.AppendLog(formattedMessage);
+                    SystemLogs.Add (formattedMessage);
+                    if (SystemLogs.Count > 500) SystemLogs.RemoveAt (0);
+                    MainWindow.Instance?.AppendLog (formattedMessage);
                 }
             });
 
@@ -311,7 +319,7 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 SystemLogs.Clear ();
-                MainWindow.Instance?.ClearLogs();
+                MainWindow.Instance?.ClearLogs ();
 
                 // Исправленный switch без многоточия
                 IEnumerable<string> filtered;
@@ -337,7 +345,7 @@ namespace BinanceBotWpf.ViewModels
                 foreach (var log in filtered.TakeLast (500))
                 {
                     SystemLogs.Add (log);
-                    MainWindow.Instance?.AppendLog(log);
+                    MainWindow.Instance?.AppendLog (log);
                 }
             });
         }
@@ -429,9 +437,9 @@ namespace BinanceBotWpf.ViewModels
                     _isLoadingSettings = false;
                 }
             }
-            catch (Exception ex) 
-            { 
-                System.Diagnostics.Debug.WriteLine ($"LoadSettings error: {ex.Message}"); 
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"LoadSettings error: {ex.Message}");
             }
         }
 

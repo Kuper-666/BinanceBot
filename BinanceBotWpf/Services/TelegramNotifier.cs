@@ -24,6 +24,8 @@ namespace BinanceBotWpf.Services
         private readonly ConcurrentDictionary<string, DateTime> _lastCommandTime = new ();
         private readonly TimeSpan _commandCooldown = TimeSpan.FromSeconds (2);
 
+        public event Action<bool, string> OnStatusChanged; // (isEnabled, message)
+
         public TelegramNotifier(string botToken, string chatId)
         {
             _chatId = chatId;
@@ -39,6 +41,7 @@ namespace BinanceBotWpf.Services
             catch (Exception ex)
             {
                 System.Diagnostics.Debug.WriteLine ($"Telegram init error: {ex.Message}");
+                OnStatusChanged?.Invoke (false, $"Ошибка инициализации Telegram: {ex.Message}");
             }
         }
 
@@ -66,10 +69,11 @@ namespace BinanceBotWpf.Services
                     var me = await _botClient.GetMeAsync ();
                     _enabled = true;
                     System.Diagnostics.Debug.WriteLine ($"Telegram бот @{me.Username} готов");
-                    
+                    OnStatusChanged?.Invoke (true, $"Подключён бот @{me.Username}");
+
                     // Запуск цикла получения обновлений
                     _ = Task.Run (() => ListenLoop (_cts.Token));
-                    
+
                     // Отправка приветствия
                     await Task.Delay (2000);
                     await SendWelcomeMessageAsync (_chatId);
@@ -77,6 +81,7 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex)
                 {
                     System.Diagnostics.Debug.WriteLine ($"Telegram connection failed: {ex.Message}");
+                    OnStatusChanged?.Invoke (false, $"Не удалось подключиться к Telegram: {ex.Message}");
                 }
             });
         }
