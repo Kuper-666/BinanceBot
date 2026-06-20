@@ -330,15 +330,46 @@ namespace BinanceBotWpf.Services
             decimal volatility = indicators.ContainsKey("bbWidth") ? indicators["bbWidth"] : 0.05m;
             decimal riskAmount = await riskCalc.CalculateDynamicRiskAsync(currentBalance, 0.10m, volatility, aiRiskLevel);
 
-            decimal qty = riskAmount / price; 
+            decimal qty = riskAmount / price;
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             qty = Math.Floor (qty / stepSize) * stepSize;
 
-            if (qty <= 0 || qty * price > currentBalance) return;
+            // Binance отклоняет ордера дешевле минимального notional (обычно $5-10 на спотовых парах).
+            // Если расчётный риск ниже минимума, но баланс позволяет — поднимаем сумму ордера до минимума,
+            // вместо того чтобы молча отправлять заведомо отклоняемый ордер.
+            const decimal minNotional = 6m; // запас над типичным минимумом Binance в $5
+            if (qty * price < minNotional)
+            {
+                if (currentBalance >= minNotional)
+                {
+                    decimal minQty = minNotional / price;
+                    qty = Math.Ceiling (minQty / stepSize) * stepSize;
+                    _ui?.AddLog ($"ℹ️ {symbol}: расчётный риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
+                }
+                else
+                {
+                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — баланс {currentBalance:F2} USDC недостаточен для минимального ордера ({minNotional:F2} USDC)");
+                    return;
+                }
+            }
+
+            if (qty <= 0)
+            {
+                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — нулевое количество после округления по шагу лота");
+                return;
+            }
+            if (qty * price > currentBalance)
+            {
+                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — стоимость ордера {qty * price:F2} USDC превышает доступный баланс {currentBalance:F2} USDC");
+                return;
+            }
 
             // Проверка кулдауна
             if (_lastBuyTime.TryGetValue (symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (2))
+            {
+                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — кулдаун после прошлой покупки ({(TimeSpan.FromMinutes (2) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек осталось)");
                 return;
+            }
             _lastBuyTime[symbol] = DateTime.UtcNow;
 
             // Исполнение ордера
