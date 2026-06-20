@@ -1,4 +1,4 @@
-﻿using BinanceBotWpf.ViewModels;
+using BinanceBotWpf.ViewModels;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -24,8 +24,8 @@ namespace BinanceBotWpf
                 // Небольшой допуск (40px), чтобы не сбивать автоскролл из-за погрешностей рендера.
                 bool wasAtBottom = LogsRichTextBox.VerticalOffset >= LogsRichTextBox.ExtentHeight - LogsRichTextBox.ViewportHeight - 40;
 
-                var run = new Run (text + "\n");
-                var paragraph = new Paragraph (run);
+                var run = new Run (text);
+                var paragraph = new Paragraph (run) { Margin = new Thickness(0) };
                 LogsRichTextBox.Document.Blocks.Add (paragraph);
 
                 // Ограничиваем количество строк (оставляем последние 1000)
