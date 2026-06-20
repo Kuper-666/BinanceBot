@@ -156,6 +156,9 @@ minUsdcBalance=5.50
 
                 // Создаём ViewModel
                 var viewModel = new MainWindowViewModel (tradingService, isTestnet);
+                
+                // Сразу устанавливаем логгер, чтобы инициализировать Telegram
+                tradingService.SetLogger(viewModel.AddLog);
 
                 // Создаём и показываем главное окно
                 var mainWindow = new MainWindow (viewModel);

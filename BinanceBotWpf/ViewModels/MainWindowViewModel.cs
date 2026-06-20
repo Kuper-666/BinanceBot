@@ -208,9 +208,16 @@ namespace BinanceBotWpf.ViewModels
             _ = Task.Run (StocksLoop);
             _ = Task.Run (StartUiUpdateLoop);
 
-            // Обновляем статус Telegram (с задержкой для асинхронной инициализации)
+            // Обновляем статус Telegram 
             UpdateTelegramStatus ();
-            Task.Delay (2000).ContinueWith (_ => UpdateTelegramStatus ());
+            Task.Run(async () => 
+            {
+                while(true) 
+                {
+                    await Task.Delay(3000);
+                    Application.Current.Dispatcher.Invoke(() => UpdateTelegramStatus());
+                }
+            });
 
             // Тихая проверка обновлений при запуске (без диалога, само обновится при наличии новой версии)
             _ = Task.Run (async () =>
@@ -225,13 +232,20 @@ namespace BinanceBotWpf.ViewModels
             try
             {
                 bool isEnabled = _tradingService.IsTelegramEnabled ();
-                TelegramStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
-                AddLog ($"Telegram статус: {TelegramStatus} (isEnabled={isEnabled})");
+                string newStatus = isEnabled ? "✅ Подключён" : "❌ Не настроен";
+                
+                if (TelegramStatus != newStatus)
+                {
+                    TelegramStatus = newStatus;
+                }
             }
             catch (Exception ex)
             {
-                TelegramStatus = "❌ Ошибка";
-                AddLog ($"Ошибка Telegram: {ex.Message}");
+                if (TelegramStatus != "❌ Ошибка")
+                {
+                    TelegramStatus = "❌ Ошибка";
+                    AddLog ($"Ошибка Telegram: {ex.Message}");
+                }
             }
         }
 
@@ -269,14 +283,24 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 _allLogs.Add (formattedMessage);
-                FilterLogs ();
                 if (_allLogs.Count > 1000) _allLogs.RemoveAt (0);
 
-                // Вывод в RichTextBox (MainWindow)
-                MainWindow.Instance?.AppendLog (formattedMessage);
+                bool matchesFilter = false;
+                switch (_selectedLogLevel)
+                {
+                    case "Ошибки": matchesFilter = formattedMessage.Contains("❌") || formattedMessage.Contains("Ошибка") || formattedMessage.Contains("ERROR"); break;
+                    case "Предупреждения": matchesFilter = formattedMessage.Contains("⚠️") || formattedMessage.Contains("WARNING"); break;
+                    case "Инфо": matchesFilter = formattedMessage.Contains("✅") || formattedMessage.Contains("ℹ️") || formattedMessage.Contains("INFO"); break;
+                    case "Торговля": matchesFilter = formattedMessage.Contains("🟢") || formattedMessage.Contains("🔴") || formattedMessage.Contains("КУПЛЕНО") || formattedMessage.Contains("ПРОДАНО"); break;
+                    default: matchesFilter = true; break;
+                }
 
-                // Альтернативный автоскролл через свойство
-                RequestLogsScroll = !RequestLogsScroll;
+                if (matchesFilter)
+                {
+                    SystemLogs.Add(formattedMessage);
+                    if (SystemLogs.Count > 500) SystemLogs.RemoveAt(0);
+                    MainWindow.Instance?.AppendLog(formattedMessage);
+                }
             });
 
             SendImportantToTelegram (message);
@@ -287,6 +311,7 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 SystemLogs.Clear ();
+                MainWindow.Instance?.ClearLogs();
 
                 // Исправленный switch без многоточия
                 IEnumerable<string> filtered;
@@ -312,6 +337,7 @@ namespace BinanceBotWpf.ViewModels
                 foreach (var log in filtered.TakeLast (500))
                 {
                     SystemLogs.Add (log);
+                    MainWindow.Instance?.AppendLog(log);
                 }
             });
         }

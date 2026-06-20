@@ -73,8 +73,13 @@ namespace BinanceBotWpf.Services
             _webSocketManager = new WebSocketPriceManager (null);
         }
 
+        private bool _loggerSet = false;
+
         public void SetLogger(Action<string> logger)
         {
+            if (_loggerSet) return;
+            _loggerSet = true;
+
             _wallet.OnLogGenerated += logger;
             _earn.OnLogGenerated += logger;
             _rebalancer.OnLogGenerated += logger;
@@ -117,9 +122,12 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    _telegram = new TelegramNotifier (tgToken, tgChatId);
-                    _telegram.StartListening (HandleTelegramCommand);
-                    logger ("✅ Telegram уведомления включены");
+                    if (_telegram == null)
+                    {
+                        _telegram = new TelegramNotifier (tgToken, tgChatId);
+                        _telegram.StartListening (HandleTelegramCommand);
+                        logger ("✅ Telegram уведомления включены");
+                    }
                 }
                 catch (Exception ex)
                 {
