@@ -23,9 +23,9 @@ namespace BinanceBotWpf.Services
         }
 
         public async Task<decimal> ExecuteBuyAsync(
-            string symbol, decimal price, decimal qty, decimal currentSpotBalance,
-            decimal stopLossPercent, decimal takeProfitPercent,
-            Func<decimal, decimal, Task> updateWalletAndPositions)
+    string symbol, decimal price, decimal qty, decimal currentSpotBalance,
+    decimal stopLossPercent, decimal takeProfitPercent,
+    Func<decimal, decimal, Task> updateWalletAndPositions)
         {
             decimal required = qty * price;
             if (required > currentSpotBalance) return currentSpotBalance;
@@ -41,11 +41,45 @@ namespace BinanceBotWpf.Services
 
             // ожидание появления монет на споте
             string asset = symbol.Replace ("USDC", "");
-            for (int i = 0; i < 5; i++)
+            decimal balance = 0;
+            for (int i = 0; i < 10; i++)
             {
                 await Task.Delay (1000);
-                decimal balance = await _client.GetAccountBalanceAsync (asset);
+                balance = await _client.GetAccountBalanceAsync (asset);
                 if (balance >= qty - 0.000001m) break;
+            }
+
+            if (balance < qty - 0.000001m)
+            {
+                _logger?.Invoke ($"⚠️ Баланс {asset} не зачислен ({balance:F6} < {qty:F6}), OCO отложен");
+                var pos = new OpenPosition
+                {
+                    Symbol = symbol,
+                    Quantity = qty,
+                    EntryPrice = price,
+                    OpenTime = DateTime.UtcNow,
+                    StopLossPrice = price * ( 1 - stopLossPercent ),
+                    TakeProfitPrice = price * ( 1 + takeProfitPercent ),
+                    HighestPrice = price,
+                    HighestPriceSinceOpen = price,
+                    OcoOrderListId = 0,
+                    IsUnprotected = true
+                };
+                _positionManager.AddOrUpdate (symbol, pos);
+                decimal newBalance = currentSpotBalance - required;
+                _logger?.Invoke ($"✅ КУПЛЕНО: {qty} {symbol} по {price:F4} | Остаток USDC на споте: {newBalance:F2} (без OCO)");
+                await updateWalletAndPositions (newBalance, 0);
+                _dataLogger.LogTrade (new TradeLog
+                {
+                    Symbol = symbol,
+                    EntryPrice = price,
+                    ExitPrice = price,
+                    Quantity = qty,
+                    Action = "BUY_OPEN",
+                    CloseTime = DateTime.UtcNow,
+                    Reason = "SMA Buy"
+                });
+                return newBalance;
             }
 
             decimal stopPrice = price * ( 1 - stopLossPercent );
@@ -63,7 +97,7 @@ namespace BinanceBotWpf.Services
                 else _logger?.Invoke ($"⚠️ Не удалось разместить OCO-ордер для {symbol}: {_client.LastOrderError}. Защита локальная.");
             }
 
-            var pos = new OpenPosition
+            var pos2 = new OpenPosition
             {
                 Symbol = symbol,
                 Quantity = qty,
@@ -76,10 +110,10 @@ namespace BinanceBotWpf.Services
                 InitialTakeProfitPrice = limitPrice,
                 OcoOrderListId = ocoOrderListId
             };
-            _positionManager.AddOrUpdate (symbol, pos);
-            decimal newBalance = currentSpotBalance - required;
-            _logger?.Invoke ($"✅ КУПЛЕНО: {qty} {symbol} по {price:F4} | Остаток USDC на споте: {newBalance:F2}");
-            await updateWalletAndPositions (newBalance, 0);
+            _positionManager.AddOrUpdate (symbol, pos2);
+            decimal newBalance2 = currentSpotBalance - required;
+            _logger?.Invoke ($"✅ КУПЛЕНО: {qty} {symbol} по {price:F4} | Остаток USDC на споте: {newBalance2:F2}");
+            await updateWalletAndPositions (newBalance2, 0);
             _dataLogger.LogTrade (new TradeLog
             {
                 Symbol = symbol,
@@ -90,7 +124,7 @@ namespace BinanceBotWpf.Services
                 CloseTime = DateTime.UtcNow,
                 Reason = "SMA Buy"
             });
-            return newBalance;
+            return newBalance2;
         }
 
         public async Task ExecuteSellAsync(string symbol, decimal price, OpenPosition pos, Func<Task> afterSell)
@@ -100,7 +134,7 @@ namespace BinanceBotWpf.Services
             decimal qtyToSell = pos.Quantity;
             if (spotBalance < qtyToSell - 0.000001m && spotBalance > 0)
             {
-                decimal stepSize = await _client.GetStepSizeAsync (symbol);
+                var (stepSize, minQty) = await _client.GetLotSizeAsync (symbol);
                 qtyToSell = Math.Floor (spotBalance / stepSize) * stepSize;
                 if (qtyToSell <= 0)
                 {

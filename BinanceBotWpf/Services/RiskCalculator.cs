@@ -53,20 +53,25 @@ namespace BinanceBotWpf.Services
         /// ExecuteBuy, чтобы её можно было покрыть юнит-тестами без мока биржевого клиента.
         /// </summary>
         public static (decimal Quantity, QuantityResult Result) CalculatePositionQuantity(
-            decimal riskAmount, decimal price, decimal stepSize, decimal currentBalance, decimal minNotional = 6m)
+    decimal riskAmount, decimal price, decimal stepSize, decimal minQty, decimal currentBalance, decimal minNotional = 6m)
         {
-            if (price <= 0 || stepSize <= 0)
+            if (price <= 0 || stepSize <= 0 || minQty <= 0)
                 return (0, QuantityResult.ZeroQuantityAfterRounding);
 
             decimal qty = Math.Floor (( riskAmount / price ) / stepSize) * stepSize;
+
+            if (qty < minQty)
+            {
+                // Минимальное количество
+                qty = Math.Ceiling (minQty / stepSize) * stepSize;
+            }
 
             if (qty * price < minNotional)
             {
                 if (currentBalance < minNotional)
                     return (0, QuantityResult.InsufficientBalanceForMinNotional);
-
-                decimal minQty = minNotional / price;
-                qty = Math.Ceiling (minQty / stepSize) * stepSize;
+                decimal minQtyByNotional = minNotional / price;
+                qty = Math.Ceiling (minQtyByNotional / stepSize) * stepSize;
             }
 
             if (qty <= 0)
@@ -84,7 +89,7 @@ namespace BinanceBotWpf.Services
             if (atr <= 0) atr = price * 0.02m;
             decimal positionSize = riskCapital / atr; // размер в единицах актива
             decimal rawQty = positionSize / price;
-            decimal stepSize = await _client.GetStepSizeAsync (symbol);
+            var (stepSize, minQty) = await _client.GetLotSizeAsync (symbol);
             decimal qty = Math.Floor (rawQty / stepSize) * stepSize;
             qty = Math.Round (qty, 8);
             return qty;

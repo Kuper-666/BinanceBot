@@ -423,8 +423,8 @@ public async Task StartTradingAsync(MainWindowViewModel vm)
                 }
             }
 
-            decimal stepSize = await _client.GetStepSizeAsync (symbol);
-            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, currentBalance);
+            var (stepSize, minQty) = await _client.GetLotSizeAsync (symbol);
+            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance); ;
 
             switch (qtyResult)
             {
