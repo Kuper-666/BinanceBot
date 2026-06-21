@@ -2,7 +2,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
-using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -28,9 +27,8 @@ namespace BinanceBotWpf.Services
         private readonly PositionProtector _positionProtector;
         private WebSocketPriceManager _webSocketManager;
 
-        // Внешние источники рыночных данных (CoinGecko + CryptoCompare + LunarCrush)
+        // Внешние источники рыночных данных (CoinGecko + LunarCrush)
         private CoinGeckoProvider _coingecko;
-        private CryptoCompareProvider _cryptocompare;
         private LunarCrushProvider _lunarcrush;
         private MarketIntelligenceService _marketIntel;
 
@@ -56,7 +54,6 @@ namespace BinanceBotWpf.Services
         private bool _balanceLoopEnabled = true;
         private bool _tradingLoopEnabled = true;
 
-        // TradingService.cs, конструктор:
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
                       decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "",
                       string lunarCrushApiKey = "")
@@ -78,15 +75,12 @@ namespace BinanceBotWpf.Services
             _signalFilter = new SignalFilter (null);
             _positionProtector = new PositionProtector (client, _positionManager, null);
 
-            // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
             _webSocketManager = new WebSocketPriceManager (null);
 
-            // ✅ Инициализация внешних источников рыночных данных
-            // LunarCrush требует ключ; CoinGecko и CryptoCompare работают без ключа (free public API).
+            // Инициализация внешних источников рыночных данных (без CryptoCompare)
             _coingecko = new CoinGeckoProvider (null);
-            _cryptocompare = new CryptoCompareProvider (null);
             _lunarcrush = new LunarCrushProvider (lunarCrushApiKey, null);
-            _marketIntel = new MarketIntelligenceService (_coingecko, _cryptocompare, _lunarcrush, null);
+            _marketIntel = new MarketIntelligenceService (_coingecko, _lunarcrush, null);
         }
 
         private bool _loggerSet = false;
@@ -101,21 +95,17 @@ namespace BinanceBotWpf.Services
             _rebalancer.OnLogGenerated += logger;
             _client.OnLogGenerated += logger;
 
-            // Пересоздаём MlModelManager с логгером
             string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
             _mlManager = new MlModelManager (modelPath, logger);
-            _strategy.SetMlManager(_mlManager);
+            _strategy.SetMlManager (_mlManager);
 
-            // Пересоздаём внешние источники данных с логгером (ключ LunarCrush сохраняется)
+            // Пересоздаём внешние источники данных с логгером
             _coingecko?.Dispose ();
-            _cryptocompare?.Dispose ();
             _lunarcrush?.Dispose ();
             _coingecko = new CoinGeckoProvider (logger);
-            _cryptocompare = new CryptoCompareProvider (logger);
             _lunarcrush = new LunarCrushProvider (_lunarCrushApiKey, logger);
-            _marketIntel = new MarketIntelligenceService (_coingecko, _cryptocompare, _lunarcrush, logger);
+            _marketIntel = new MarketIntelligenceService (_coingecko, _lunarcrush, logger);
 
-            // У новых сервисов логгер уже установлен в конструкторе
             if (_webSocketManager == null)
             {
                 _webSocketManager = new WebSocketPriceManager (logger);
@@ -169,8 +159,7 @@ namespace BinanceBotWpf.Services
                 logger ("⚠️ Telegram не настроен. Уведомления отключены.");
             }
         }
-
-        public async Task StartTradingAsync(MainWindowViewModel vm)
+public async Task StartTradingAsync(MainWindowViewModel vm)
         {
             if (_isRunning) return;
             _ui = vm;
