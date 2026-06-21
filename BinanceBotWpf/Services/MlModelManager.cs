@@ -66,7 +66,7 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { _logger?.Invoke ($"❌ Ошибка загрузки ML: {ex.Message}"); }
         }
 
-        public (bool IsProfitable, float Probability, string RiskLevel) PredictRisk(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth, decimal obv)
+        public (bool IsProfitable, float Probability, string RiskLevel) PredictRisk(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth, decimal obv, float marketCapRank = -1f, float sentimentScore = 0f, float galaxyScore = 0f)
         {
             if (!_mlModelLoaded) return (true, 1.0f, "Low Risk");
             try
@@ -80,7 +80,10 @@ namespace BinanceBotWpf.Services
                     Atr = (float)atr,
                     MacdHistogram = (float)macdHist,
                     BbWidth = (float)bbWidth,
-                    Obv = (float)obv
+                    Obv = (float)obv,
+                    MarketCapRank = marketCapRank,
+                    SentimentScore = sentimentScore,
+                    GalaxyScore = galaxyScore
                 };
                 var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
                 var result = predEngine.Predict (input);
@@ -94,7 +97,7 @@ namespace BinanceBotWpf.Services
             catch { return (true, 1.0f, "Low Risk"); }
         }
 
-        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> features, Action<string> logger)
+        public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, float MarketCapRank, float SentimentScore, float GalaxyScore, bool IsProfitable)> features, Action<string> logger)
         {
             await Task.Run (() =>
             {
@@ -119,12 +122,16 @@ namespace BinanceBotWpf.Services
                         MacdHistogram = (float)m.MacdHistogram,
                         BbWidth = (float)m.BbWidth,
                         Obv = (float)m.Obv,
+                        MarketCapRank = m.MarketCapRank,
+                        SentimentScore = m.SentimentScore,
+                        GalaxyScore = m.GalaxyScore,
                         Label = m.IsProfitable
                     }).ToList ();
                     var dataView = mlContext.Data.LoadFromEnumerable (dataWithLabel);
                     var split = mlContext.Data.TrainTestSplit (dataView, testFraction: 0.2);
                     var pipeline = mlContext.Transforms.Concatenate ("Features",
-                            "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth", "Obv")
+                            "FastSma", "SlowSma", "Rsi", "VolumeRatio", "Atr", "MacdHistogram", "BbWidth", "Obv",
+                            "MarketCapRank", "SentimentScore", "GalaxyScore")
                         .Append (mlContext.BinaryClassification.Trainers.FastTree (
                             numberOfTrees: 100,
                             numberOfLeaves: 20,
@@ -164,6 +171,9 @@ namespace BinanceBotWpf.Services
         public float MacdHistogram { get; set; }
         public float BbWidth { get; set; }
         public float Obv { get; set; }
+        public float MarketCapRank { get; set; }
+        public float SentimentScore { get; set; }
+        public float GalaxyScore { get; set; }
     }
     public class ModelOutput
     {

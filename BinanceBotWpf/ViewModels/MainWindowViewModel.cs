@@ -24,10 +24,14 @@ namespace BinanceBotWpf.ViewModels
         private string _analysis;
         private SolidColorBrush _rowColor = Brushes.Transparent;
         private SolidColorBrush _foregroundBrush = Brushes.White;
+        private string _marketCap = "—";
+        private string _sentiment = "⚪ —";
 
         public string Pair { get; set; }
         public string Price { get => _price; set { _price = value; OnPropertyChanged (); } }
         public string Analysis { get => _analysis; set { _analysis = value; OnPropertyChanged (); } }
+        public string MarketCap { get => _marketCap; set { _marketCap = value; OnPropertyChanged (); } }
+        public string Sentiment { get => _sentiment; set { _sentiment = value; OnPropertyChanged (); } }
         public SolidColorBrush RowColor { get => _rowColor; set { _rowColor = value; OnPropertyChanged (); } }
         public SolidColorBrush ForegroundBrush { get => _foregroundBrush; set { _foregroundBrush = value; OnPropertyChanged (); } }
 
@@ -545,7 +549,7 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma)
+        public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma, decimal? marketCap = null, decimal? sentiment = null)
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
@@ -556,10 +560,30 @@ namespace BinanceBotWpf.ViewModels
                 else if (signal == TradeAction.Sell) bgBrush = new SolidColorBrush (Color.FromRgb (150, 40, 40));
                 else fgBrush = new SolidColorBrush (Color.FromRgb (200, 200, 200));
 
+                // Форматирование MCAP
+                string mcapStr = "—";
+                if (marketCap.HasValue && marketCap.Value > 0)
+                {
+                    if (marketCap.Value >= 1_000_000_000_000m) mcapStr = $"{marketCap.Value / 1_000_000_000_000m:F1}T";
+                    else if (marketCap.Value >= 1_000_000_000m) mcapStr = $"{marketCap.Value / 1_000_000_000m:F1}B";
+                    else if (marketCap.Value >= 1_000_000m) mcapStr = $"{marketCap.Value / 1_000_000m:F1}M";
+                    else mcapStr = $"{marketCap.Value / 1_000m:F1}K";
+                }
+
+                // Форматирование настроения
+                string sentStr = "⚪ —";
+                if (sentiment.HasValue)
+                {
+                    decimal s = sentiment.Value;
+                    sentStr = s > 0.3m ? $"🟢 {s:F2}" : s < -0.3m ? $"🔴 {s:F2}" : $"⚪ {s:F2}";
+                }
+
                 if (_pairDict.TryGetValue (pair, out var existing))
                 {
                     existing.Price = price;
                     existing.Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}";
+                    existing.MarketCap = mcapStr;
+                    existing.Sentiment = sentStr;
                     existing.RowColor = bgBrush;
                     existing.ForegroundBrush = fgBrush;
                 }
@@ -570,6 +594,8 @@ namespace BinanceBotWpf.ViewModels
                         Pair = pair,
                         Price = price,
                         Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}",
+                        MarketCap = mcapStr,
+                        Sentiment = sentStr,
                         RowColor = bgBrush,
                         ForegroundBrush = fgBrush
                     };

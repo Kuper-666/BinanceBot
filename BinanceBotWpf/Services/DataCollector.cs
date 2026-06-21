@@ -13,13 +13,15 @@ namespace BinanceBotWpf.Services
         private readonly MlModelManager _mlManager;
         private readonly Action<string> _logger;
         private readonly MainWindowViewModel _ui;
+        private readonly MarketIntelligenceService _marketIntel;
 
-        public DataCollector(BinanceClient client, MlModelManager mlManager, Action<string> logger, MainWindowViewModel ui)
+        public DataCollector(BinanceClient client, MlModelManager mlManager, Action<string> logger, MainWindowViewModel ui, MarketIntelligenceService marketIntel = null)
         {
             _client = client;
             _mlManager = mlManager;
             _logger = logger;
             _ui = ui;
+            _marketIntel = marketIntel;
         }
 
         public async Task FetchAndRetrainFromOrderHistoryAsync(List<string> activePairs, int fastSma, int slowSma)
@@ -68,7 +70,7 @@ namespace BinanceBotWpf.Services
                     return;
                 }
 
-                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, bool IsProfitable)> ();
+                var features = new List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, float MarketCapRank, float SentimentScore, float GalaxyScore, bool IsProfitable)> ();
                 foreach (var trade in allClosedTrades)
                 {
                     try
@@ -96,7 +98,14 @@ namespace BinanceBotWpf.Services
                         decimal obvLast = obvValues.Last ();
                         decimal obvNormalized = (decimal)Math.Log10 (Math.Abs ((double)obvLast) + 1);
 
-                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, obvNormalized, trade.IsProfitable));
+                        // Фундаментальные / соц. фичи из MarketIntelligence
+                        string baseAsset = MarketIntelligenceService.ToBaseAsset (trade.Symbol);
+                        var assetData = _marketIntel?.GetAssetData (baseAsset);
+                        float marketCapRank = assetData?.CoinGeckoRank ?? -1;
+                        float sentimentScore = assetData != null ? (float)assetData.CompositeSentimentScore : 0f;
+                        float galaxyScore = assetData != null && assetData.GalaxyScore.HasValue ? (float)assetData.GalaxyScore.Value : 0f;
+
+                        features.Add ((fastSmaVal, slowSmaVal, rsi, volumeRatio, atr, macdHist, bbWidth, obvNormalized, marketCapRank, sentimentScore, galaxyScore, trade.IsProfitable));
                     }
                     catch (Exception ex) { _logger?.Invoke ($"Ошибка обработки {trade.Symbol}: {ex.Message}"); }
                 }
