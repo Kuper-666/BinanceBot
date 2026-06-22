@@ -18,9 +18,23 @@ namespace BinanceBotWpf.Models
         public string ApiSecretEncrypted { get; set; } = "";
         public string TelegramBotTokenEncrypted { get; set; } = "";
 
+        // Внешние API (не обязательны, можно оставить пустыми)
+        // CoinGecko: бесплатный план — 30 req/min, без ключа; Pro — до 500 req/min
+        // Получить: https://www.coingecko.com/en/api
+        public string CoinGeckoApiKeyEncrypted { get; set; } = "";
+
+        // LunarCrush: требует регистрацию на https://lunarcrush.com/developers
+        public string LunarCrushApiKeyEncrypted { get; set; } = "";
+
         public bool IsTestnet { get; set; } = true;
         public decimal MinUsdcBalance { get; set; } = 5.50m;
         public string TelegramChatId { get; set; } = "";
+        
+        /// <summary>
+        /// Интервал свечей для анализа. Минимум 1 час.
+        /// Поддерживаются: 1h (default), 4h, 1d, 1w, 1M
+        /// </summary>
+        public string CandleInterval { get; set; } = "1h";
 
         public decimal MinBalanceForZeroPercent { get; set; } = 30;
         public decimal TargetBalanceForFullPercent { get; set; } = 100;
@@ -51,6 +65,20 @@ namespace BinanceBotWpf.Models
         {
             get => Services.SecureStringHelper.Decrypt (TelegramBotTokenEncrypted);
             set => TelegramBotTokenEncrypted = Services.SecureStringHelper.Encrypt (value);
+        }
+
+        [JsonIgnore]
+        public string CoinGeckoApiKey
+        {
+            get => Services.SecureStringHelper.Decrypt (CoinGeckoApiKeyEncrypted);
+            set => CoinGeckoApiKeyEncrypted = Services.SecureStringHelper.Encrypt (value);
+        }
+
+        [JsonIgnore]
+        public string LunarCrushApiKey
+        {
+            get => Services.SecureStringHelper.Decrypt (LunarCrushApiKeyEncrypted);
+            set => LunarCrushApiKeyEncrypted = Services.SecureStringHelper.Encrypt (value);
         }
 
         private static readonly JsonSerializerOptions JsonOptions = new () { WriteIndented = true };
@@ -151,6 +179,11 @@ namespace BinanceBotWpf.Models
                     case "minusdcbalance": config.MinUsdcBalance = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
                     case "telegrambottoken": config.TelegramBotToken = value; break;
                     case "telegramchatid": config.TelegramChatId = value; break;
+                    case "coingecooapikey":
+                    case "coingeckoapikey": config.CoinGeckoApiKey = value; break;
+                    case "lunarcrushapkey":
+                    case "lunarcrushApikey":
+                    case "lunarcrushapıkey": config.LunarCrushApiKey = value; break;
                     case "minbalanceforzeropercent": config.MinBalanceForZeroPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
                     case "targetbalanceforfullpercent": config.TargetBalanceForFullPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
                     case "maxtradepercent": config.MaxTradePercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -26,11 +27,7 @@ namespace BinanceBotWpf.Services
         private readonly SignalFilter _signalFilter;
         private readonly PositionProtector _positionProtector;
         private WebSocketPriceManager _webSocketManager;
-
-        // Внешние источники рыночных данных (CoinGecko + LunarCrush)
-        private CoinGeckoProvider _coingecko;
-        private LunarCrushProvider _lunarcrush;
-        private MarketIntelligenceService _marketIntel;
+        private UpdateChecker _updateChecker;
 
         private MainWindowViewModel _ui;
         private bool _isRunning;
@@ -46,7 +43,6 @@ namespace BinanceBotWpf.Services
         // Настройки
         private readonly string _telegramBotToken;
         private readonly string _telegramChatId;
-        private readonly string _lunarCrushApiKey;
         private readonly TimeSpan _ordersFetchInterval = TimeSpan.FromHours (4);
         private DateTime _lastOrdersFetch = DateTime.MinValue;
 
@@ -54,9 +50,9 @@ namespace BinanceBotWpf.Services
         private bool _balanceLoopEnabled = true;
         private bool _tradingLoopEnabled = true;
 
+        // TradingService.cs, конструктор:
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
-                      decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "",
-                      string lunarCrushApiKey = "")
+                      decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
         {
             _client = client;
             _wallet = wallet;
@@ -64,7 +60,6 @@ namespace BinanceBotWpf.Services
             _rebalancer = rebalancer ?? new BalanceRebalancer (new object (), 0.1m);
             _telegramBotToken = telegramBotToken;
             _telegramChatId = telegramChatId;
-            _lunarCrushApiKey = lunarCrushApiKey ?? "";
 
             string dataDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data");
             string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
@@ -75,12 +70,8 @@ namespace BinanceBotWpf.Services
             _signalFilter = new SignalFilter (null);
             _positionProtector = new PositionProtector (client, _positionManager, null);
 
+            // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
             _webSocketManager = new WebSocketPriceManager (null);
-
-            // Инициализация внешних источников рыночных данных (без CryptoCompare)
-            _coingecko = new CoinGeckoProvider (null);
-            _lunarcrush = new LunarCrushProvider (lunarCrushApiKey, null);
-            _marketIntel = new MarketIntelligenceService (_coingecko, _lunarcrush, null);
         }
 
         private bool _loggerSet = false;
@@ -95,17 +86,12 @@ namespace BinanceBotWpf.Services
             _rebalancer.OnLogGenerated += logger;
             _client.OnLogGenerated += logger;
 
+            // Пересоздаём MlModelManager с логгером
             string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
             _mlManager = new MlModelManager (modelPath, logger);
-            _strategy.SetMlManager (_mlManager);
+            _strategy.SetMlManager(_mlManager);
 
-            // Пересоздаём внешние источники данных с логгером
-            _coingecko?.Dispose ();
-            _lunarcrush?.Dispose ();
-            _coingecko = new CoinGeckoProvider (logger);
-            _lunarcrush = new LunarCrushProvider (_lunarCrushApiKey, logger);
-            _marketIntel = new MarketIntelligenceService (_coingecko, _lunarcrush, logger);
-
+            // У новых сервисов логгер уже установлен в конструкторе
             if (_webSocketManager == null)
             {
                 _webSocketManager = new WebSocketPriceManager (logger);
@@ -158,8 +144,33 @@ namespace BinanceBotWpf.Services
             {
                 logger ("⚠️ Telegram не настроен. Уведомления отключены.");
             }
+
+            // Инициализация UpdateChecker для проверки обновлений на GitHub
+            try
+            {
+                var httpClient = new System.Net.Http.HttpClient ();
+                Func<string, System.Threading.Tasks.Task> notifyTelegram = async (msg) =>
+                {
+                    if (_telegram != null && !string.IsNullOrEmpty (tgToken) && !string.IsNullOrEmpty (tgChatId))
+                        await _telegram.SendMessageAsync (msg);
+                };
+                
+                _updateChecker = new UpdateChecker (httpClient, logger, notifyTelegram);
+                _updateChecker.OnNewVersionAvailable += (version, url) =>
+                {
+                    _ui?.AddLog ($"🎉 Новая версия {version} доступна!");
+                    // Может отправить уведомление в UI (например, выделить кнопку в главном окне)
+                };
+                
+                logger ("✅ Проверка обновлений инициализирована");
+            }
+            catch (Exception ex)
+            {
+                logger ($"⚠️ Ошибка инициализации UpdateChecker: {ex.Message}");
+            }
         }
-public async Task StartTradingAsync(MainWindowViewModel vm)
+
+        public async Task StartTradingAsync(MainWindowViewModel vm)
         {
             if (_isRunning) return;
             _ui = vm;
@@ -172,7 +183,6 @@ public async Task StartTradingAsync(MainWindowViewModel vm)
             _ = Task.Run (BalanceLoop);
             _ = Task.Run (TradingLoop);
             _ = Task.Run (AutoOptimizeLoop);
-            _ = Task.Run (IntelligenceLoop); // фоновое обновление данных CoinGecko/CryptoCompare/LunarCrush
         }
 
         public void StopTrading()
@@ -191,66 +201,53 @@ public async Task StartTradingAsync(MainWindowViewModel vm)
             await UpdatePairs ();
             await LoadPositions ();
             _ui?.AddLog (_client.IsTestnet ? "⚠️ ТЕСТОВАЯ СЕТЬ" : "✅ РЕАЛЬНАЯ СЕТЬ");
+            
+            // Проверка обновлений версии на GitHub (не блокирует инициализацию)
+            if (_updateChecker != null)
+            {
+                _ = _updateChecker.CheckForUpdatesAsync ();
+            }
         }
 
         private async Task UpdatePairs()
         {
             try
             {
-                // Защита в глубину: если менеджер оказался null (например, после StopTrading),
-                // пересоздаём его, чтобы не получить NullReferenceException ниже.
+                // Безопасная проверка инициализации _webSocketManager перед использованием
                 if (_webSocketManager == null)
-                    _webSocketManager = new WebSocketPriceManager (_ui != null ? _ui.AddLog : null);
+                {
+                    _ui?.AddLog ("⚠️ WebSocket менеджер не инициализирован, пропускаю обновление пар");
+                    return;
+                }
 
                 var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 10);
                 newPairs = newPairs.Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC")).ToList ();
 
-                // Фильтрация по фундаменталу (CoinGecko rank, sentiment, ликвидность).
-                // Использует кэш _marketIntel: если данных ещё нет — пары не исключаются.
-                if (_marketIntel != null && newPairs.Count > 0)
-                {
-                    int before = newPairs.Count;
-                    newPairs = _marketIntel.FilterByFundamentals (newPairs);
-                    if (newPairs.Count < before)
-                        _ui?.AddLog ($"📊 Фундаментальный фильтр: {before} → {newPairs.Count} пар");
-                }
-
                 if (newPairs.Count > 0)
                 {
                     lock (_pairsLock) { _activePairs = newPairs; }
-                    var newSymbols = newPairs.Except (_webSocketManager.GetSubscribedSymbols ()).ToArray ();
-                    if (newSymbols.Any ())
-                        await _webSocketManager.SubscribeToSymbolsAsync (newSymbols);
+                    var subscribedSymbols = _webSocketManager.GetSubscribedSymbols ();
+                    
+                    if (subscribedSymbols == null || subscribedSymbols.Length == 0)
+                    {
+                        // Первая подписка на символы
+                        await _webSocketManager.SubscribeToSymbolsAsync (newPairs.ToArray ());
+                    }
+                    else
+                    {
+                        // Подписываемся только на новые символы
+                        var newSymbols = newPairs.Except (subscribedSymbols).ToArray ();
+                        if (newSymbols.Any ())
+                            await _webSocketManager.SubscribeToSymbolsAsync (newSymbols);
+                    }
                     _ui?.AddLog ($"📊 Обновлено {_activePairs.Count} пар");
                 }
             }
-            catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка обновления пар: {ex.Message}"); }
-        }
-
-        /// <summary>
-        /// Фоновый цикл обновления данных внешних источников (CoinGecko, CryptoCompare, LunarCrush).
-        /// Запускается раз в 10 минут, параллельно торговому циклу. Ошибки изолируются
-        /// внутри MarketIntelligenceService — торговля не прерывается.
-        /// </summary>
-        private async Task IntelligenceLoop()
-        {
-            // Первое обновление — сразу при старте (с небольшой задержкой, чтобы не мешать InitAsync)
-            await Task.Delay (15000);
-            while (_isRunning)
-            {
-                try
-                {
-                    List<string> pairs;
-                    lock (_pairsLock) { pairs = new List<string> (_activePairs); }
-                    if (pairs.Count > 0 && _marketIntel != null)
-                    {
-                        await _marketIntel.RefreshAsync (pairs);
-                    }
-                }
-                catch (Exception ex) { _ui?.AddLog ($"⚠️ IntelligenceLoop: {ex.Message}"); }
-
-                // Обновление раз в 10 минут
-                await Task.Delay (TimeSpan.FromMinutes (10));
+            catch (Exception ex) 
+            { 
+                _ui?.AddLog ($"❌ Ошибка обновления пар: {ex.Message}");
+                if (ex.InnerException != null)
+                    _ui?.AddLog ($"   Детали: {ex.InnerException.Message}");
             }
         }
 
@@ -335,34 +332,17 @@ public async Task StartTradingAsync(MainWindowViewModel vm)
                         var analysis = await _strategy.AnalyzeAsync (sym, klines);
                         bool hasPosition = _positionManager.TryGet (sym, out _);
 
-                        // Обогащение индикаторов sentiment-данными из внешних источников
-                        decimal sentimentScore = _marketIntel?.GetSentimentScore (sym) ?? 0m;
-                        analysis.Indicators["sentimentScore"] = sentimentScore;
-                        var assetData = _marketIntel?.GetAssetData (sym);
-                        if (assetData?.MarketCap.HasValue == true)
-                            analysis.Indicators["marketCap"] = assetData.MarketCap.Value;
-
-                        // Обновление UI (с новыми данными рынка: marketCap, sentiment)
+                        // Обновление UI
                         if (analysis.Indicators.ContainsKey ("price"))
                         {
                             _ui.UpdateMarketTable (sym, analysis.Indicators["price"].ToString ("F4"),
                                 hasPosition, analysis.Action,
                                 analysis.Indicators.ContainsKey ("fastSma") ? analysis.Indicators["fastSma"] : 0,
-                                analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0,
-                                assetData?.MarketCap, sentimentScore == 0 ? assetData?.CompositeSentimentScore : sentimentScore);
-                        }
-
-                        // Усиление/ослабление сигнала по sentiment
-                        var effectiveAction = analysis.Action;
-                        if (analysis.Action == TradeAction.Buy && sentimentScore < -0.3m)
-                        {
-                            // Сильный медвежий фон → гасим покупку
-                            effectiveAction = TradeAction.Hold;
-                            _ui?.AddLog ($"🛑 {sym}: BUY отменён sentiment {sentimentScore:F2} (медвежий фон)");
+                                analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0);
                         }
 
                         // 5. Исполнение сигналов
-                        if (effectiveAction == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             await ExecuteBuy (sym, analysis.Indicators, spotBalance);
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
@@ -408,23 +388,8 @@ public async Task StartTradingAsync(MainWindowViewModel vm)
             decimal volatility = indicators.ContainsKey("bbWidth") ? indicators["bbWidth"] : 0.05m;
             decimal riskAmount = await riskCalc.CalculateDynamicRiskAsync(currentBalance, 0.10m, volatility, aiRiskLevel);
 
-            // Усиление позиции при позитивном рыночном фоне (sentiment из внешних источников).
-            // sentiment > 0.3 → +10% к риску; не превосходит безопасный потолок currentBalance * 0.25.
-            decimal sentiment = indicators.ContainsKey("sentimentScore") ? indicators["sentimentScore"] : 0m;
-            if (sentiment > 0.3m)
-            {
-                decimal boosted = riskAmount * 1.10m;
-                decimal ceiling = currentBalance * 0.25m;
-                if (boosted > ceiling) boosted = ceiling;
-                if (boosted > riskAmount)
-                {
-                    _ui?.AddLog($"🚀 {symbol}: позитивный фон (sentiment {sentiment:F2}) → риск поднят {riskAmount:F2} → {boosted:F2} USDC");
-                    riskAmount = boosted;
-                }
-            }
-
-            var (stepSize, minQty) = await _client.GetLotSizeAsync (symbol);
-            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance); ;
+            decimal stepSize = await _client.GetStepSizeAsync (symbol);
+            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, currentBalance);
 
             switch (qtyResult)
             {
@@ -488,6 +453,19 @@ public async Task StartTradingAsync(MainWindowViewModel vm)
             {
                 _positionManager.Remove (symbol);
                 return;
+            }
+
+            // Округляем по stepSize биржи — иначе LOT_SIZE filter failure
+            // (например, EURUSDC требует целые числа, BTCUSDC — до 0.00001)
+            decimal stepSize = await _client.GetStepSizeAsync (symbol);
+            if (stepSize > 0)
+            {
+                qtyToSell = Math.Floor (qtyToSell / stepSize) * stepSize;
+                if (qtyToSell <= 0)
+                {
+                    _ui?.AddLog ($"⏸ {symbol}: нечего продавать — количество {pos.Quantity} меньше шага лота {stepSize}");
+                    return;
+                }
             }
 
             // Отмена OCO ордера

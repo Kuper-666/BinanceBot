@@ -34,13 +34,39 @@ namespace BinanceBotWpf.Services
         private readonly Dictionary<string, string> _coinIdMap = new(StringComparer.OrdinalIgnoreCase);
         private DateTime _coinIdMapUpdated = DateTime.MinValue;
 
-        public CoinGeckoProvider(Action<string> logger = null)
+        /// <summary>
+        /// Статический маппинг для тикеров которые не входят в топ-100 CoinGecko
+        /// или имеют нестандартные названия. EUR/FIAT токены и мелкие проекты —
+        /// добавляем сюда вручную.
+        /// </summary>
+        private static readonly Dictionary<string, string> StaticCoinIdOverrides = new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Fiat / stablecoin — CoinGecko не знает их как торгуемые криптоактивы
+            // Пропускаем тихо, не логируем как ошибку
+            { "EUR", null },    // фиат, нет смысла искать в CoinGecko
+            { "FDUSD", null },  // First Digital USD — нет в топ-100
+            
+            // Небольшие проекты: тикер на Binance != coin_id в CoinGecko
+            { "RE", "rechain" },      // Rechain (если у тебя этот токен)
+            { "S", "sonic-3" },       // Sonic / FTM
+            { "AIGENSYN", null },     // слишком новый/мелкий — нет в CoinGecko
+            { "ALLO", null },         // нет в CoinGecko
+        };
+
+        private readonly string _apiKey; // null = free tier (30 req/min), string = Pro
+
+        public CoinGeckoProvider(Action<string> logger = null, string apiKey = null)
         {
             _logger = logger;
+            _apiKey = apiKey;
             _httpClient = new HttpClient();
             _httpClient.Timeout = TimeSpan.FromSeconds(20);
             _httpClient.DefaultRequestHeaders.Add("User-Agent", UserAgent);
             _httpClient.DefaultRequestHeaders.Add("Accept", "application/json");
+
+            // Pro API ключ: заголовок x-cg-pro-api-key, базовый URL pro-api.coingecko.com
+            if (!string.IsNullOrEmpty(_apiKey))
+                _httpClient.DefaultRequestHeaders.Add("x-cg-pro-api-key", _apiKey);
         }
 
         /// <summary>
@@ -74,8 +100,15 @@ namespace BinanceBotWpf.Services
                     {
                         missing.Add((key, coinId));
                     }
+                    else if (StaticCoinIdOverrides.TryGetValue(key, out var overrideId))
+                    {
+                        if (overrideId != null)
+                            missing.Add((key, overrideId)); // знаем coin_id из статической карты
+                        // else: тихо пропускаем (EUR, FDUSD и прочие fiat/нет в CoinGecko)
+                    }
                     else
                     {
+                        // Неизвестный тикер — логируем только раз, потом пробуем Search API
                         _logger?.Invoke($"⚠️ CoinGecko: не найден coin_id для {key}");
                     }
                 }

@@ -34,7 +34,6 @@ namespace BinanceBotWpf.Models
         private readonly int _maxWeightPerMinute = 1200;
         private int _currentWeight = 0;
         private DateTime _weightResetTime = DateTime.UtcNow;
-        private readonly Dictionary<string, decimal> _minQtyCache = new ();
 
         public BinanceClient(string apiKey, string apiSecret, bool useTestnet = false)
         {
@@ -190,7 +189,7 @@ namespace BinanceBotWpf.Models
                 var klines = await GetKlinesAsync ("BNBUSDC", "5m", 1);
                 if (klines == null || klines.Count == 0) return false;
                 decimal price = klines.Last ().Close;
-                var (step, minQty) = await GetLotSizeAsync ("BNBUSDC");
+                decimal step = await GetStepSizeAsync ("BNBUSDC");
                 decimal qty = Math.Floor (bnbBalance / step) * step;
                 if (qty <= 0) return false;
                 var order = await PlaceOrder ("BNBUSDC", "SELL", "MARKET", qty);
@@ -208,24 +207,38 @@ namespace BinanceBotWpf.Models
             }
         }
 
-        // ИСПРАВЛЕННЫЙ МЕТОД GetDustAssetsAsync
+        // Кэш для GetDustAssetsAsync — не дёргаем API чаще раза в 5 минут
+        private JArray _dustCache = null;
+        private DateTime _dustCacheTime = DateTime.MinValue;
+
         public async Task<JArray> GetDustAssetsAsync()
         {
             try
             {
+                // Кэш на 5 минут — пыль не меняется каждую секунду
+                if (_dustCache != null && DateTime.UtcNow - _dustCacheTime < TimeSpan.FromMinutes (5))
+                    return _dustCache;
+
                 long timestamp = GetTimestamp ();
                 string query = $"timestamp={timestamp}";
                 string signature = CreateSignature (query);
+
+                // Binance /sapi/v1/asset/dust для ПОЛУЧЕНИЯ списка пыли — это POST, не GET.
+                // GET возвращает -1000 "Request method 'GET' is not supported".
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/asset/dust") { Content = content };
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
+
                 if (response.IsSuccessStatusCode)
                 {
                     var result = JObject.Parse (json);
-                    return result["details"] as JArray ?? new JArray ();
+                    _dustCache = result["details"] as JArray ?? new JArray ();
+                    _dustCacheTime = DateTime.UtcNow;
+                    return _dustCache;
                 }
+
                 Log ($"GetDustAssets error: {json}");
             }
             catch (Exception ex) { Log ($"GetDustAssets exception: {ex.Message}"); }
@@ -475,7 +488,8 @@ namespace BinanceBotWpf.Models
                 }
                 else
                 {
-                    Log ($"GetAccountInfoAsync ошибка: {response.StatusCode}, {body}");
+                    string errorMsg = ParseBinanceError (body, response.StatusCode);
+                    Log ($"GetAccountInfoAsync ошибка: {response.StatusCode} - {errorMsg}");
                     return null;
                 }
             }
@@ -484,6 +498,51 @@ namespace BinanceBotWpf.Models
                 Log ($"GetAccountInfoAsync исключение: {ex.Message}");
                 return null;
             }
+        }
+
+        /// <summary>
+        /// Парсит ошибку Binance API и выдаёт человекочитаемое объяснение с советами.
+        /// </summary>
+        private string ParseBinanceError(string body, System.Net.HttpStatusCode statusCode)
+        {
+            try
+            {
+                var json = JObject.Parse (body);
+                if (json.TryGetValue ("code", out var codeToken) && json.TryGetValue ("msg", out var msgToken))
+                {
+                    int code = (int)codeToken;
+                    string msg = (string)msgToken;
+
+                    switch (code)
+                    {
+                        case -2015:
+                            return $"UNAUTHORIZED ({code}): {msg}\n" +
+                                   "💡 Проверьте:\n" +
+                                   "  • API Key указан правильно и не истёк\n" +
+                                   "  • IP адрес разрешён в настройках API (IP Whitelist)\n" +
+                                   "  • Подписи запросов генерируются корректно\n" +
+                                   "  • Часовые ограничения (US market hours, если торгуете акциями)";
+                        
+                        case -2010:
+                            return $"INSUFFICIENT BALANCE ({code}): {msg}";
+                        
+                        case -1013:
+                            return $"INVALID QUANTITY ({code}): {msg}\n💡 Количество не соответствует LOT_SIZE фильтру";
+                        
+                        case -2016:
+                            return $"NO TRADING WINDOW ({code}): {msg}\n💡 Рынок закрыт или есть ограничения на торговлю";
+                        
+                        default:
+                            return $"Binance API Error ({code}): {msg}";
+                    }
+                }
+            }
+            catch
+            {
+                // Если парсинг JSON упал, просто вернём сырой body
+            }
+
+            return $"HTTP {statusCode}: {body}";
         }
 
         public async Task<decimal> GetAccountBalanceAsync(string asset)
@@ -626,23 +685,21 @@ namespace BinanceBotWpf.Models
             }
         }
 
-        public async Task<(decimal StepSize, decimal MinQty)> GetLotSizeAsync(string symbol)
+        public async Task<decimal> GetStepSizeAsync(string symbol)
         {
-            if (_stepSizeCache.TryGetValue (symbol, out var cachedStep) && _minQtyCache.TryGetValue (symbol, out var cachedMin))
-                return (cachedStep, cachedMin);
+            if (_stepSizeCache.TryGetValue (symbol, out var cached))
+                return cached;
 
             var exchangeInfo = await GetExchangeInfoAsync ();
             var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
             var lotSize = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "LOT_SIZE");
-            if (lotSize != null)
+            if (lotSize != null && lotSize["stepSize"] != null)
             {
-                decimal stepSize = decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture);
-                decimal minQty = decimal.Parse (lotSize["minQty"].ToString (), CultureInfo.InvariantCulture);
-                _stepSizeCache[symbol] = stepSize;
-                _minQtyCache[symbol] = minQty;
-                return (stepSize, minQty);
+                decimal step = decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture);
+                _stepSizeCache[symbol] = step;
+                return step;
             }
-            return (0.00000001m, 0.00000001m);
+            return 0.00000001m;
         }
 
         public async Task<decimal> GetTickSizeAsync(string symbol)
