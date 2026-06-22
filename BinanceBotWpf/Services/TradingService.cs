@@ -308,6 +308,12 @@ namespace BinanceBotWpf.Services
 
         private async Task InitAsync()
         {
+            // Гарантируем инициализацию WebSocket менеджера
+            if (_webSocketManager == null)
+            {
+                _webSocketManager = new WebSocketPriceManager (msg => _ui?.AddLog (msg));
+            }
+
             await _wallet.UpdateBalance ();
             await UpdatePairs ();
             await LoadPositions ();
@@ -1016,6 +1022,7 @@ namespace BinanceBotWpf.Services
         /// </summary>
         private async Task PeriodicUpdateCheckLoop()
         {
+            string lastNotifiedVersion = "";
             // Первая проверка через 5 минут после запуска
             await Task.Delay (TimeSpan.FromMinutes (5));
 
@@ -1029,25 +1036,27 @@ namespace BinanceBotWpf.Services
                     httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
                     httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf");
 
-                    var checker = new UpdateChecker (httpClient, msg => _ui?.AddLog (msg));
+                    var checker = new UpdateChecker (httpClient, msg => { });
                     checker.OnNewVersionAvailable += (version, url) =>
                     {
-                        _ui?.AddLog ($"🎉 Доступна новая версия: {version}");
-                        System.Windows.Application.Current.Dispatcher.Invoke (() =>
+                        // Уведомляем только один раз за версию
+                        if (version != lastNotifiedVersion)
                         {
-                            _ui.IsUpdateAvailable = true;
-                            _ui.AvailableVersion = version;
-                            _ui.UpdateDownloadUrl = url;
-                            _ui.UpdateStatusText = $"Доступна версия {version}";
-                        });
+                            lastNotifiedVersion = version;
+                            _ui?.AddLog ($"🎉 Доступна новая версия: {version}");
+                            System.Windows.Application.Current.Dispatcher.Invoke (() =>
+                            {
+                                _ui.IsUpdateAvailable = true;
+                                _ui.AvailableVersion = version;
+                                _ui.UpdateDownloadUrl = url;
+                                _ui.UpdateStatusText = $"Доступна версия {version}";
+                            });
+                        }
                     };
 
                     await checker.CheckForUpdatesAsync ();
                 }
-                catch (Exception ex)
-                {
-                    _ui?.AddLog ($"⚠️ Ошибка фоновой проверки обновлений: {ex.Message}");
-                }
+                catch { }
 
                 // Ждём 30 минут до следующей проверки
                 await Task.Delay (TimeSpan.FromMinutes (30));
