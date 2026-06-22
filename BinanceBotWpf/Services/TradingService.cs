@@ -35,6 +35,7 @@ namespace BinanceBotWpf.Services
         private MacroCalendarProvider _macroCalendar;
         private TradingSettings _tradingSettings;
         private BackupService _backupService;
+        private AiRiskEngine _aiRiskEngine;
 
         private MainWindowViewModel _ui;
         private bool _isRunning;
@@ -82,6 +83,7 @@ namespace BinanceBotWpf.Services
             _macroCalendar = new MacroCalendarProvider (new System.Net.Http.HttpClient (), null);
             _tradingSettings = new TradingSettings ();
             _backupService = new BackupService (null);
+            _aiRiskEngine = new AiRiskEngine (_mlManager, client, null);
 
             // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
             _webSocketManager = new WebSocketPriceManager (null);
@@ -196,6 +198,7 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (BalanceLoop);
             _ = Task.Run (TradingLoop);
             _ = Task.Run (AutoOptimizeLoop);
+            _ = Task.Run (PeriodicUpdateCheckLoop);
         }
 
         public void StopTrading()
@@ -232,6 +235,62 @@ namespace BinanceBotWpf.Services
 
             _gridBot = new GridBot (_client, _positionManager, msg => _ui?.AddLog (msg));
             await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
+        }
+
+        /// <summary>
+        /// Авто-запуск сетки с параметрами от ИИ
+        /// </summary>
+        public async Task StartAutoGridAsync(string symbol)
+        {
+            if (_gridBot != null && _gridBot.IsRunning)
+            {
+                _ui?.AddLog ("⚠️ GridBot уже запущен.");
+                return;
+            }
+
+            decimal currentPrice = GetCurrentPrice (symbol);
+            if (currentPrice <= 0)
+            {
+                _ui?.AddLog ($"❌ Не удалось получить цену для {symbol}");
+                return;
+            }
+
+            decimal balance = _wallet.GetTotalBalance ("USDC");
+
+            // Получаем индикаторы для ИИ
+            var klines = await _client.GetKlinesAsync (symbol, "1h", 100);
+            if (klines == null || klines.Count < 30) return;
+
+            var closes = klines.Select (k => k.Close).ToList ();
+            var volumes = klines.Select (k => k.Volume).ToList ();
+            var highs = klines.Select (k => k.High).ToList ();
+            var lows = klines.Select (k => k.Low).ToList ();
+
+            decimal fastSma = closes.TakeLast (9).Average ();
+            decimal slowSma = closes.TakeLast (21).Average ();
+            var rsiValues = TechnicalAnalysis.RSI (closes, 14);
+            decimal rsi = rsiValues.LastOrDefault () ?? 50;
+            decimal avgVolume = volumes.TakeLast (20).Average ();
+            decimal volumeRatio = avgVolume > 0 ? volumes.Last () / avgVolume : 1;
+            var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
+            decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
+            var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
+            decimal bbWidth = (bb.Upper.LastOrDefault () ?? currentPrice) - (bb.Lower.LastOrDefault () ?? currentPrice);
+            bbWidth = currentPrice > 0 ? bbWidth / currentPrice : 0.05m;
+            decimal obv = TechnicalAnalysis.OBV (klines).LastOrDefault ();
+
+            // ИИ рассчитывает параметры сетки
+            var aiRisk = await _aiRiskEngine.CalculateRiskAsync (
+                symbol, balance, currentPrice, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
+
+            var grid = aiRisk.Grid;
+            decimal investmentUsdc = balance * grid.InvestmentPercent;
+
+            _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Баланс: {balance:F2} USDC");
+            _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
+
+            _gridBot = new GridBot (_client, _positionManager, msg => _ui?.AddLog (msg));
+            await _gridBot.StartAsync (symbol, currentPrice, grid.RangePercent, grid.Levels, investmentUsdc, grid.UseDynamicStep);
         }
 
         /// <summary>
@@ -278,6 +337,18 @@ namespace BinanceBotWpf.Services
             if (_updateChecker != null)
             {
                 _ = _updateChecker.CheckForUpdatesAsync ();
+            }
+
+            // Авто-запуск сетки с параметрами от ИИ (если включена)
+            if (_tradingSettings?.GridBotEnabled == true && _activePairs.Count > 0)
+            {
+                string gridSymbol = _activePairs[0] + "USDC";
+                _ui?.AddLog ($"🤖 Автозапуск ИИ-сетки для {gridSymbol}...");
+                _ = Task.Run (async () =>
+                {
+                    await Task.Delay (3000); // Даём время на загрузку цен
+                    await StartAutoGridAsync (gridSymbol);
+                });
             }
         }
 
@@ -519,20 +590,16 @@ namespace BinanceBotWpf.Services
             decimal fastSma = indicators.ContainsKey ("fastSma") ? indicators["fastSma"] : 0;
             decimal slowSma = indicators.ContainsKey ("slowSma") ? indicators["slowSma"] : 0;
             decimal macdHist = indicators.ContainsKey ("macdHist") ? indicators["macdHist"] : 0;
+            decimal bbWidth = indicators.ContainsKey ("bbWidth") ? indicators["bbWidth"] : 0.05m;
+            decimal volumeRatio = indicators.ContainsKey ("volumeRatio") ? indicators["volumeRatio"] : 1.0m;
+            decimal obv = indicators.ContainsKey ("obv") ? indicators["obv"] : 0;
 
-            int aiRiskLevel = indicators.ContainsKey("aiRiskLevel") ? (int)indicators["aiRiskLevel"] : 2;
+            // === ИИ-движок рассчитывает динамические параметры риска ===
+            var aiRisk = await _aiRiskEngine.CalculateRiskAsync (
+                symbol, currentBalance, price, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
 
-            if (aiRiskLevel == 3) 
-            {
-                _ui?.AddLog($"⚠️ {symbol}: Сигнал проигнорирован из-за высокого риска (ИИ)");
-                return;
-            }
-
-            var riskCalc = new RiskCalculator(_client, _ui, msg => _ui?.AddLog(msg));
-
-            // === Жёсткий риск-менеджмент: 1% от баланса на сделку ===
-            decimal riskPerTrade = _ui?.RiskPerTradePercent ?? 0.01m;
-            decimal riskRewardRatio = _ui?.RiskRewardRatio ?? 3.0m;
+            decimal riskPerTrade = aiRisk.RiskPerTradePercent;
+            decimal riskRewardRatio = aiRisk.RiskRewardRatio;
             decimal riskAmount = RiskCalculator.CalculateRiskAmount (currentBalance, riskPerTrade);
 
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
@@ -563,12 +630,12 @@ namespace BinanceBotWpf.Services
             }
             _lastBuyTime[symbol] = DateTime.UtcNow;
 
-            // === Динамический SL/TP: ATR → fallback на фиксированный % ===
-            decimal fallbackSlPercent = _ui?.StopLossPercent ?? 0.015m;
-            var (slPrice, tpPrice, slPct) = await riskCalc.CalculateStopLossAndTakeProfitAsync (
-                symbol, price, riskRewardRatio, fallbackSlPercent);
+            // === SL/TP от ИИ ===
+            decimal slPrice = price * (1 - aiRisk.StopLossPercent);
+            decimal tpPrice = price * (1 + aiRisk.TakeProfitPercent);
+            decimal slPct = aiRisk.StopLossPercent;
 
-            _ui?.AddLog ($"📐 {symbol}: Risk={riskAmount:F2} ({riskPerTrade:P0}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{slPct * riskRewardRatio:P2}), R/R 1:{riskRewardRatio}");
+            _ui?.AddLog ($"📐 {symbol}: Risk={riskAmount:F2} ({riskPerTrade:P2}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2}), R/R 1:{riskRewardRatio:F1}");
 
             // Исполнение ордера
             _ui?.AddLog ($"💵 Покупка {qty} {symbol} по {price:F4}");
@@ -590,7 +657,7 @@ namespace BinanceBotWpf.Services
                 };
 
                 _positionManager.AddOrUpdate (symbol, pos);
-                _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4} | R/R 1:{riskRewardRatio}");
+                _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4} | R/R 1:{riskRewardRatio:F1}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
         }
@@ -750,8 +817,8 @@ namespace BinanceBotWpf.Services
                     else
                     {
                         string gridSymbol = _activePairs.Count > 0 ? _activePairs[0] + "USDC" : "BTCUSDC";
-                        await StartGridAsync (gridSymbol, 0.10m, 10, 0.20m);
-                        await _telegram.SendMessageAsync ($"✅ GridBot запущен для {gridSymbol}", chatId);
+                        await StartAutoGridAsync (gridSymbol);
+                        await _telegram.SendMessageAsync ($"✅ ИИ-сетка запущена для {gridSymbol}", chatId);
                     }
                     break;
                 case "/futures":
@@ -902,6 +969,49 @@ namespace BinanceBotWpf.Services
                 }
 
                 lastTradeCount = currentTradeCount;
+            }
+        }
+
+        /// <summary>
+        /// Фоновая проверка обновлений каждые 30 минут
+        /// </summary>
+        private async Task PeriodicUpdateCheckLoop()
+        {
+            // Первая проверка через 5 минут после запуска
+            await Task.Delay (TimeSpan.FromMinutes (5));
+
+            while (_isRunning)
+            {
+                try
+                {
+                    if (!_isRunning) break;
+
+                    var httpClient = new System.Net.Http.HttpClient ();
+                    httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
+                    httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf");
+
+                    var checker = new UpdateChecker (httpClient, msg => _ui?.AddLog (msg));
+                    checker.OnNewVersionAvailable += (version, url) =>
+                    {
+                        _ui?.AddLog ($"🎉 Доступна новая версия: {version}");
+                        System.Windows.Application.Current.Dispatcher.Invoke (() =>
+                        {
+                            _ui.IsUpdateAvailable = true;
+                            _ui.AvailableVersion = version;
+                            _ui.UpdateDownloadUrl = url;
+                            _ui.UpdateStatusText = $"Доступна версия {version}";
+                        });
+                    };
+
+                    await checker.CheckForUpdatesAsync ();
+                }
+                catch (Exception ex)
+                {
+                    _ui?.AddLog ($"⚠️ Ошибка фоновой проверки обновлений: {ex.Message}");
+                }
+
+                // Ждём 30 минут до следующей проверки
+                await Task.Delay (TimeSpan.FromMinutes (30));
             }
         }
 

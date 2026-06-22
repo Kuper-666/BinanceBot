@@ -100,6 +100,12 @@ namespace BinanceBotWpf.ViewModels
         private string _riskPercentDisplay = "Риск: 0%";
         private TradingSettings _tradingSettings;
 
+        // Обновления
+        private bool _isUpdateAvailable = false;
+        private string _availableVersion = "";
+        private string _updateDownloadUrl = "";
+        private string _updateStatusText = "";
+
         // Логи
         private ObservableCollection<string> _systemLogs = new ();
         private List<string> _allLogs = new ();
@@ -129,6 +135,31 @@ namespace BinanceBotWpf.ViewModels
         public decimal TrailingStopPercent { get => _trailingStopPercent; set { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } }
         public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } }
         public decimal MaxRiskPercent { get => _maxRiskPercent; set { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } }
+
+        // Свойства обновлений
+        public bool IsUpdateAvailable
+        {
+            get => _isUpdateAvailable;
+            set { _isUpdateAvailable = value; OnPropertyChanged (); }
+        }
+
+        public string AvailableVersion
+        {
+            get => _availableVersion;
+            set { _availableVersion = value; OnPropertyChanged (); }
+        }
+
+        public string UpdateDownloadUrl
+        {
+            get => _updateDownloadUrl;
+            set { _updateDownloadUrl = value; OnPropertyChanged (); }
+        }
+
+        public string UpdateStatusText
+        {
+            get => _updateStatusText;
+            set { _updateStatusText = value; OnPropertyChanged (); }
+        }
 
         public ObservableCollection<TradeLog> TradesHistory { get => _tradesHistory; set { _tradesHistory = value; OnPropertyChanged (); } }
         public decimal TotalPnL { get => _totalPnL; set { _totalPnL = value; OnPropertyChanged (); } }
@@ -176,6 +207,7 @@ namespace BinanceBotWpf.ViewModels
         public ICommand CopyLogsCommand { get; }
         public ICommand ScrollLogsToEndCommand { get; }
         public ICommand CheckForUpdatesCommand { get; }
+        public ICommand UpdateNowCommand { get; }
 
         private bool _isCheckingForUpdate = false;
         public bool IsCheckingForUpdate { get => _isCheckingForUpdate; set { _isCheckingForUpdate = value; OnPropertyChanged (); } }
@@ -201,6 +233,7 @@ namespace BinanceBotWpf.ViewModels
             CopyLogsCommand = new RelayCommand (_ => CopyLogs (), _ => true);
             ScrollLogsToEndCommand = new RelayCommand (_ => ScrollLogsToEnd (), _ => true);
             CheckForUpdatesCommand = new RelayCommand (async _ => await CheckForUpdatesAsync (silent: false), _ => !IsCheckingForUpdate);
+            UpdateNowCommand = new RelayCommand (async _ => await UpdateNowAsync (), _ => IsUpdateAvailable && !IsCheckingForUpdate);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -267,14 +300,65 @@ namespace BinanceBotWpf.ViewModels
             IsCheckingForUpdate = true;
             try
             {
-                var updater = new UpdateManager (AddLog);
-                bool updated = await updater.CheckAndUpdateAsync (silent: silent);
-                if (!updated && !silent)
+                var httpClient = new System.Net.Http.HttpClient ();
+                httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
+                httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf");
+
+                var checker = new UpdateChecker (httpClient, AddLog);
+                checker.OnNewVersionAvailable += (version, url) =>
+                {
+                    Application.Current.Dispatcher.Invoke (() =>
+                    {
+                        IsUpdateAvailable = true;
+                        AvailableVersion = version;
+                        UpdateDownloadUrl = url;
+                        UpdateStatusText = $"Доступна версия {version}";
+                    });
+                };
+
+                await checker.CheckForUpdatesAsync ();
+
+                if (!IsUpdateAvailable && !silent)
                     AddLog ("✅ Обновлений не найдено, установлена актуальная версия.");
             }
             catch (Exception ex)
             {
                 AddLog ($"❌ Ошибка проверки обновлений: {ex.Message}");
+            }
+            finally
+            {
+                IsCheckingForUpdate = false;
+            }
+        }
+
+        /// <summary>
+        /// Скачивать и установить обновление
+        /// </summary>
+        public async Task UpdateNowAsync()
+        {
+            if (!IsUpdateAvailable || string.IsNullOrEmpty (UpdateDownloadUrl)) return;
+
+            IsCheckingForUpdate = true;
+            UpdateStatusText = "Загрузка обновления...";
+
+            try
+            {
+                var updater = new UpdateManager (AddLog);
+                bool updated = await updater.CheckAndUpdateAsync (silent: true);
+                if (updated)
+                {
+                    UpdateStatusText = "Обновление установлено. Перезапуск...";
+                }
+                else
+                {
+                    UpdateStatusText = "Ошибка установки обновления";
+                    IsUpdateAvailable = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                AddLog ($"❌ Ошибка обновления: {ex.Message}");
+                UpdateStatusText = "Ошибка обновления";
             }
             finally
             {
