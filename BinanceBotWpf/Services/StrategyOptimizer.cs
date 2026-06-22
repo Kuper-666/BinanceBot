@@ -54,7 +54,7 @@ namespace BinanceBotWpf.Services
                 var klinesByPair = new Dictionary<string, List<BinanceKline>> ();
                 foreach (var pair in topPairs)
                 {
-                    var klines = await _client.GetKlinesAsync (pair, "5m", 500);
+                    var klines = await _client.GetKlinesAsync (pair, "1h", 500); // 1h: меньше шума при оптимизации
                     if (klines != null && klines.Count > 100)
                     {
                         klinesByPair[pair] = klines;

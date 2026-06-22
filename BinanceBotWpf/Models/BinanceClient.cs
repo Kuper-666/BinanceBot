@@ -702,6 +702,27 @@ namespace BinanceBotWpf.Models
             return 0.00000001m;
         }
 
+        /// <summary>
+        /// Возвращает (stepSize, minQty) для символа из LOT_SIZE фильтра.
+        /// stepSize — шаг округления количества; minQty — минимальное количество для ордера.
+        /// </summary>
+        public async Task<(decimal stepSize, decimal minQty)> GetLotSizeAsync(string symbol)
+        {
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            var lotSize = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "LOT_SIZE");
+            if (lotSize != null)
+            {
+                decimal step = lotSize["stepSize"] != null
+                    ? decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture) : 0.00000001m;
+                decimal minQ = lotSize["minQty"] != null
+                    ? decimal.Parse (lotSize["minQty"].ToString (), CultureInfo.InvariantCulture) : 0m;
+                if (!_stepSizeCache.ContainsKey (symbol)) _stepSizeCache[symbol] = step;
+                return (step, minQ);
+            }
+            return (0.00000001m, 0m);
+        }
+
         public async Task<decimal> GetTickSizeAsync(string symbol)
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
@@ -714,11 +735,11 @@ namespace BinanceBotWpf.Models
             return 0.0001m;
         }
 
-        public async Task<decimal> GetATRAsync(string symbol, int period = 14)
+        public async Task<decimal> GetATRAsync(string symbol, int period = 14, string interval = "1h")
         {
             try
             {
-                var klines = await GetKlinesAsync (symbol, "5m", period + 1);
+                var klines = await GetKlinesAsync (symbol, interval, period + 1);
                 if (klines == null || klines.Count < period) return 0;
                 decimal atr = 0;
                 for (int i = 1; i <= period; i++)

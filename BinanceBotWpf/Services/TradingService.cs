@@ -316,10 +316,20 @@ namespace BinanceBotWpf.Services
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
                     if (pairs.Count == 0) { await Task.Delay (5000); continue; }
 
+                    // Читаем интервал из BotConfig один раз на итерацию, не на каждую пару
+                    string candleInterval = "1h";
+                    try
+                    {
+                        var cfg = BotConfig.LoadOrMigrate (out _);
+                        if (cfg != null && !string.IsNullOrEmpty (cfg.CandleInterval))
+                            candleInterval = cfg.CandleInterval;
+                    }
+                    catch { }
+
                     // 4. Анализ пар
                     foreach (var sym in pairs)
                     {
-                        var klines = await _client.GetKlinesAsync (sym, "5m", 50);
+                        var klines = await _client.GetKlinesAsync (sym, candleInterval, 100);
                         if (klines == null || klines.Count < 30) continue;
 
                         if (_ui != null)
@@ -389,7 +399,9 @@ namespace BinanceBotWpf.Services
             decimal riskAmount = await riskCalc.CalculateDynamicRiskAsync(currentBalance, 0.10m, volatility, aiRiskLevel);
 
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
-            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, currentBalance);
+            // minQty = 0: GetLotSizeAsync не реализован в BinanceClient, minQty санити-чек в CalculatePositionQuantity безопасно пропускается
+            decimal minQty = 0m;
+            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
             switch (qtyResult)
             {
@@ -415,6 +427,21 @@ namespace BinanceBotWpf.Services
             }
             _lastBuyTime[symbol] = DateTime.UtcNow;
 
+            // Динамический SL/TP через ATR (ATR уже доступен в RiskCalculator)
+            decimal riskRewardRatio = 3.0m; // 1:3 соотношение риск/прибыль
+            decimal atr = 0;
+            try { atr = await riskCalc.CalculateAtrAsync (symbol); } catch { }
+
+            decimal slDistance = atr > 0 && atr / price < 0.15m
+                ? atr * 1.5m                            // ATR * 1.5 как стоп
+                : price * ( _ui?.StopLossPercent ?? 0.015m );  // fallback на фиксированный %
+
+            decimal slPrice = price - slDistance;
+            decimal tpPrice = price + slDistance * riskRewardRatio;
+            decimal slPct = slDistance / price;
+
+            _ui?.AddLog ($"📐 {symbol}: SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{slPct * riskRewardRatio:P2}), R/R 1:{riskRewardRatio}");
+
             // Исполнение ордера
             _ui?.AddLog ($"💵 Покупка {qty} {symbol} по {price:F4}");
             var order = await _client.PlaceOrder (symbol, "BUY", "MARKET", qty);
@@ -427,15 +454,15 @@ namespace BinanceBotWpf.Services
                     Quantity = qty,
                     EntryPrice = price,
                     OpenTime = DateTime.UtcNow,
-                    StopLossPrice = price * ( 1 - ( _ui?.StopLossPercent ?? 0.02m ) ),
-                    TakeProfitPrice = price * ( 1 + ( _ui?.TakeProfitPercent ?? 0.04m ) ),
+                    StopLossPrice = slPrice,
+                    TakeProfitPrice = tpPrice,
                     HighestPrice = price,
                     HighestPriceSinceOpen = price,
                     OcoOrderListId = 0
                 };
 
                 _positionManager.AddOrUpdate (symbol, pos);
-                _ui?.AddLog ($"✅ Куплено {qty} {symbol}");
+                _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
         }

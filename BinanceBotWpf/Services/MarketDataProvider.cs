@@ -46,7 +46,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    var klines = await GetKlinesCachedAsync (sym, "5m", 50);
+                    var klines = await GetKlinesCachedAsync (sym, "1h", 100); // 1h: стандартный интервал анализа
                     if (klines?.Count < Math.Max (fastSmaPeriod, slowSmaPeriod) + 2) continue;
                     var closes = klines.Select (k => k.Close).ToList ();
                     var volumes = klines.Select (k => k.Volume).ToList ();
