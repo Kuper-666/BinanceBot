@@ -87,13 +87,31 @@ namespace BinanceBotWpf.Services
             decimal tickSize = await _client.GetTickSizeAsync (symbol);
             decimal minNotional = 6m; // Минимальный нотионал Binance
 
-            // Проверяем минимальный размер ордера
+            // Автоподстройка: уменьшаем уровни пока каждый ордер не будет >= minNotional
+            while (perLevelUsdc < minNotional && gridLevels > 1)
+            {
+                gridLevels--;
+                perLevelUsdc = totalInvestmentUsdc / (gridLevels * 2);
+            }
+
+            // Если даже 1 уровень не покрывает минимум — увеличиваем инвестиции
             if (perLevelUsdc < minNotional)
             {
-                _logger?.Invoke ($"⚠️ GridBot: сумма на уровень ({perLevelUsdc:F2} USDC) меньше минимального нотионала ({minNotional} USDC)");
-                _logger?.Invoke ($"   Уменьшите количество уровней или увеличьте инвестиции");
-                _isRunning = false;
-                return;
+                perLevelUsdc = minNotional;
+                totalInvestmentUsdc = perLevelUsdc * 2; // 1 buy + 1 sell
+                _logger?.Invoke ($"⚠️ Автоподстройка: инвестиции увеличены до {totalInvestmentUsdc:F2} USDC для покрытия минимума");
+            }
+
+            if (gridLevels != _buyLevels.Length)
+            {
+                _logger?.Invoke ($"🔧 Автоподстройка: уровней {gridLevels} (было {_buyLevels.Length}), на уровень {perLevelUsdc:F2} USDC");
+                _buyLevels = new decimal[gridLevels];
+                _sellLevels = new decimal[gridLevels];
+                for (int i = 0; i < gridLevels; i++)
+                {
+                    _buyLevels[i] = _centerPrice * (1 - stepPercent * (i + 1));
+                    _sellLevels[i] = _centerPrice * (1 + stepPercent * (i + 1));
+                }
             }
 
             // Округляем уровни по tickSize

@@ -138,9 +138,9 @@ namespace BinanceBotWpf.Services
         private GridParameters CalculateGridParameters(decimal balance, decimal volatility, decimal atr, decimal price, int aiRiskLevel)
         {
             var grid = new GridParameters ();
+            decimal minNotional = 6m; // Минимальный нотионал Binance
 
             // Инвестиции в сетку: от баланса
-            // Маленький баланс (до 100) → 15%, средний (100-500) → 20%, крупный → 25%
             if (balance < 100)
                 grid.InvestmentPercent = 0.15m;
             else if (balance < 500)
@@ -154,32 +154,36 @@ namespace BinanceBotWpf.Services
 
             grid.InvestmentPercent = Math.Clamp (grid.InvestmentPercent, 0.10m, 0.30m);
 
-            // Диапазон сетки: от волатильности
-            // Низкая волатильность → узкая сетка, высокая → широкая
-            if (volatility <= 0.03m)
-                grid.RangePercent = 0.05m;  // ±5%
-            else if (volatility <= 0.06m)
-                grid.RangePercent = 0.08m;  // ±8%
-            else if (volatility <= 0.10m)
-                grid.RangePercent = 0.12m;  // ±12%
-            else
-                grid.RangePercent = 0.15m;  // ±15%
-
-            // Количество уровней: от баланса (чтобы каждый уровень был > минимального ордера)
             decimal investmentUsdc = balance * grid.InvestmentPercent;
-            decimal minOrderUsdc = 6m; // Минимальный ордер Binance
-            int maxLevelsByBalance = Math.Max (3, (int)(investmentUsdc / (minOrderUsdc * 2)));
 
-            grid.Levels = Math.Clamp (
-                maxLevelsByBalance,
-                3,   // Минимум 3 уровня
-                15   // Максимум 15 уровней
-            );
+            // Диапазон сетки: от волатильности
+            if (volatility <= 0.03m)
+                grid.RangePercent = 0.05m;
+            else if (volatility <= 0.06m)
+                grid.RangePercent = 0.08m;
+            else if (volatility <= 0.10m)
+                grid.RangePercent = 0.12m;
+            else
+                grid.RangePercent = 0.15m;
 
-            // Динамический шаг: ATR-based
+            // Количество уровней: рассчитываем чтобы каждый ордер был >= minNotional
+            // 2 ордера на уровень (buy + sell), значит总投资 / (уровни * 2) >= minNotional
+            int maxLevels = Math.Max (1, (int)(investmentUsdc / (minNotional * 2)));
+            grid.Levels = Math.Clamp (maxLevels, 1, 15);
+
+            // Если инвестиций не хватает даже на 1 уровень — подтягиваем до минимума
+            decimal perLevel = investmentUsdc / (grid.Levels * 2);
+            if (perLevel < minNotional)
+            {
+                investmentUsdc = minNotional * 2 * grid.Levels; // минимум на каждый buy+sell
+                grid.InvestmentPercent = investmentUsdc / balance;
+                grid.InvestmentPercent = Math.Clamp (grid.InvestmentPercent, 0.10m, 0.50m);
+                _logger?.Invoke ($"⚠️ Автоподстройка: инвестиции увеличены до {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC) для покрытия минимума");
+            }
+
             grid.UseDynamicStep = atr > 0 && volatility > 0.03m;
 
-            _logger?.Invoke ($"🔲 Авто-сетка: баланс={balance:F2}, волатильность={volatility:P1}, ИИ={aiRiskLevel}");
+            _logger?.Invoke ($"🔲 Авто-сетка: баланс={balance:F2}, инвестиции={grid.InvestmentPercent:P0} ({balance * grid.InvestmentPercent:F2} USDC), уровней={grid.Levels}, на уровень={balance * grid.InvestmentPercent / (grid.Levels * 2):F2} USDC");
 
             return grid;
         }
