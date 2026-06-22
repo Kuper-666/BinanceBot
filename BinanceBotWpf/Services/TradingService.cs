@@ -316,16 +316,55 @@ namespace BinanceBotWpf.Services
             // Загружаем TradingSettings
             _tradingSettings = await TradingSettings.LoadAsync ();
 
+            // Загружаем настройки фьючерсов из BotConfig
+            try
+            {
+                var cfg = BotConfig.LoadOrMigrate (out _);
+                if (cfg != null)
+                {
+                    _tradingSettings.FuturesLeverage = cfg.FuturesLeverage;
+                    _ui?.AddLog ($"⚙️ Фьючерсы: плечо {cfg.FuturesLeverage}x, макс. риск {cfg.FuturesMaxRiskPercent:P0}");
+                }
+            }
+            catch { }
+
             // Инициализация фьючерсов (если включены)
             if (_ui?.FuturesEnabled == true)
             {
                 try
                 {
-                    var futuresClient = new BinanceFuturesClient (_client.GetApiKey (), _client.GetApiSecret ());
-                    await futuresClient.SyncTimeAsync ();
-                    await futuresClient.SetMarginTypeAsync ("BTCUSDT", "ISOLATED");
-                    await futuresClient.SetPositionModeAsync (true); // Hedge Mode
-                    _ui?.AddLog ("✅ Фьючерсы: Isolated Margin, Hedge Mode");
+                    // Используем отдельные фьючерсные ключи из BotConfig
+                    string futuresKey = _client.GetApiKey ();
+                    string futuresSecret = _client.GetApiSecret ();
+
+                    try
+                    {
+                        var cfg = BotConfig.LoadOrMigrate (out _);
+                        if (cfg != null)
+                        {
+                            if (!string.IsNullOrEmpty (cfg.FuturesApiKey))
+                                futuresKey = cfg.FuturesApiKey;
+                            if (!string.IsNullOrEmpty (cfg.FuturesApiSecret))
+                                futuresSecret = cfg.FuturesApiSecret;
+                        }
+                    }
+                    catch { }
+
+                    if (string.IsNullOrEmpty (futuresKey) || string.IsNullOrEmpty (futuresSecret))
+                    {
+                        _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. Укажите futuresApiKey/futuresApiSecret в config.json");
+                    }
+                    else
+                    {
+                        var futuresClient = new BinanceFuturesClient (futuresKey, futuresSecret);
+                        await futuresClient.SyncTimeAsync ();
+                        await futuresClient.SetMarginTypeAsync ("BTCUSDT", "ISOLATED");
+                        await futuresClient.SetPositionModeAsync (true); // Hedge Mode
+
+                        int leverage = _tradingSettings?.FuturesLeverage ?? 5;
+                        await futuresClient.SetLeverageAsync ("BTCUSDT", leverage);
+                        _ui?.AddLog ($"✅ Фьючерсы: Isolated Margin, Hedge Mode, плечо {leverage}x");
+                    }
                 }
                 catch (Exception ex)
                 {

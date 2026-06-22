@@ -18,6 +18,10 @@ namespace BinanceBotWpf.Models
         public string ApiSecretEncrypted { get; set; } = "";
         public string TelegramBotTokenEncrypted { get; set; } = "";
 
+        // Фьючерсные API ключи (отдельные от спотовых)
+        public string FuturesApiKeyEncrypted { get; set; } = "";
+        public string FuturesApiSecretEncrypted { get; set; } = "";
+
         // Внешние API (не обязательны, можно оставить пустыми)
         // CoinGecko: бесплатный план — 30 req/min, без ключа; Pro — до 500 req/min
         // Получить: https://www.coingecko.com/en/api
@@ -45,6 +49,10 @@ namespace BinanceBotWpf.Models
         public decimal MinRiskPercent { get; set; } = 0.10m;
         public decimal MaxRiskPercent { get; set; } = 0.30m;
 
+        // Настройки фьючерсов
+        public int FuturesLeverage { get; set; } = 5;
+        public decimal FuturesMaxRiskPercent { get; set; } = 0.10m;
+
         // Расшифрованные значения для использования в коде (не сериализуются в JSON)
         [JsonIgnore]
         public string ApiKey
@@ -58,6 +66,20 @@ namespace BinanceBotWpf.Models
         {
             get => Services.SecureStringHelper.Decrypt (ApiSecretEncrypted);
             set => ApiSecretEncrypted = Services.SecureStringHelper.Encrypt (value);
+        }
+
+        [JsonIgnore]
+        public string FuturesApiKey
+        {
+            get => Services.SecureStringHelper.Decrypt (FuturesApiKeyEncrypted);
+            set => FuturesApiKeyEncrypted = Services.SecureStringHelper.Encrypt (value);
+        }
+
+        [JsonIgnore]
+        public string FuturesApiSecret
+        {
+            get => Services.SecureStringHelper.Decrypt (FuturesApiSecretEncrypted);
+            set => FuturesApiSecretEncrypted = Services.SecureStringHelper.Encrypt (value);
         }
 
         [JsonIgnore]
