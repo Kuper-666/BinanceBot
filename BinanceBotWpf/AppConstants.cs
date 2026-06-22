@@ -1,3 +1,5 @@
+using System.Reflection;
+
 namespace BinanceBotWpf
 {
     /// <summary>
@@ -7,10 +9,10 @@ namespace BinanceBotWpf
     {
         /// <summary>
         /// Текущая версия приложения.
-        /// Обновляется после каждого релиза на GitHub.
-        /// Формат: X.Y.Z (Semantic Versioning)
+        /// Автоматически берётся из VersionPrefix в .csproj.
         /// </summary>
-        public const string AppVersion = "1.0.175";
+        public static string AppVersion =>
+            Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
 
         /// <summary>
         /// GitHub владелец репозитория для проверки обновлений.

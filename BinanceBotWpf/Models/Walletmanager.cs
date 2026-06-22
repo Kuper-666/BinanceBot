@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
@@ -58,7 +58,7 @@ namespace BinanceBotWpf.Models
                         }
                     }
                 }
-                Log ($"Балансы обновлены: {_balances.Count} активов");
+
             }
             catch (Exception ex) { Log ($"Ошибка обновления балансов: {ex.Message}"); }
         }

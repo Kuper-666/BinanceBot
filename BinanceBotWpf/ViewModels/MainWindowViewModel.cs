@@ -616,7 +616,6 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 WalletBalance = balance;
-                AddLog ($"💰 Баланс USDC: {balance}");
             });
         }
 
@@ -629,7 +628,6 @@ namespace BinanceBotWpf.ViewModels
                     series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
                     _plotModel.InvalidatePlot (true);
-                    AddLog ($"📈 Точка графика: {balance:F2} USDC в {time:HH:mm:ss}");
                 }
             });
         }
