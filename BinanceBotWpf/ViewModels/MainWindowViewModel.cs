@@ -344,7 +344,8 @@ namespace BinanceBotWpf.ViewModels
             try
             {
                 var updater = new UpdateManager (AddLog);
-                bool updated = await updater.CheckAndUpdateAsync (silent: true);
+                // Скачиваем напрямую по URL, без проверки версии
+                bool updated = await updater.DownloadByUrlAsync (UpdateDownloadUrl, AvailableVersion);
                 if (updated)
                 {
                     UpdateStatusText = "Обновление установлено. Перезапуск...";

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -145,6 +145,14 @@ namespace BinanceBotWpf.Services
                 _logger?.Invoke ($"❌ Ошибка установки: {ex.Message}");
                 return false;
             }
+        }
+
+        /// <summary>
+        /// Скачивать и установить обновление по URL напрямую (без проверки версии)
+        /// </summary>
+        public async Task<bool> DownloadByUrlAsync(string downloadUrl, string version)
+        {
+            return await DownloadAndInstall (downloadUrl, version);
         }
 
         private string CreateUpdateScript(string sourceDir, string targetDir, string backupDir, string currentExe)
