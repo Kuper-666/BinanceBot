@@ -48,8 +48,10 @@ namespace BinanceBotWpf.Tests
             decimal price = 63483.61m; // BTCUSDC
             decimal stepSize = 0.00001m;
             decimal balance = 73m;
+            decimal minQty = 0.00001m; // минимальное количество (например, для BTCUSDC)
+            decimal currentBalance = balance; // доступный баланс
 
-            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, balance);
+            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
             Assert.Equal (RiskCalculator.QuantityResult.Ok, result);
             Assert.True (qty > 0, "Количество должно быть поднято до минимального ордера, а не остаться нулевым");
@@ -66,8 +68,10 @@ namespace BinanceBotWpf.Tests
             decimal price = 63483.61m;
             decimal stepSize = 0.00001m;
             decimal balance = 3m; // меньше минимального notional
+            decimal minQty = 0.00001m;
+            decimal currentBalance = balance;
 
-            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, balance);
+            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
             Assert.Equal (RiskCalculator.QuantityResult.InsufficientBalanceForMinNotional, result);
             Assert.Equal (0m, qty);
@@ -81,8 +85,10 @@ namespace BinanceBotWpf.Tests
             decimal price = 100m;
             decimal stepSize = 0.001m;
             decimal balance = 1000m;
+            decimal minQty = 0.001m;
+            decimal currentBalance = balance;
 
-            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, balance);
+            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
             Assert.Equal (RiskCalculator.QuantityResult.Ok, result);
             // qty * price должно быть близко к 50, а не к минимальному notional (6)
@@ -98,8 +104,10 @@ namespace BinanceBotWpf.Tests
             decimal price = 100m;
             decimal stepSize = 1m; // грубый шаг лота вынуждает округлить вверх при минимальном notional
             decimal balance = 50m; // баланс меньше even minNotional требований после округления
+            decimal minQty = 0.001m;
+            decimal currentBalance = balance;
 
-            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, balance, minNotional: 60m);
+            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance, minNotional: 60m);
 
             Assert.Equal (RiskCalculator.QuantityResult.InsufficientBalanceForMinNotional, result);
             Assert.Equal (0m, qty);
@@ -108,7 +116,12 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public void CalculatePositionQuantity_ZeroPrice_DoesNotThrow_ReturnsZeroQuantity()
         {
-            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount: 10m, price: 0m, stepSize: 0.001m, currentBalance: 100m);
+            var (qty, result) = RiskCalculator.CalculatePositionQuantity (
+                riskAmount: 10m,
+                price: 0m,
+                stepSize: 0.001m,
+                minQty: 0.001m,
+                currentBalance: 100m);
 
             Assert.Equal (0m, qty);
             Assert.Equal (RiskCalculator.QuantityResult.ZeroQuantityAfterRounding, result);
@@ -118,7 +131,12 @@ namespace BinanceBotWpf.Tests
         public void CalculatePositionQuantity_ZeroStepSize_DoesNotThrow_ReturnsZeroQuantity()
         {
             // Защита от деления на ноль, если GetStepSizeAsync вернёт 0 из-за сбоя API
-            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount: 10m, price: 100m, stepSize: 0m, currentBalance: 100m);
+            var (qty, result) = RiskCalculator.CalculatePositionQuantity (
+                riskAmount: 10m,
+                price: 100m,
+                stepSize: 0m,
+                minQty: 0.001m,
+                currentBalance: 100m);
 
             Assert.Equal (0m, qty);
             Assert.Equal (RiskCalculator.QuantityResult.ZeroQuantityAfterRounding, result);
@@ -131,8 +149,10 @@ namespace BinanceBotWpf.Tests
             decimal price = 37.41m;
             decimal stepSize = 0.01m;
             decimal balance = 200m;
+            decimal minQty = 0.01m;
+            decimal currentBalance = balance;
 
-            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, balance);
+            var (qty, result) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
             Assert.Equal (RiskCalculator.QuantityResult.Ok, result);
             decimal remainder = qty % stepSize;
