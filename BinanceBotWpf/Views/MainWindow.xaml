@@ -478,6 +478,8 @@
                                 <TextBlock Text="Сеточный бот (Grid)" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
                                     <CheckBox Content="Включить Grid Bot" IsChecked="{Binding GridBotEnabled}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Пара:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBox Text="{Binding GridSymbol}" Width="100" Margin="0,0,15,0"/>
                                     <TextBlock Text="Диапазон (%):" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding GridRangePercent, StringFormat=F2}" Width="60" Margin="0,0,15,0"/>
                                     <TextBlock Text="Уровни:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>

@@ -385,9 +385,9 @@ namespace BinanceBotWpf.Services
             }
 
             // Авто-запуск сетки с параметрами от ИИ (если включена)
-            if (_tradingSettings?.GridBotEnabled == true && _activePairs.Count > 0)
+            if (_tradingSettings?.GridBotEnabled == true)
             {
-                string gridSymbol = _activePairs[0];
+                string gridSymbol = _tradingSettings.GridSymbol ?? "BTCUSDC";
                 _ui?.AddLog ($"🤖 Автозапуск ИИ-сетки для {gridSymbol}...");
                 _ = Task.Run (async () =>
                 {
@@ -861,7 +861,7 @@ namespace BinanceBotWpf.Services
                     }
                     else
                     {
-                        string gridSymbol = _activePairs.Count > 0 ? _activePairs[0] : "BTCUSDC";
+                        string gridSymbol = _tradingSettings?.GridSymbol ?? "BTCUSDC";
                         await StartAutoGridAsync (gridSymbol);
                         await _telegram.SendMessageAsync ($"✅ ИИ-сетка запущена для {gridSymbol}", chatId);
                     }

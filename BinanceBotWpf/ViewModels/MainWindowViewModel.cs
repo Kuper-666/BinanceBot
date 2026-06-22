@@ -914,6 +914,12 @@ namespace BinanceBotWpf.ViewModels
             set { if (_tradingSettings != null) { _tradingSettings.GridBotEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
         }
 
+        public string GridSymbol
+        {
+            get => _tradingSettings?.GridSymbol ?? "BTCUSDC";
+            set { if (_tradingSettings != null) { _tradingSettings.GridSymbol = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
         public decimal GridRangePercent
         {
             get => _tradingSettings?.GridRangePercent ?? 0.10m;

@@ -84,6 +84,14 @@ namespace BinanceBotWpf.Services
             // Выставляем лимитные ордера на каждый уровень
             decimal perLevelUsdc = totalInvestmentUsdc / (gridLevels * 2);
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
+            decimal tickSize = await _client.GetTickSizeAsync (symbol);
+
+            // Округляем уровни по tickSize
+            for (int i = 0; i < gridLevels; i++)
+            {
+                _buyLevels[i] = Math.Round (_buyLevels[i] / tickSize) * tickSize;
+                _sellLevels[i] = Math.Round (_sellLevels[i] / tickSize) * tickSize;
+            }
 
             for (int i = 0; i < gridLevels; i++)
             {
