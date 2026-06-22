@@ -53,23 +53,26 @@ namespace BinanceBotWpf.Services
         /// ExecuteBuy, чтобы её можно было покрыть юнит-тестами без мока биржевого клиента.
         /// </summary>
         public static (decimal Quantity, QuantityResult Result) CalculatePositionQuantity(
-    decimal riskAmount, decimal price, decimal stepSize, decimal minQty, decimal currentBalance, decimal minNotional = 6m)
+     decimal riskAmount, decimal price, decimal stepSize, decimal minQty, decimal currentBalance, decimal minNotional = 6m)
         {
             if (price <= 0 || stepSize <= 0 || minQty <= 0)
                 return (0, QuantityResult.ZeroQuantityAfterRounding);
 
+            // 1. Сначала проверяем, хватит ли баланса хотя бы на минимальный нотионал
+            if (currentBalance < minNotional)
+                return (0, QuantityResult.InsufficientBalanceForMinNotional);
+
+            // 2. Расчёт количества с учётом шага и минимального количества
             decimal qty = Math.Floor (( riskAmount / price ) / stepSize) * stepSize;
 
             if (qty < minQty)
             {
-                // Минимальное количество
                 qty = Math.Ceiling (minQty / stepSize) * stepSize;
             }
 
+            // 3. Если сумма меньше минимального нотионала — поднимаем до него
             if (qty * price < minNotional)
             {
-                if (currentBalance < minNotional)
-                    return (0, QuantityResult.InsufficientBalanceForMinNotional);
                 decimal minQtyByNotional = minNotional / price;
                 qty = Math.Ceiling (minQtyByNotional / stepSize) * stepSize;
             }
@@ -77,6 +80,7 @@ namespace BinanceBotWpf.Services
             if (qty <= 0)
                 return (0, QuantityResult.ZeroQuantityAfterRounding);
 
+            // 4. Финальная проверка: не превышает ли сумма доступный баланс
             if (qty * price > currentBalance)
                 return (0, QuantityResult.ExceedsAvailableBalance);
 
