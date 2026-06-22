@@ -20,11 +20,14 @@ namespace BinanceBotWpf.Models
         private long _serverTimeOffset = 0;
         private readonly bool _useTestnet;
         private JObject _exchangeInfo;
+        private DateTime _exchangeInfoExpiry = DateTime.MinValue;
         private readonly Dictionary<string, decimal> _stepSizeCache = new ();
 
         public event Action<string> OnLogGenerated;
         public string LastOrderError { get; private set; }
         public bool IsTestnet => _useTestnet;
+        public string GetApiKey () => _apiKey;
+        public string GetApiSecret () => _apiSecret;
 
         private void Log(string message) => OnLogGenerated?.Invoke (message);
 
@@ -403,6 +406,67 @@ namespace BinanceBotWpf.Models
             }
         }
 
+        public async Task<JObject> PlaceLimitOrder(string symbol, string side, decimal quantity, decimal price)
+        {
+            try
+            {
+                string query = $"symbol={symbol}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&price={price.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
+                string signature = CreateSignature (query);
+                var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order") { Content = content };
+                var response = await SendWithRetryAsync (request);
+                string body = await response.Content.ReadAsStringAsync ();
+                if (response.IsSuccessStatusCode)
+                {
+                    return JObject.Parse (body);
+                }
+                Log ($"PlaceLimitOrder ERROR for {symbol}: {body}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log ($"PlaceLimitOrder EXCEPTION: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<bool> CancelOrder(string symbol, long orderId)
+        {
+            try
+            {
+                long timestamp = GetTimestamp ();
+                string query = $"symbol={symbol}&orderId={orderId}&timestamp={timestamp}";
+                string signature = CreateSignature (query);
+                var request = new HttpRequestMessage (HttpMethod.Delete, $"/api/v3/order?{query}&signature={signature}");
+                var response = await SendWithRetryAsync (request);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                Log ($"CancelOrder exception: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<decimal> GetPriceAsync(string symbol)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync ($"/api/v3/ticker/price?symbol={symbol}");
+                if (response.IsSuccessStatusCode)
+                {
+                    string body = await response.Content.ReadAsStringAsync ();
+                    var json = JObject.Parse (body);
+                    return decimal.Parse (json["price"].ToString (), CultureInfo.InvariantCulture);
+                }
+                return 0;
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
         private string CreateSignature(string query)
         {
             using (var hmac = new HMACSHA256 (Encoding.UTF8.GetBytes (_apiSecret)))
@@ -760,12 +824,13 @@ namespace BinanceBotWpf.Models
 
         private async Task<JObject> GetExchangeInfoAsync()
         {
-            if (_exchangeInfo != null) return _exchangeInfo;
+            if (_exchangeInfo != null && DateTime.UtcNow < _exchangeInfoExpiry) return _exchangeInfo;
             var response = await _httpClient.GetAsync ("/api/v3/exchangeInfo");
             if (response.IsSuccessStatusCode)
             {
                 string json = await response.Content.ReadAsStringAsync ();
                 _exchangeInfo = JObject.Parse (json);
+                _exchangeInfoExpiry = DateTime.UtcNow.AddHours (24); // Кэш на 24 часа
                 return _exchangeInfo;
             }
             return new JObject ();

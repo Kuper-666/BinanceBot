@@ -7,7 +7,7 @@ using BinanceBotWpf.Models;
 namespace BinanceBotWpf.Services
 {
     /// <summary>
-    /// Основная торговая стратегия (SMA + RSI + MACD)
+    /// Основная торговая стратегия (SMA + RSI + MACD) с мульти-таймфрейм поддержкой
     /// </summary>
     public class TradingStrategy
     {
@@ -17,6 +17,10 @@ namespace BinanceBotWpf.Services
         public int FastSmaPeriod { get; set; } = 9;
         public int SlowSmaPeriod { get; set; } = 21;
         public int RsiPeriod { get; set; } = 14;
+
+        // Мульти-таймфрейм
+        public string MainTimeframe { get; set; } = "1h";
+        public string EntryTimeframe { get; set; } = "5m";
 
         public TradingStrategy(Action<string> logger)
         {
@@ -158,6 +162,35 @@ namespace BinanceBotWpf.Services
             }
 
             return result;
+        }
+
+        /// <summary>
+        /// Проверка подтверждения сигнала на мелком таймфрейме.
+        /// Вызывается после генерации сигнала на основном TF.
+        /// </summary>
+        public bool CheckEntryConfirmation(List<BinanceKline> entryKlines, TradeAction signal)
+        {
+            if (entryKlines == null || entryKlines.Count < 20) return false;
+
+            var closes = entryKlines.Select (k => k.Close).ToList ();
+            decimal rsi = CalculateRsi (closes, 14);
+            decimal currentPrice = closes.Last ();
+            var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
+            decimal bbLower = bb.Lower.LastOrDefault () ?? currentPrice;
+            decimal bbUpper = bb.Upper.LastOrDefault () ?? currentPrice;
+
+            if (signal == TradeAction.Buy)
+            {
+                // Подтверждение BUY: RSI < 35 ИЛИ цена у нижней полосы Боллинджера
+                return rsi < 35 || currentPrice <= bbLower * 1.005m;
+            }
+            else if (signal == TradeAction.Sell)
+            {
+                // Подтверждение SELL: RSI > 65 ИЛИ цена у верхней полосы Боллинджера
+                return rsi > 65 || currentPrice >= bbUpper * 0.995m;
+            }
+
+            return false;
         }
 
         private decimal CalculateSma(List<decimal> data, int period)

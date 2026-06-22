@@ -98,5 +98,40 @@ namespace BinanceBotWpf.Services
             qty = Math.Round (qty, 8);
             return qty;
         }
+
+        /// <summary>
+        /// Единый расчёт SL/TP: сначала пытаемся через ATR, затем fallback на фиксированный процент.
+        /// Возвращает (StopLossPrice, TakeProfitPrice, StopLossPercent).
+        /// </summary>
+        public async Task<(decimal SlPrice, decimal TpPrice, decimal SlPercent)> CalculateStopLossAndTakeProfitAsync(
+            string symbol, decimal entryPrice, decimal riskRewardRatio, decimal fallbackSlPercent)
+        {
+            decimal atr = 0;
+            try { atr = await CalculateAtrAsync (symbol); } catch { }
+
+            decimal slDistance;
+            if (atr > 0 && atr / entryPrice < 0.15m)
+            {
+                slDistance = atr * 1.5m;
+            }
+            else
+            {
+                slDistance = entryPrice * fallbackSlPercent;
+            }
+
+            decimal slPrice = entryPrice - slDistance;
+            decimal tpPrice = entryPrice + slDistance * riskRewardRatio;
+            decimal slPct = slDistance / entryPrice;
+
+            return (slPrice, tpPrice, slPct);
+        }
+
+        /// <summary>
+        /// Расчёт суммы риска: Balance * RiskPerTradePercent (жёсткий лимит 1%)
+        /// </summary>
+        public static decimal CalculateRiskAmount(decimal balance, decimal riskPerTradePercent)
+        {
+            return balance * Math.Clamp (riskPerTradePercent, 0.005m, 0.02m);
+        }
     }
 }

@@ -312,5 +312,30 @@ namespace BinanceBotWpf.Services
                 }
             }
         }
+
+        /// <summary>
+        /// Отправка трейлинг-стопа на фьючерсах через API (TRAILING_STOP_MARKET)
+        /// </summary>
+        public async Task UpdateTrailingStopAsync(BinanceFuturesClient futuresClient, string symbol, decimal quantity, decimal callbackRate)
+        {
+            if (futuresClient == null) return;
+
+            try
+            {
+                var order = await futuresClient.PlaceTrailingStopMarketAsync (symbol, "SELL", quantity, callbackRate);
+                if (order != null)
+                {
+                    _logger?.Invoke ($"📈 Фьючерсный трейлинг-стоп {symbol}: callbackRate={callbackRate}%");
+                }
+                else
+                {
+                    _logger?.Invoke ($"⚠️ Не удалось выставить трейлинг-стоп для {symbol}");
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger?.Invoke ($"❌ Ошибка трейлинг-стопа {symbol}: {ex.Message}");
+            }
+        }
     }
 }

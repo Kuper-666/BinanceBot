@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Linq;
 using System.Net.WebSockets;
@@ -41,56 +41,69 @@ namespace BinanceBotWpf.Services
             string streamName = $"{symbol.ToLowerInvariant ()}@ticker";
             string url = $"wss://stream.binance.com:9443/ws/{streamName}";
 
-            var ws = new ClientWebSocket ();
-            _sockets[symbol] = ws;
+            int reconnectDelay = 1000;
+            const int maxReconnectDelay = 30000;
 
-            try
+            while (!cancellationToken.IsCancellationRequested)
             {
-                await ws.ConnectAsync (new Uri (url), cancellationToken);
-                _logger?.Invoke ($"✅ WebSocket подключён к {symbol}");
+                var ws = new ClientWebSocket ();
+                _sockets[symbol] = ws;
 
-                var buffer = new byte[4096];
-
-                while (ws.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
+                try
                 {
-                    var result = await ws.ReceiveAsync (new ArraySegment<byte> (buffer), cancellationToken);
+                    await ws.ConnectAsync (new Uri (url), cancellationToken);
+                    _logger?.Invoke ($"✅ WebSocket подключён к {symbol}");
+                    reconnectDelay = 1000; // Сброс задержки при успешном подключении
 
-                    if (result.MessageType == WebSocketMessageType.Text)
+                    var buffer = new byte[4096];
+
+                    while (ws.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
                     {
-                        var json = Encoding.UTF8.GetString (buffer, 0, result.Count);
-                        using var doc = JsonDocument.Parse (json);
+                        var result = await ws.ReceiveAsync (new ArraySegment<byte> (buffer), cancellationToken);
 
-                        // Поле 'c' содержит последнюю цену в тикере
-                        if (doc.RootElement.TryGetProperty ("c", out var priceElement))
+                        if (result.MessageType == WebSocketMessageType.Text)
                         {
-                            string priceStr = priceElement.GetString ();
-                            if (decimal.TryParse (priceStr, System.Globalization.NumberStyles.Float,
-                                System.Globalization.CultureInfo.InvariantCulture, out decimal price))
+                            var json = Encoding.UTF8.GetString (buffer, 0, result.Count);
+                            using var doc = JsonDocument.Parse (json);
+
+                            if (doc.RootElement.TryGetProperty ("c", out var priceElement))
                             {
-                                _currentPrices[symbol] = price;
+                                string priceStr = priceElement.GetString ();
+                                if (decimal.TryParse (priceStr, System.Globalization.NumberStyles.Float,
+                                    System.Globalization.CultureInfo.InvariantCulture, out decimal price))
+                                {
+                                    _currentPrices[symbol] = price;
+                                }
                             }
                         }
-                    }
-                    else if (result.MessageType == WebSocketMessageType.Close)
-                    {
-                        await ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "", cancellationToken);
-                        break;
+                        else if (result.MessageType == WebSocketMessageType.Close)
+                        {
+                            await ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "", cancellationToken);
+                            break;
+                        }
                     }
                 }
-            }
-            catch (OperationCanceledException)
-            {
-                // Нормальное завершение
-            }
-            catch (Exception ex)
-            {
-                _logger?.Invoke ($"❌ WebSocket ошибка {symbol}: {ex.Message}");
-            }
-            finally
-            {
-                _sockets.TryRemove (symbol, out _);
-                _ctsDict.TryRemove (symbol, out _);
-                try { ws.Dispose (); } catch { }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Invoke ($"❌ WebSocket ошибка {symbol}: {ex.Message}");
+                }
+                finally
+                {
+                    _sockets.TryRemove (symbol, out _);
+                    try { ws.Dispose (); } catch { }
+                }
+
+                // Авто-переподключение с экспоненциальной задержкой
+                if (!cancellationToken.IsCancellationRequested)
+                {
+                    _logger?.Invoke ($"🔄 WebSocket: переподключение к {symbol} через {reconnectDelay / 1000}с...");
+                    await Task.Delay (reconnectDelay, cancellationToken);
+                    reconnectDelay = Math.Min (reconnectDelay * 2, maxReconnectDelay);
+                }
             }
         }
 

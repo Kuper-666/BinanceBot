@@ -28,6 +28,13 @@ namespace BinanceBotWpf.Services
         private readonly PositionProtector _positionProtector;
         private WebSocketPriceManager _webSocketManager;
         private UpdateChecker _updateChecker;
+        private GridBot _gridBot;
+        private VolumeBreakoutStrategy _volumeBreakout;
+        private DCAStrategy _dcaStrategy;
+        private NewsProvider _newsProvider;
+        private MacroCalendarProvider _macroCalendar;
+        private TradingSettings _tradingSettings;
+        private BackupService _backupService;
 
         private MainWindowViewModel _ui;
         private bool _isRunning;
@@ -69,6 +76,12 @@ namespace BinanceBotWpf.Services
             _strategy = new TradingStrategy (null);
             _signalFilter = new SignalFilter (null);
             _positionProtector = new PositionProtector (client, _positionManager, null);
+            _volumeBreakout = new VolumeBreakoutStrategy (client, null);
+            _dcaStrategy = new DCAStrategy (client, null);
+            _newsProvider = new NewsProvider (new System.Net.Http.HttpClient (), null);
+            _macroCalendar = new MacroCalendarProvider (new System.Net.Http.HttpClient (), null);
+            _tradingSettings = new TradingSettings ();
+            _backupService = new BackupService (null);
 
             // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
             _webSocketManager = new WebSocketPriceManager (null);
@@ -191,9 +204,48 @@ namespace BinanceBotWpf.Services
             if (_ui != null) _ui.IsRunning = false;
             _webSocketManager?.Dispose ();
             _webSocketManager = null;
+            _gridBot?.Dispose ();
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
+
+        /// <summary>
+        /// Запуск сеточного бота
+        /// </summary>
+        public async Task StartGridAsync(string symbol, decimal gridRangePercent, int gridLevels, decimal investmentPercent)
+        {
+            if (_gridBot != null && _gridBot.IsRunning)
+            {
+                _ui?.AddLog ("⚠️ GridBot уже запущен. Остановите перед перезапуском.");
+                return;
+            }
+
+            decimal currentPrice = GetCurrentPrice (symbol);
+            if (currentPrice <= 0)
+            {
+                _ui?.AddLog ($"❌ Не удалось получить цену для {symbol}");
+                return;
+            }
+
+            decimal balance = _wallet.GetTotalBalance ("USDC");
+            decimal investmentUsdc = balance * investmentPercent;
+
+            _gridBot = new GridBot (_client, _positionManager, msg => _ui?.AddLog (msg));
+            await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
+        }
+
+        /// <summary>
+        /// Остановка сеточного бота
+        /// </summary>
+        public async Task StopGridAsync()
+        {
+            if (_gridBot != null && _gridBot.IsRunning)
+            {
+                await _gridBot.StopAsync ();
+                _gridBot.Dispose ();
+                _gridBot = null;
+            }
+        }
 
         private async Task InitAsync()
         {
@@ -201,6 +253,26 @@ namespace BinanceBotWpf.Services
             await UpdatePairs ();
             await LoadPositions ();
             _ui?.AddLog (_client.IsTestnet ? "⚠️ ТЕСТОВАЯ СЕТЬ" : "✅ РЕАЛЬНАЯ СЕТЬ");
+
+            // Загружаем TradingSettings
+            _tradingSettings = await TradingSettings.LoadAsync ();
+
+            // Инициализация фьючерсов (если включены)
+            if (_ui?.FuturesEnabled == true)
+            {
+                try
+                {
+                    var futuresClient = new BinanceFuturesClient (_client.GetApiKey (), _client.GetApiSecret ());
+                    await futuresClient.SyncTimeAsync ();
+                    await futuresClient.SetMarginTypeAsync ("BTCUSDT", "ISOLATED");
+                    await futuresClient.SetPositionModeAsync (true); // Hedge Mode
+                    _ui?.AddLog ("✅ Фьючерсы: Isolated Margin, Hedge Mode");
+                }
+                catch (Exception ex)
+                {
+                    _ui?.AddLog ($"⚠️ Ошибка инициализации фьючерсов: {ex.Message}");
+                }
+            }
             
             // Проверка обновлений версии на GitHub (не блокирует инициализацию)
             if (_updateChecker != null)
@@ -274,6 +346,9 @@ namespace BinanceBotWpf.Services
                 _ui?.UpdateDrawdown (bal);
                 _ui?.AddBalancePoint (DateTime.Now, bal);
 
+                // Проверка и создание бэкапа (раз в сутки)
+                await _backupService.CheckAndBackupAsync ();
+
                 // Ребаланс при низком балансе
                 decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                 if (spotBalance < 10)
@@ -295,6 +370,19 @@ namespace BinanceBotWpf.Services
                 try
                 {
                     if (!_tradingLoopEnabled) { await Task.Delay (5000); continue; }
+
+                    // 0. Проверка новостей и макро-событий
+                    if (_tradingSettings?.AvoidNewsTime == true)
+                    {
+                        bool newsNear = await _newsProvider.IsEventNearAsync (30);
+                        bool macroNear = await _macroCalendar.IsHighImpactEventNearAsync (60);
+                        if (newsNear || macroNear)
+                        {
+                            _ui?.AddLog ("📰 Торговля приостановлена: обнаружены значимые события");
+                            await Task.Delay (300000); // Ждём 5 минут
+                            continue;
+                        }
+                    }
 
                     // 1. Защита позиций
                     var toClose = await _positionProtector.CheckAndProtectAsync (GetCurrentPrice);
@@ -318,6 +406,7 @@ namespace BinanceBotWpf.Services
 
                     // Читаем интервал из BotConfig один раз на итерацию, не на каждую пару
                     string candleInterval = "1h";
+                    string entryInterval = "5m";
                     try
                     {
                         var cfg = BotConfig.LoadOrMigrate (out _);
@@ -325,6 +414,13 @@ namespace BinanceBotWpf.Services
                             candleInterval = cfg.CandleInterval;
                     }
                     catch { }
+
+                    // Мульти-таймфрейм: читаем из TradingSettings
+                    if (_ui != null)
+                    {
+                        candleInterval = _ui.MainTimeframe ?? "1h";
+                        entryInterval = _ui.EntryTimeframe ?? "5m";
+                    }
 
                     // 4. Анализ пар
                     foreach (var sym in pairs)
@@ -337,10 +433,24 @@ namespace BinanceBotWpf.Services
                             _strategy.FastSmaPeriod = _ui.FastSma;
                             _strategy.SlowSmaPeriod = _ui.SlowSma;
                             _strategy.RsiPeriod = _ui.RsiPeriod;
+                            _strategy.MainTimeframe = _ui.MainTimeframe ?? "1h";
+                            _strategy.EntryTimeframe = _ui.EntryTimeframe ?? "5m";
                         }
 
                         var analysis = await _strategy.AnalyzeAsync (sym, klines);
                         bool hasPosition = _positionManager.TryGet (sym, out _);
+
+                        // Мульти-таймфрейм: подтверждение на мелком TF
+                        bool confirmed = true;
+                        if (analysis.Action == TradeAction.Buy || analysis.Action == TradeAction.Sell)
+                        {
+                            var entryKlines = await _client.GetKlinesAsync (sym, entryInterval, 30);
+                            confirmed = _strategy.CheckEntryConfirmation (entryKlines, analysis.Action);
+                            if (!confirmed)
+                            {
+                                _ui?.AddLog ($"⏳ {sym}: {analysis.Action} на {candleInterval}, ожидаем подтверждение на {entryInterval}");
+                            }
+                        }
 
                         // Обновление UI
                         if (analysis.Indicators.ContainsKey ("price"))
@@ -351,16 +461,42 @@ namespace BinanceBotWpf.Services
                                 analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0);
                         }
 
-                        // 5. Исполнение сигналов
-                        if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+                        // 5. Исполнение сигналов (только с подтверждением)
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             await ExecuteBuy (sym, analysis.Indicators, spotBalance);
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                         }
-                        else if (analysis.Action == TradeAction.Sell && hasPosition)
+                        else if (analysis.Action == TradeAction.Sell && hasPosition && confirmed)
                         {
                             await ExecuteSell (sym);
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                        }
+
+                        // 6. Volume Breakout стратегия (если включена)
+                        if (_ui?.VolumeBreakoutEnabled == true && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+                        {
+                            if (_volumeBreakout.CheckVolumeBreakout (klines))
+                            {
+                                _ui?.AddLog ($"🚀 {sym}: Volume Breakout сигнал!");
+                                await ExecuteBuy (sym, analysis.Indicators, spotBalance);
+                                spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            }
+                        }
+
+                        // 7. DCA стратегия (если включена)
+                        if (_ui?.DcaEnabled == true && !hasPosition)
+                        {
+                            if (_dcaStrategy.ShouldBuy (sym, klines, spotBalance))
+                            {
+                                decimal buyAmount = _dcaStrategy.CalculateBuyAmount (spotBalance);
+                                _ui?.AddLog ($"📊 {sym}: DCA покупка на {buyAmount:F2} USDC");
+                                // DCA использует тот же механизм покупки, но с фиксированной суммой
+                                var indicators = new Dictionary<string, decimal> (analysis.Indicators);
+                                indicators["dcaBuyAmount"] = buyAmount;
+                                await ExecuteBuy (sym, indicators, spotBalance);
+                                spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            }
                         }
                     }
 
@@ -384,7 +520,6 @@ namespace BinanceBotWpf.Services
             decimal slowSma = indicators.ContainsKey ("slowSma") ? indicators["slowSma"] : 0;
             decimal macdHist = indicators.ContainsKey ("macdHist") ? indicators["macdHist"] : 0;
 
-            // Убран жесткий фильтр, полагаемся на анализ стратегии и ИИ
             int aiRiskLevel = indicators.ContainsKey("aiRiskLevel") ? (int)indicators["aiRiskLevel"] : 2;
 
             if (aiRiskLevel == 3) 
@@ -393,54 +528,47 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
-            // Расчёт динамического риска с учетом ИИ
             var riskCalc = new RiskCalculator(_client, _ui, msg => _ui?.AddLog(msg));
-            decimal volatility = indicators.ContainsKey("bbWidth") ? indicators["bbWidth"] : 0.05m;
-            decimal riskAmount = await riskCalc.CalculateDynamicRiskAsync(currentBalance, 0.10m, volatility, aiRiskLevel);
+
+            // === Жёсткий риск-менеджмент: 1% от баланса на сделку ===
+            decimal riskPerTrade = _ui?.RiskPerTradePercent ?? 0.01m;
+            decimal riskRewardRatio = _ui?.RiskRewardRatio ?? 3.0m;
+            decimal riskAmount = RiskCalculator.CalculateRiskAmount (currentBalance, riskPerTrade);
 
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
-            // minQty = 0: GetLotSizeAsync не реализован в BinanceClient, minQty санити-чек в CalculatePositionQuantity безопасно пропускается
             decimal minQty = 0m;
             var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
             switch (qtyResult)
             {
                 case RiskCalculator.QuantityResult.InsufficientBalanceForMinNotional:
-                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — баланс {currentBalance:F2} USDC недостаточен для минимального ордера (6.00 USDC)");
+                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — баланс {currentBalance:F2} USDC ниже минимального ордера");
                     return;
                 case RiskCalculator.QuantityResult.ZeroQuantityAfterRounding:
-                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — нулевое количество после округления по шагу лота");
+                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — нулевое количество после округления");
                     return;
                 case RiskCalculator.QuantityResult.ExceedsAvailableBalance:
-                    _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — стоимость ордера превышает доступный баланс {currentBalance:F2} USDC");
+                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — ордер превышает доступный баланс {currentBalance:F2} USDC");
                     return;
             }
 
-            if (qty * price > riskAmount * 1.01m) // подняли сумму до минимального notional
-                _ui?.AddLog ($"ℹ️ {symbol}: расчётный риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
+            if (qty * price > riskAmount * 1.01m)
+                _ui?.AddLog ($"ℹ️ {symbol}: риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
 
-            // Проверка кулдауна
+            // Кулдаун
             if (_lastBuyTime.TryGetValue (symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (2))
             {
-                _ui?.AddLog ($"⏸ {symbol}: сигнал BUY проигнорирован — кулдаун после прошлой покупки ({(TimeSpan.FromMinutes (2) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек осталось)");
+                _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — кулдаун ({(TimeSpan.FromMinutes (2) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)");
                 return;
             }
             _lastBuyTime[symbol] = DateTime.UtcNow;
 
-            // Динамический SL/TP через ATR (ATR уже доступен в RiskCalculator)
-            decimal riskRewardRatio = 3.0m; // 1:3 соотношение риск/прибыль
-            decimal atr = 0;
-            try { atr = await riskCalc.CalculateAtrAsync (symbol); } catch { }
+            // === Динамический SL/TP: ATR → fallback на фиксированный % ===
+            decimal fallbackSlPercent = _ui?.StopLossPercent ?? 0.015m;
+            var (slPrice, tpPrice, slPct) = await riskCalc.CalculateStopLossAndTakeProfitAsync (
+                symbol, price, riskRewardRatio, fallbackSlPercent);
 
-            decimal slDistance = atr > 0 && atr / price < 0.15m
-                ? atr * 1.5m                            // ATR * 1.5 как стоп
-                : price * ( _ui?.StopLossPercent ?? 0.015m );  // fallback на фиксированный %
-
-            decimal slPrice = price - slDistance;
-            decimal tpPrice = price + slDistance * riskRewardRatio;
-            decimal slPct = slDistance / price;
-
-            _ui?.AddLog ($"📐 {symbol}: SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{slPct * riskRewardRatio:P2}), R/R 1:{riskRewardRatio}");
+            _ui?.AddLog ($"📐 {symbol}: Risk={riskAmount:F2} ({riskPerTrade:P0}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{slPct * riskRewardRatio:P2}), R/R 1:{riskRewardRatio}");
 
             // Исполнение ордера
             _ui?.AddLog ($"💵 Покупка {qty} {symbol} по {price:F4}");
@@ -462,7 +590,7 @@ namespace BinanceBotWpf.Services
                 };
 
                 _positionManager.AddOrUpdate (symbol, pos);
-                _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4}");
+                _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4} | R/R 1:{riskRewardRatio}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
         }
@@ -613,6 +741,82 @@ namespace BinanceBotWpf.Services
                 case "/performance":
                     await _telegram.SendMessageAsync (GetPerformanceStats (), chatId);
                     break;
+                case "/grid":
+                    if (_gridBot != null && _gridBot.IsRunning)
+                    {
+                        await StopGridAsync ();
+                        await _telegram.SendMessageAsync ($"⏹️ GridBot остановлен для {_gridBot?.Symbol}", chatId);
+                    }
+                    else
+                    {
+                        string gridSymbol = _activePairs.Count > 0 ? _activePairs[0] + "USDC" : "BTCUSDC";
+                        await StartGridAsync (gridSymbol, 0.10m, 10, 0.20m);
+                        await _telegram.SendMessageAsync ($"✅ GridBot запущен для {gridSymbol}", chatId);
+                    }
+                    break;
+                case "/futures":
+                    _ui.FuturesEnabled = !_ui.FuturesEnabled;
+                    string futStatus = _ui.FuturesEnabled ? "✅ Включены" : "❌ Отключены";
+                    await _telegram.SendMessageAsync ($"📊 Фьючерсы: {futStatus}", chatId);
+                    break;
+                case "/dca":
+                    _ui.DcaEnabled = !_ui.DcaEnabled;
+                    string dcaStatus = _ui.DcaEnabled ? "✅ Включён" : "❌ Отключён";
+                    await _telegram.SendMessageAsync ($"📊 DCA: {dcaStatus}", chatId);
+                    break;
+                case "/optimize":
+                    await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию...", chatId);
+                    var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
+                    bool optSuccess = await optimizer.RunOptimizationAsync ();
+                    await _telegram.SendMessageAsync (optSuccess ? "✅ Оптимизация завершена" : "⚠️ Оптимизация не дала результатов", chatId);
+                    break;
+                case "/rollback":
+                    var rollbackOptimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
+                    bool rolled = await rollbackOptimizer.RollbackToPreviousParameters ();
+                    await _telegram.SendMessageAsync (rolled ? "🔄 Откат выполнен" : "⚠️ Нет предыдущих параметров", chatId);
+                    break;
+                case "/backup":
+                    await _backupService.CreateBackupAsync ();
+                    await _telegram.SendMessageAsync ("💾 Бэкап создан", chatId);
+                    break;
+                case "/restore":
+                    var backups = _backupService.GetAvailableBackups ();
+                    if (backups.Length > 0)
+                    {
+                        bool restored = await _backupService.RestoreFromBackupAsync (backups[0]);
+                        await _telegram.SendMessageAsync (restored ? "✅ Конфигурация восстановлена" : "❌ Ошибка восстановления", chatId);
+                    }
+                    else
+                        await _telegram.SendMessageAsync ("⚠️ Нет доступных бэкапов", chatId);
+                    break;
+                case "/set":
+                    string[] parts = cmd.Split (' ');
+                    if (parts.Length >= 3)
+                    {
+                        string param = parts[1].ToLower ();
+                        if (decimal.TryParse (parts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out decimal val))
+                        {
+                            switch (param)
+                            {
+                                case "risk":
+                                    _ui.RiskPerTradePercent = val / 100m;
+                                    await _telegram.SendMessageAsync ($"✅ RiskPerTrade = {val}%", chatId);
+                                    break;
+                                case "rr":
+                                    _ui.RiskRewardRatio = val;
+                                    await _telegram.SendMessageAsync ($"✅ RiskRewardRatio = {val}", chatId);
+                                    break;
+                                default:
+                                    await _telegram.SendMessageAsync ("⚠️ Неизвестный параметр. Доступные: risk, rr", chatId);
+                                    break;
+                            }
+                        }
+                        else
+                            await _telegram.SendMessageAsync ("⚠️ Неверное значение. Пример: /set risk 1.5", chatId);
+                    }
+                    else
+                        await _telegram.SendMessageAsync ("⚠️ Формат: /set <параметр> <значение>\nДоступные: risk, rr", chatId);
+                    break;
                 case "/help":
                     string help = "🤖 *Команды:*\n" +
                         "/status – состояние\n" +
@@ -622,6 +826,14 @@ namespace BinanceBotWpf.Services
                         "/export – экспорт\n" +
                         "/retrain – переобучить ML\n" +
                         "/pnl – статистика PnL\n" +
+                        "/grid – запустить/остановить сетку\n" +
+                        "/futures – вкл/выкл фьючерсы\n" +
+                        "/dca – вкл/выкл DCA\n" +
+                        "/optimize – запустить оптимизацию\n" +
+                        "/rollback – откат к предыдущим параметрам\n" +
+                        "/set risk/rr – изменить параметры\n" +
+                        "/backup – создать бэкап\n" +
+                        "/restore – восстановить из бэкапа\n" +
                         "/update – проверить обновления\n" +
                         "/errors – ошибки\n" +
                         "/performance – детальная статистика\n" +
@@ -656,6 +868,7 @@ namespace BinanceBotWpf.Services
         /// </summary>
         private async Task AutoOptimizeLoop()
         {
+            int lastTradeCount = 0;
             while (_isRunning)
             {
                 // Ждём 24 часа
@@ -663,19 +876,32 @@ namespace BinanceBotWpf.Services
 
                 if (!_isRunning) break;
 
-                _ui?.AddLog ("🧠 Запуск автоматической оптимизации параметров (ежедневная)...");
+                // Проверяем количество новых сделок (минимум 10 для оптимизации)
+                int currentTradeCount = _ui?.TotalTrades ?? 0;
+                int newTrades = currentTradeCount - lastTradeCount;
+
+                if (newTrades < 10)
+                {
+                    _ui?.AddLog ($"🧠 Оптимизация пропущена: только {newTrades} новых сделок (нужно минимум 10)");
+                    lastTradeCount = currentTradeCount;
+                    continue;
+                }
+
+                _ui?.AddLog ($"🧠 Запуск оптимизации ({newTrades} новых сделок)...");
 
                 var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
                 bool success = await optimizer.RunOptimizationAsync ();
 
                 if (success)
                 {
-                    _ui?.AddLog ("✅ Ежедневная оптимизация завершена");
+                    _ui?.AddLog ("✅ Оптимизация завершена");
                 }
                 else
                 {
-                    _ui?.AddLog ("⚠️ Ежедневная оптимизация не дала результатов");
+                    _ui?.AddLog ("⚠️ Оптимизация не дала результатов");
                 }
+
+                lastTradeCount = currentTradeCount;
             }
         }
 

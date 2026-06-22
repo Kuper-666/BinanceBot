@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Concurrent;
 using System.Threading;
 using System.Threading.Tasks;
@@ -60,11 +60,18 @@ namespace BinanceBotWpf.Services
 
         /// <summary>
         /// Обновить множитель веса на основе ответа сервера (заголовки X-MBX-USED-WEIGHT-1m).
+        /// Логирует приближение к лимиту.
         /// </summary>
         public void UpdateWeightMultiplier(int usedWeight, int limitWeight = 1200)
         {
             if (limitWeight <= 0) return;
             double ratio = (double)usedWeight / limitWeight;
+
+            if (ratio > 0.8)
+            {
+                System.Diagnostics.Debug.WriteLine ($"⚠️ RateLimiter: использовано {usedWeight}/{limitWeight} ({ratio:P0}) — приближение к лимиту!");
+            }
+
             if (ratio > 0.9)
                 _weightMultiplier = Math.Min (3.0, _weightMultiplier * 1.2);
             else if (ratio < 0.5)

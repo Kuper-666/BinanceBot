@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Globalization;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -129,6 +129,85 @@ namespace BinanceBotWpf.Services
                 }).ToList ();
             }
             return new List<BinanceKline> ();
+        }
+
+        public async Task SetMarginTypeAsync(string symbol, string marginType)
+        {
+            long timestamp = GetTimestamp ();
+            string query = $"symbol={symbol}&marginType={marginType}&timestamp={timestamp}";
+            string signature = CreateSignature (query);
+            var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+            var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/marginType") { Content = content };
+            var response = await _httpClient.SendAsync (request);
+            if (!response.IsSuccessStatusCode)
+            {
+                string body = await response.Content.ReadAsStringAsync ();
+                Log ($"SetMarginType error for {symbol}: {body}");
+            }
+        }
+
+        public async Task SetPositionModeAsync(bool hedgeMode)
+        {
+            long timestamp = GetTimestamp ();
+            string dualSidePosition = hedgeMode ? "true" : "false";
+            string query = $"dualSidePosition={dualSidePosition}&timestamp={timestamp}";
+            string signature = CreateSignature (query);
+            var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+            var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/positionSide/dual") { Content = content };
+            var response = await _httpClient.SendAsync (request);
+            if (!response.IsSuccessStatusCode)
+            {
+                string body = await response.Content.ReadAsStringAsync ();
+                Log ($"SetPositionMode error: {body}");
+            }
+        }
+
+        public async Task<JObject> PlaceTrailingStopMarketAsync(string symbol, string side, decimal quantity, decimal callbackRate)
+        {
+            long timestamp = GetTimestamp ();
+            string query = $"symbol={symbol}&side={side}&type=TRAILING_STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&callbackRate={callbackRate.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string signature = CreateSignature (query);
+            var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+            var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
+            var response = await _httpClient.SendAsync (request);
+            string body = await response.Content.ReadAsStringAsync ();
+            if (response.IsSuccessStatusCode)
+                return JObject.Parse (body);
+            else
+                Log ($"PlaceTrailingStopMarket ERROR: {body}");
+            return null;
+        }
+
+        public async Task<JObject> PlaceStopMarketAsync(string symbol, string side, decimal quantity, decimal stopPrice)
+        {
+            long timestamp = GetTimestamp ();
+            string query = $"symbol={symbol}&side={side}&type=STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&stopPrice={stopPrice.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string signature = CreateSignature (query);
+            var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+            var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
+            var response = await _httpClient.SendAsync (request);
+            string body = await response.Content.ReadAsStringAsync ();
+            if (response.IsSuccessStatusCode)
+                return JObject.Parse (body);
+            else
+                Log ($"PlaceStopMarket ERROR: {body}");
+            return null;
+        }
+
+        public async Task<decimal> GetPriceAsync(string symbol)
+        {
+            try
+            {
+                var response = await _httpClient.GetAsync ($"/fapi/v1/ticker/price?symbol={symbol}");
+                if (response.IsSuccessStatusCode)
+                {
+                    string body = await response.Content.ReadAsStringAsync ();
+                    var json = JObject.Parse (body);
+                    return decimal.Parse (json["price"].ToString (), CultureInfo.InvariantCulture);
+                }
+            }
+            catch { }
+            return 0;
         }
         // ============================================================
 

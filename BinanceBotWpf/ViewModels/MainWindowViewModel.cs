@@ -795,7 +795,7 @@ namespace BinanceBotWpf.ViewModels
 
         public decimal RiskPerTradePercent
         {
-            get => _tradingSettings?.RiskPerTradePercent ?? 0.02m;
+            get => _tradingSettings?.RiskPerTradePercent ?? 0.01m;
             set
             {
                 if (_tradingSettings != null)
@@ -806,6 +806,84 @@ namespace BinanceBotWpf.ViewModels
                     UpdateRiskDisplay (value);
                 }
             }
+        }
+
+        public decimal RiskRewardRatio
+        {
+            get => _tradingSettings?.RiskRewardRatio ?? 3.0m;
+            set
+            {
+                if (_tradingSettings != null)
+                {
+                    _tradingSettings.RiskRewardRatio = value;
+                    OnPropertyChanged ();
+                    SaveTradingSettings ();
+                }
+            }
+        }
+
+        // Grid Bot свойства
+        public bool GridBotEnabled
+        {
+            get => _tradingSettings?.GridBotEnabled ?? false;
+            set { if (_tradingSettings != null) { _tradingSettings.GridBotEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal GridRangePercent
+        {
+            get => _tradingSettings?.GridRangePercent ?? 0.10m;
+            set { if (_tradingSettings != null) { _tradingSettings.GridRangePercent = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public int GridLevels
+        {
+            get => _tradingSettings?.GridLevels ?? 10;
+            set { if (_tradingSettings != null) { _tradingSettings.GridLevels = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal TotalInvestmentPercent
+        {
+            get => _tradingSettings?.TotalInvestmentPercent ?? 0.20m;
+            set { if (_tradingSettings != null) { _tradingSettings.TotalInvestmentPercent = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        // Мульти-таймфрейм свойства
+        public string MainTimeframe
+        {
+            get => _tradingSettings?.MainTimeframe ?? "1h";
+            set { if (_tradingSettings != null) { _tradingSettings.MainTimeframe = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public string EntryTimeframe
+        {
+            get => _tradingSettings?.EntryTimeframe ?? "5m";
+            set { if (_tradingSettings != null) { _tradingSettings.EntryTimeframe = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        // Дополнительные стратегии
+        public bool VolumeBreakoutEnabled
+        {
+            get => _tradingSettings?.VolumeBreakoutEnabled ?? false;
+            set { if (_tradingSettings != null) { _tradingSettings.VolumeBreakoutEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public bool DcaEnabled
+        {
+            get => _tradingSettings?.DcaEnabled ?? false;
+            set { if (_tradingSettings != null) { _tradingSettings.DcaEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        // Фьючерсы
+        public bool FuturesEnabled
+        {
+            get => _tradingSettings?.FuturesEnabled ?? false;
+            set { if (_tradingSettings != null) { _tradingSettings.FuturesEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public int FuturesLeverage
+        {
+            get => _tradingSettings?.FuturesLeverage ?? 3;
+            set { if (_tradingSettings != null) { _tradingSettings.FuturesLeverage = value; OnPropertyChanged (); SaveTradingSettings (); } }
         }
 
         private async void SaveTradingSettings()
