@@ -712,25 +712,61 @@ namespace BinanceBotWpf.Services
             if (!_positionManager.TryGet (symbol, out var pos)) return;
 
             string asset = symbol.Replace ("USDC", "");
-            decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
             decimal price = GetCurrentPrice (symbol);
+
+            // Проверяем баланс на споте
+            decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
+
+            // Если на споте мало — проверяем Earn и выкупаем
+            if (spotBalance < pos.Quantity * 0.99m)
+            {
+                _ui?.AddLog ($"🔄 {symbol}: на споте {spotBalance:F8} {asset}, нужно {pos.Quantity:F8}. Проверяю Earn...");
+
+                var earnPositions = await _client.GetFlexibleEarnBalanceAsync ();
+                if (earnPositions != null)
+                {
+                    var earnPos = earnPositions.FirstOrDefault (p => p["asset"]?.ToString () == asset);
+                    if (earnPos != null)
+                    {
+                        decimal earnAmount = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
+                        _ui?.AddLog ($"   💰 В Earn: {earnAmount:F8} {asset}");
+
+                        if (earnAmount > 0)
+                        {
+                            decimal needToRedeem = Math.Min (pos.Quantity - spotBalance, earnAmount);
+                            _ui?.AddLog ($"   🔄 Выкупаю {needToRedeem:F8} {asset} из Earn...");
+                            bool redeemed = await _client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
+                            if (redeemed)
+                            {
+                                await Task.Delay (2000); // Ждём зачисления
+                                spotBalance = await _client.GetAccountBalanceAsync (asset);
+                                _ui?.AddLog ($"   ✅ После выкупа на споте: {spotBalance:F8} {asset}");
+                            }
+                            else
+                            {
+                                _ui?.AddLog ($"   ⚠️ Не удалось выкупить из Earn");
+                            }
+                        }
+                    }
+                }
+            }
 
             decimal qtyToSell = Math.Min (pos.Quantity, spotBalance);
             if (qtyToSell <= 0.000001m)
             {
+                _ui?.AddLog ($"⚠️ {symbol}: нет актива для продажи (ни на споте, ни в Earn)");
                 _positionManager.Remove (symbol);
                 return;
             }
 
-            // Округляем по stepSize биржи — иначе LOT_SIZE filter failure
-            // (например, EURUSDC требует целые числа, BTCUSDC — до 0.00001)
+            // Округляем по stepSize биржи
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             if (stepSize > 0)
             {
                 qtyToSell = Math.Floor (qtyToSell / stepSize) * stepSize;
                 if (qtyToSell <= 0)
                 {
-                    _ui?.AddLog ($"⏸ {symbol}: нечего продавать — количество {pos.Quantity} меньше шага лота {stepSize}");
+                    _ui?.AddLog ($"⏸ {symbol}: количество {pos.Quantity} меньше шага лота {stepSize}");
                     return;
                 }
             }
@@ -742,6 +778,7 @@ namespace BinanceBotWpf.Services
             }
 
             // Продажа
+            _ui?.AddLog ($"💵 Продажа {qtyToSell} {symbol} по {price:F4}");
             var order = await _client.PlaceOrder (symbol, "SELL", "MARKET", qtyToSell);
             if (order != null)
             {

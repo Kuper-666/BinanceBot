@@ -58,11 +58,20 @@ namespace BinanceBotWpf.Services
                 var root = doc.RootElement;
 
                 string latestVersion = root.GetProperty ("tag_name").GetString ();
-                string downloadUrl = root.GetProperty ("html_url").GetString ();
+                string releasePageUrl = root.GetProperty ("html_url").GetString ();
                 string releaseName = root.GetProperty ("name").GetString ();
                 string releaseBody = root.TryGetProperty ("body", out var bodyElement)
                     ? bodyElement.GetString ()
                     : "";
+
+                // Берём URL zip-файла из assets (а не ссылку на страницу релиза)
+                string downloadUrl = releasePageUrl;
+                if (root.TryGetProperty ("assets", out var assets) && assets.GetArrayLength () > 0)
+                {
+                    string assetUrl = assets[0].GetProperty ("browser_download_url").GetString ();
+                    if (!string.IsNullOrEmpty (assetUrl))
+                        downloadUrl = assetUrl;
+                }
 
                 // Убираем 'v' префикс если есть для сравнения
                 latestVersion = latestVersion.TrimStart ('v');

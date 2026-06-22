@@ -85,6 +85,16 @@ namespace BinanceBotWpf.Services
             decimal perLevelUsdc = totalInvestmentUsdc / (gridLevels * 2);
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             decimal tickSize = await _client.GetTickSizeAsync (symbol);
+            decimal minNotional = 6m; // Минимальный нотионал Binance
+
+            // Проверяем минимальный размер ордера
+            if (perLevelUsdc < minNotional)
+            {
+                _logger?.Invoke ($"⚠️ GridBot: сумма на уровень ({perLevelUsdc:F2} USDC) меньше минимального нотионала ({minNotional} USDC)");
+                _logger?.Invoke ($"   Уменьшите количество уровней или увеличьте инвестиции");
+                _isRunning = false;
+                return;
+            }
 
             // Округляем уровни по tickSize
             for (int i = 0; i < gridLevels; i++)
@@ -99,7 +109,8 @@ namespace BinanceBotWpf.Services
 
                 // Buy ордер на уровне ниже
                 decimal buyQty = Math.Floor (perLevelUsdc / _buyLevels[i] / stepSize) * stepSize;
-                if (buyQty > 0)
+                decimal buyNotional = buyQty * _buyLevels[i];
+                if (buyQty > 0 && buyNotional >= minNotional)
                 {
                     var buyOrder = await _client.PlaceLimitOrder (symbol, "BUY", buyQty, _buyLevels[i]);
                     if (buyOrder != null)
@@ -112,7 +123,8 @@ namespace BinanceBotWpf.Services
 
                 // Sell ордер на уровне выше
                 decimal sellQty = Math.Floor (perLevelUsdc / _sellLevels[i] / stepSize) * stepSize;
-                if (sellQty > 0)
+                decimal sellNotional = sellQty * _sellLevels[i];
+                if (sellQty > 0 && sellNotional >= minNotional)
                 {
                     var sellOrder = await _client.PlaceLimitOrder (symbol, "SELL", sellQty, _sellLevels[i]);
                     if (sellOrder != null)
