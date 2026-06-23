@@ -71,8 +71,8 @@ namespace BinanceBotWpf.Services
             result.AtrFactor = atrFactor;
             result.VolumeFactor = volumeFactor;
             result.VolatilityFactor = volatilityFactor;
-            result.LsmaWindowMultiplier = 1.0m + (factor - 1.0m) * 0.5m;
-            result.SlMultiplier = 1.0m + (factor - 1.0m) * 0.8m;
+            result.LsmaWindowMultiplier = 1.0m + (factor - 1.0m) * 0.3m;
+            result.SlMultiplier = 1.0m + (factor - 1.0m) * 0.4m;
 
             if (factor > 1.2m)
                 result.Regime = "High Volatility";

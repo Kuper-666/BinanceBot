@@ -465,6 +465,41 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        /// <summary>
+        /// Загружает пары и индикаторы для отображения в таблице до старта торговли.
+        /// Вызывается при запуске приложения, чтобы таблица не была пустой.
+        /// </summary>
+        public async Task LoadPairsForDisplayAsync (MainWindowViewModel ui)
+        {
+            try
+            {
+                var pairs = await _client.GetTopVolumePairsAsync ("USDC", 10);
+                pairs = pairs.Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC")).ToList ();
+                if (pairs.Count == 0) return;
+
+                foreach (var sym in pairs)
+                {
+                    try
+                    {
+                        var klines = await _client.GetKlinesAsync (sym, "1h", 50);
+                        if (klines == null || klines.Count < 30) continue;
+
+                        var closes = klines.Select (k => k.Close).ToList ();
+                        decimal price = closes.Last ();
+                        decimal fastSma = closes.Skip (closes.Count - 9).Average ();
+                        decimal slowSma = closes.Skip (closes.Count - 21).Average ();
+
+                        var signal = new StrategyEngine ().AnalyzePairWithWallet (sym, closes, 9, 21, price);
+
+                        ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma);
+                        await Task.Delay (200);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
+        }
+
         private async Task LoadPositions()
         {
             await _positionManager.LoadAsync (_client, sym => Task.FromResult (GetCurrentPrice (sym)),

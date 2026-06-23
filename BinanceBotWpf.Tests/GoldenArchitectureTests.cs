@@ -287,7 +287,7 @@ namespace BinanceBotWpf.Tests
                 MacdHistogram = 0.001f,
                 BbWidth = 0.04f,
                 AtrPercent = 0.02f,
-                VolumeRatio = 6.0f,
+                VolumeRatio = 9.0f,
                 SmaFast = 45100,
                 SmaSlow = 44900,
                 SignalDirection = 1
@@ -308,7 +308,7 @@ namespace BinanceBotWpf.Tests
                 Rsi = 40,
                 MacdHistogram = 0.001f,
                 BbWidth = 0.04f,
-                AtrPercent = 0.15f,
+                AtrPercent = 0.18f,
                 VolumeRatio = 1.0f,
                 SmaFast = 45100,
                 SmaSlow = 44900,

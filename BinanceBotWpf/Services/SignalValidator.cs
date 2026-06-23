@@ -98,7 +98,7 @@ namespace BinanceBotWpf.Services
             int totalFactors = 0;
 
             totalFactors++;
-            if (input.Rsi > 25 && input.Rsi < 75)
+            if (input.Rsi > 20 && input.Rsi < 80)
             {
                 positiveFactors++;
                 confidence += 0.1f;
@@ -114,7 +114,7 @@ namespace BinanceBotWpf.Services
                 positiveFactors++;
                 confidence += 0.1f;
             }
-            else if (input.VolumeRatio > 5.0f)
+            else if (input.VolumeRatio > 8.0f)
             {
                 riskFlag = true;
                 confidence -= 0.15f;
@@ -126,7 +126,7 @@ namespace BinanceBotWpf.Services
                 positiveFactors++;
                 confidence += 0.05f;
             }
-            else if (input.AtrPercent > 0.12f)
+            else if (input.AtrPercent > 0.15f)
             {
                 riskFlag = true;
                 confidence -= 0.2f;

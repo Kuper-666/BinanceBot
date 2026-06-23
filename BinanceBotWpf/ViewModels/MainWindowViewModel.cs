@@ -262,6 +262,14 @@ namespace BinanceBotWpf.ViewModels
                 await Task.Delay (5000);
                 await CheckForUpdatesAsync (silent: true);
             });
+
+            // Загружаем пары для отображения в таблице до старта торговли
+            _ = Task.Run (async () =>
+            {
+                await Task.Delay (2000);
+                try { await _tradingService.LoadPairsForDisplayAsync (this); }
+                catch { }
+            });
         }
 
         public void RefreshTelegramStatus()
@@ -301,9 +309,6 @@ namespace BinanceBotWpf.ViewModels
             try
             {
                 var httpClient = new System.Net.Http.HttpClient ();
-                httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
-                httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf");
-
                 var checker = new UpdateChecker (httpClient, AddLog);
                 checker.OnNewVersionAvailable += (version, url) =>
                 {
