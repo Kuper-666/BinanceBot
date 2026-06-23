@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Collections.Generic;
@@ -19,6 +19,10 @@ namespace BinanceBotWpf.Services
         private readonly StrategyEngine _strategy = new ();
         private List<string> _activeSymbols = new () { "BTCUSDT", "ETHUSDT", "SOLUSDT" }; // начальный список
         private readonly object _symbolsLock = new object ();
+        private readonly Dictionary<string, decimal> _trailingCallbackRate = new ();
+        private readonly Dictionary<string, decimal> _highestProfit = new ();
+        private readonly decimal _trailingActivationPercent = 0.02m;
+        private readonly decimal _defaultCallbackRate = 1.5m;
 
         public FuturesTradingService(BinanceFuturesClient client, int leverage, decimal maxRiskPercent)
         {
@@ -71,7 +75,12 @@ namespace BinanceBotWpf.Services
                             {
                                 _ui.AddLog ($"📈 Фьючерс: покупка {positionSize} {symbol} по {price}");
                                 var order = await _client.PlaceMarketOrder (symbol, "BUY", positionSize);
-                                if (order != null) _ui.AddLog ($"✅ Фьючерс: ордер исполнен");
+                                if (order != null)
+                                {
+                                    _ui.AddLog ($"✅ Фьючерс: ордер исполнен");
+                                    _trailingCallbackRate[symbol] = _defaultCallbackRate;
+                                    _highestProfit[symbol] = 0m;
+                                }
                             }
                         }
                         else if (signal.Action == TradeAction.Sell)
@@ -84,6 +93,33 @@ namespace BinanceBotWpf.Services
                                 decimal qty = Math.Abs (pos["positionAmt"].Value<decimal> ());
                                 _ui.AddLog ($"📉 Фьючерс: закрытие {qty} {symbol}");
                                 await _client.PlaceMarketOrder (symbol, "SELL", qty);
+                            }
+                        }
+                    }
+                    // Трейлинг-стоп для всех открытых фьючерсных позиций
+                    var openPositions = await _client.GetPositionsAsync ();
+                    foreach (var pos in openPositions)
+                    {
+                        string sym = pos["symbol"].ToString ();
+                        decimal amt = pos["positionAmt"].Value<decimal> ();
+                        if (amt == 0) continue;
+
+                        decimal entryPrice = pos["entryPrice"].Value<decimal> ();
+                        if (entryPrice <= 0) continue;
+
+                        decimal currentPrice = await _client.GetPriceAsync (sym);
+                        if (currentPrice <= 0) continue;
+
+                        decimal profitPercent = ( currentPrice - entryPrice ) / entryPrice;
+                        if (profitPercent >= _trailingActivationPercent && profitPercent > _highestProfit.GetValueOrDefault (sym, 0m))
+                        {
+                            _highestProfit[sym] = profitPercent;
+                            decimal callbackRate = Math.Max (1.0m, _defaultCallbackRate - profitPercent * 10m);
+                            decimal qty = Math.Abs (amt);
+                            var trailingOrder = await _client.PlaceTrailingStopMarketAsync (sym, "SELL", qty, callbackRate);
+                            if (trailingOrder != null)
+                            {
+                                _ui.AddLog ($"📈 Фьючерс трейлинг {sym}: profit={profitPercent:P1}, callback={callbackRate:F1}%");
                             }
                         }
                     }

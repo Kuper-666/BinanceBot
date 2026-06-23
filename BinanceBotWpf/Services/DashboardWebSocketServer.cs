@@ -13,10 +13,13 @@ namespace BinanceBotWpf.Services
 {
     public class DashboardWebSocketServer
     {
+        public const string ApiVersion = "1.0.0";
         private HttpListener _listener;
         private CancellationTokenSource _cts;
         private readonly ConcurrentDictionary<WebSocket, HashSet<string>> _clients = new ();
+        private readonly ConcurrentDictionary<WebSocket, (int Count, DateTime WindowStart)> _rateLimits = new ();
         private readonly Action<string> _logger;
+        private const int MaxMessagesPerSecond = 50;
 
         public bool IsRunning => _listener?.IsListening == true;
         public int ClientCount => _clients.Count;
@@ -125,6 +128,11 @@ namespace BinanceBotWpf.Services
             _ = BroadcastAsync ("echelons", echelons);
         }
 
+        public void BroadcastEquity (List<Dictionary<string, object>> equityPoints)
+        {
+            _ = BroadcastAsync ("equity", equityPoints);
+        }
+
         private async Task AcceptLoopAsync (CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)
@@ -137,6 +145,7 @@ namespace BinanceBotWpf.Services
                         HttpListenerWebSocketContext wsCtx = await ctx.AcceptWebSocketAsync ((string)null);
                         WebSocket ws = wsCtx.WebSocket;
                         _clients.TryAdd (ws, new HashSet<string> ());
+                        _ = SendAsync (ws, new { channel = "welcome", data = new { apiVersion = ApiVersion, serverTime = DateTime.UtcNow.ToString ("o") } });
                         _ = Task.Run (() => ReceiveLoopAsync (ws, ct));
                     }
                     else
@@ -190,6 +199,11 @@ namespace BinanceBotWpf.Services
 
         private void HandleClientMessage (WebSocket ws, string msg)
         {
+            if (IsRateLimited (ws))
+            {
+                return;
+            }
+
             try
             {
                 using JsonDocument doc = JsonDocument.Parse (msg);
@@ -211,10 +225,51 @@ namespace BinanceBotWpf.Services
                         channels.Remove (channel);
                     }
                 }
+                else if (type == "ping")
+                {
+                    _ = SendAsync (ws, new { channel = "pong", data = new { ts = DateTime.UtcNow.ToString ("o") } });
+                }
             }
             catch
             {
             }
+        }
+
+        private async Task SendAsync (WebSocket ws, object data)
+        {
+            if (ws.State != WebSocketState.Open) return;
+            try
+            {
+                string json = JsonSerializer.Serialize (data, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase });
+                byte[] bytes = Encoding.UTF8.GetBytes (json);
+                await ws.SendAsync (new ArraySegment<byte> (bytes), WebSocketMessageType.Text, true, CancellationToken.None);
+            }
+            catch { }
+        }
+
+        private bool IsRateLimited (WebSocket ws)
+        {
+            DateTime now = DateTime.UtcNow;
+            _rateLimits.AddOrUpdate (ws,
+                _ => (1, now),
+                (_, existing) =>
+                {
+                    if (( now - existing.WindowStart ).TotalSeconds >= 1)
+                    {
+                        return (1, now);
+                    }
+                    if (existing.Count >= MaxMessagesPerSecond)
+                    {
+                        return existing;
+                    }
+                    return (existing.Count + 1, existing.WindowStart);
+                });
+
+            if (_rateLimits.TryGetValue (ws, out var state) && state.Count >= MaxMessagesPerSecond && ( now - state.WindowStart ).TotalSeconds < 1)
+            {
+                return true;
+            }
+            return false;
         }
     }
 }

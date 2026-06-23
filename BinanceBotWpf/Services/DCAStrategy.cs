@@ -14,6 +14,7 @@ namespace BinanceBotWpf.Services
     {
         private readonly BinanceClient _client;
         private readonly Action<string> _logger;
+        private const decimal MinNotional = 6m; // Минимальный ордер на Binance
 
         public int LookbackDays { get; set; } = 14;
         public decimal MaxDrawdownPercent { get; set; } = 0.30m; // 30% — отключаем DCA
@@ -63,6 +64,12 @@ namespace BinanceBotWpf.Services
 
             if (currentPrice <= threshold)
             {
+                decimal buyAmount = balance * BuyPercent;
+                if (buyAmount < MinNotional)
+                {
+                    _logger?.Invoke ($"⚠️ DCA {symbol}: сумма покупки {buyAmount:F2} USDC < минимального {MinNotional} USDC");
+                    return false;
+                }
                 _lastCheckTime = DateTime.UtcNow;
                 _logger?.Invoke ($"📊 DCA {symbol}: цена {currentPrice:F4} <= порог {threshold:F4} (макс {maxPrice:F4} - {AtrMultiplier}x ATR)");
                 return true;

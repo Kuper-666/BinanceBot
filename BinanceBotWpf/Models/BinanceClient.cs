@@ -22,6 +22,10 @@ namespace BinanceBotWpf.Models
         private JObject _exchangeInfo;
         private DateTime _exchangeInfoExpiry = DateTime.MinValue;
         private readonly Dictionary<string, decimal> _stepSizeCache = new ();
+        private readonly Dictionary<string, (decimal Price, DateTime Expiry)> _priceCache = new ();
+        private (decimal Balance, DateTime Expiry) _balanceCache;
+        private const int PriceCacheSeconds = 5;
+        private const int BalanceCacheSeconds = 10;
 
         public event Action<string> OnLogGenerated;
         public string LastOrderError { get; private set; }
@@ -450,6 +454,10 @@ namespace BinanceBotWpf.Models
 
         public async Task<decimal> GetPriceAsync(string symbol)
         {
+            if (_priceCache.TryGetValue (symbol, out var cached) && DateTime.UtcNow < cached.Expiry)
+            {
+                return cached.Price;
+            }
             try
             {
                 var response = await _httpClient.GetAsync ($"/api/v3/ticker/price?symbol={symbol}");
@@ -457,7 +465,9 @@ namespace BinanceBotWpf.Models
                 {
                     string body = await response.Content.ReadAsStringAsync ();
                     var json = JObject.Parse (body);
-                    return decimal.Parse (json["price"].ToString (), CultureInfo.InvariantCulture);
+                    decimal price = decimal.Parse (json["price"].ToString (), CultureInfo.InvariantCulture);
+                    _priceCache[symbol] = (price, DateTime.UtcNow.AddSeconds (PriceCacheSeconds));
+                    return price;
                 }
                 return 0;
             }
@@ -611,6 +621,10 @@ namespace BinanceBotWpf.Models
 
         public async Task<decimal> GetAccountBalanceAsync(string asset)
         {
+            if (asset == "USDC" && _balanceCache.Balance > 0 && DateTime.UtcNow < _balanceCache.Expiry)
+            {
+                return _balanceCache.Balance;
+            }
             try
             {
                 var accountInfo = await GetAccountInfoAsync ();
@@ -623,6 +637,10 @@ namespace BinanceBotWpf.Models
                         {
                             if (decimal.TryParse (balance["free"]?.ToString (), NumberStyles.Any, CultureInfo.InvariantCulture, out decimal free))
                             {
+                                if (asset == "USDC")
+                                {
+                                    _balanceCache = (free, DateTime.UtcNow.AddSeconds (BalanceCacheSeconds));
+                                }
                                 return free;
                             }
                         }

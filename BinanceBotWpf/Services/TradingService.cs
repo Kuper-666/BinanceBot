@@ -60,6 +60,8 @@ namespace BinanceBotWpf.Services
         // Флаги циклов
         private bool _balanceLoopEnabled = true;
         private bool _tradingLoopEnabled = true;
+        private readonly List<Dictionary<string, object>> _equityHistory = new ();
+        private const int MaxEquityHistory = 200;
 
         // TradingService.cs, конструктор:
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
@@ -758,6 +760,17 @@ namespace BinanceBotWpf.Services
                     {
                         try
                         {
+                            List<string> activePairList;
+                            lock (_pairsLock) { activePairList = new List<string> (_activePairs); }
+
+                            var pricesData = activePairList.Select (sym => new Dictionary<string, object>
+                            {
+                                ["pair"] = sym,
+                                ["price"] = _webSocketManager?.GetCurrentPrice (sym) ?? 0m,
+                                ["hasPosition"] = _positionManager.TryGet (sym, out _)
+                            }).ToList ();
+                            _dashboardServer.BroadcastPrices (pricesData);
+
                             var positionsData = _positionManager.Positions.Select (kvp => new Dictionary<string, object>
                             {
                                 ["pair"] = kvp.Key,
@@ -774,6 +787,18 @@ namespace BinanceBotWpf.Services
                                 ["validator"] = _tradingSettings?.SignalValidatorEnabled ?? true,
                                 ["newsSentinel"] = _tradingSettings?.NewsSentinelEnabled ?? true
                             });
+
+                            // Equity curve live
+                            _equityHistory.Add (new Dictionary<string, object>
+                            {
+                                ["time"] = DateTime.UtcNow.ToString ("HH:mm"),
+                                ["value"] = spotBalance
+                            });
+                            if (_equityHistory.Count > MaxEquityHistory)
+                            {
+                                _equityHistory.RemoveAt (0);
+                            }
+                            _dashboardServer.BroadcastEquity (new List<Dictionary<string, object>> (_equityHistory));
                         }
                         catch { }
                     }
@@ -1174,8 +1199,36 @@ namespace BinanceBotWpf.Services
         {
             string status = _isRunning ? "🟢 Активен" : "🔴 Остановлен";
             decimal balance = _wallet.GetTotalBalance ("USDC");
-            int positions = _positionManager.Count;
-            return $"🤖 Статус: {status}\n💰 USDC: {balance:F2}\n📊 Открыто позиций: {positions}";
+            int posCount = _positionManager.Count;
+            decimal pnl = _ui?.TotalPnL ?? 0;
+            decimal winRate = _ui?.WinRate ?? 0;
+            int totalTrades = _ui?.TotalTrades ?? 0;
+
+            string echelonStatus = "";
+            if (_tradingSettings != null)
+            {
+                echelonStatus = $"\n🧠 Эшелоны: AD={(_tradingSettings.AdaptiveAgentEnabled ? "✅" : "❌")} " +
+                    $"SV={(_tradingSettings.SignalValidatorEnabled ? "✅" : "❌")} " +
+                    $"NS={(_tradingSettings.NewsSentinelEnabled ? "✅" : "❌")}";
+            }
+
+            string posDetails = "";
+            if (posCount > 0)
+            {
+                foreach (var kvp in _positionManager.Positions)
+                {
+                    decimal currentPrice = _webSocketManager?.GetCurrentPrice (kvp.Key) ?? 0;
+                    decimal profit = currentPrice > 0 ? ( currentPrice - kvp.Value.EntryPrice ) / kvp.Value.EntryPrice * 100 : 0;
+                    posDetails += $"\n  • {kvp.Key}: Entry={kvp.Value.EntryPrice:F4}, PnL={profit:+F2;-F2}%";
+                }
+            }
+
+            return $"🤖 *Статус:* {status}\n" +
+                   $"💰 *USDC:* {balance:F2}\n" +
+                   $"📊 *Позиций:* {posCount}{posDetails}\n" +
+                   $"📈 *PnL:* {pnl:+F2;-F2} USDC\n" +
+                   $"🎯 *Win Rate:* {winRate:F1}% ({totalTrades} сделок)" +
+                   echelonStatus;
         }
 
         private string GetPerformanceStats()

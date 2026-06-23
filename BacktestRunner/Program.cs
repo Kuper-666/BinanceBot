@@ -845,6 +845,169 @@ namespace BacktestRunner
         }
 
         // ═══════════════════════════════════════════════════
+        //  МУЛЬТИ-ПОЗИЦИОННЫЙ БЭКТЕСТ
+        // ═══════════════════════════════════════════════════
+
+        static BacktestResult RunMultiPositionBacktest (
+            List<Kline> klines, int fastPeriod, int slowPeriod, int rsiPeriod,
+            decimal stopLoss, decimal takeProfit, int maxPositions,
+            bool useAdaptive, bool useLsma, bool useValidator,
+            decimal capital, decimal commission = 0.0004m)
+        {
+            List<decimal> closes = klines.Select (k => k.Close).ToList ();
+            List<decimal> highs = klines.Select (k => k.High).ToList ();
+            List<decimal> lows = klines.Select (k => k.Low).ToList ();
+            List<decimal> volumes = klines.Select (k => k.Volume).ToList ();
+
+            List<decimal> fastSma = CalcSMA (closes, fastPeriod);
+            List<decimal> slowSma = CalcSMA (closes, slowPeriod);
+            List<decimal> rsi = CalcRSI (closes, rsiPeriod);
+            List<decimal> atrList = CalcATR (highs, lows, closes, 14);
+            (List<decimal> upper, List<decimal> lower) bb = CalcBollingerBands (closes, 20);
+            List<decimal> macd = CalcMACD (closes);
+            List<decimal> lsma = useLsma ? CalcLSMA (closes, 20) : null;
+
+            decimal capitalStart = capital;
+            decimal freeCash = capital;
+            decimal peakCapital = capital;
+            decimal maxDrawdown = 0;
+            int winning = 0, losing = 0;
+            int totalTradeBars = 0;
+            int currentWinStreak = 0, currentLoseStreak = 0;
+            int maxWinStreak = 0, maxLoseStreak = 0;
+            List<decimal> equityCurve = new List<decimal> { capital };
+
+            var openPositions = new List<MultiPosition> ();
+            int startIdx = slowPeriod + 10;
+
+            for (int i = startIdx; i < closes.Count; i++)
+            {
+                decimal price = closes[i];
+
+                for (int p = openPositions.Count - 1; p >= 0; p--)
+                {
+                    var pos = openPositions[p];
+                    pos.BarsHeld++;
+                    decimal sl = pos.EntryPrice * (1 - stopLoss);
+                    decimal tp = pos.EntryPrice * (1 + takeProfit);
+
+                    if (price <= sl || price >= tp)
+                    {
+                        decimal proceeds = pos.Quantity * price;
+                        decimal cost = proceeds * commission;
+                        freeCash += proceeds - cost;
+                        totalTradeBars += pos.BarsHeld;
+
+                        decimal pnl = (price - pos.EntryPrice) / pos.EntryPrice;
+                        if (pnl > 0) { winning++; currentWinStreak++; currentLoseStreak = 0; if (currentWinStreak > maxWinStreak) maxWinStreak = currentWinStreak; }
+                        else { losing++; currentLoseStreak++; currentWinStreak = 0; if (currentLoseStreak > maxLoseStreak) maxLoseStreak = currentLoseStreak; }
+
+                        openPositions.RemoveAt (p);
+                    }
+                }
+
+                decimal totalEquity = freeCash + openPositions.Sum (op => op.Quantity * price);
+                if (totalEquity > peakCapital) peakCapital = totalEquity;
+                decimal dd = peakCapital > 0 ? (peakCapital - totalEquity) / peakCapital * 100 : 0;
+                if (dd > maxDrawdown) maxDrawdown = dd;
+
+                if (openPositions.Count < maxPositions && freeCash > capital * 0.05m)
+                {
+                    bool buySignal = false;
+                    if (i > 0 && fastSma[i] > 0 && slowSma[i] > 0)
+                    {
+                        bool crossUp = fastSma[i - 1] <= slowSma[i - 1] && fastSma[i] > slowSma[i];
+                        if (crossUp)
+                        {
+                            bool c = rsi[i] < 40 || price <= bb.lower[i] || (macd[i] > 0 && macd[i] > macd[Math.Max (0, i - 1)]);
+                            if (c) buySignal = true;
+                        }
+                    }
+
+                    if (useLsma && lsma != null && lsma[i] > 0 && i > 1)
+                    {
+                        if (buySignal && closes[i] < lsma[i] && lsma[i] < lsma[i - 1]) buySignal = false;
+                    }
+
+                    if (useValidator)
+                    {
+                        decimal volRatio = volumes[i] / volumes.Skip (Math.Max (0, i - 20)).Take (20).Average ();
+                        decimal atrPercent = closes[i] > 0 && atrList[i] > 0 ? atrList[i] / closes[i] : 0;
+                        if (volRatio > 8m || atrPercent > 0.15m || rsi[i] > 80 || rsi[i] < 20) buySignal = false;
+                    }
+
+                    if (buySignal)
+                    {
+                        decimal investPerPos = freeCash * 0.3m;
+                        if (investPerPos > capital * 0.05m)
+                        {
+                            decimal cost = investPerPos * commission;
+                            freeCash -= (investPerPos + cost);
+                            openPositions.Add (new MultiPosition
+                            {
+                                EntryPrice = price,
+                                Quantity = investPerPos / price,
+                                BarsHeld = 0
+                            });
+                        }
+                    }
+                }
+
+                equityCurve.Add (freeCash + openPositions.Sum (op => op.Quantity * price));
+            }
+
+            decimal finalPrice = closes.Last ();
+            foreach (var pos in openPositions)
+            {
+                freeCash += pos.Quantity * finalPrice * (1 - commission);
+                totalTradeBars += pos.BarsHeld;
+                decimal pnl = (finalPrice - pos.EntryPrice) / pos.EntryPrice;
+                if (pnl > 0) winning++; else losing++;
+            }
+
+            decimal totalReturn = (freeCash - capitalStart) / capitalStart * 100;
+            int totalTrades = winning + losing;
+            decimal winRate = totalTrades > 0 ? (decimal)winning / totalTrades * 100 : 0;
+            decimal profitFactor = losing > 0 && winning > 0 ? (decimal)winning / losing : 0;
+
+            decimal sharpe = 0;
+            if (equityCurve.Count > 1)
+            {
+                List<decimal> rets = new List<decimal> ();
+                for (int j = 1; j < equityCurve.Count; j++)
+                {
+                    if (equityCurve[j - 1] > 0)
+                        rets.Add ((equityCurve[j] - equityCurve[j - 1]) / equityCurve[j - 1]);
+                }
+                if (rets.Count > 0)
+                {
+                    decimal avg = rets.Average ();
+                    decimal std = StdDev (rets);
+                    sharpe = std > 0 ? avg / std * (decimal)Math.Sqrt (252) : 0;
+                }
+            }
+
+            decimal avgTradeBarsResult = totalTrades > 0 ? (decimal)totalTradeBars / totalTrades : 0;
+
+            return new BacktestResult
+            {
+                TotalReturn = totalReturn, WinRate = winRate, TotalTrades = totalTrades,
+                WinningTrades = winning, LosingTrades = losing, MaxDrawdown = maxDrawdown,
+                SharpeRatio = sharpe, ProfitFactor = profitFactor,
+                EquityCurve = equityCurve,
+                MaxWinStreak = maxWinStreak, MaxLoseStreak = maxLoseStreak,
+                AvgTradeBars = avgTradeBarsResult
+            };
+        }
+
+        class MultiPosition
+        {
+            public decimal EntryPrice { get; set; }
+            public decimal Quantity { get; set; }
+            public int BarsHeld { get; set; }
+        }
+
+        // ═══════════════════════════════════════════════════
         //  ИНДИКАТОРЫ
         // ═══════════════════════════════════════════════════
 
