@@ -57,6 +57,19 @@ namespace BinanceBotWpf.Models
         public int FuturesLeverage { get; set; } = 3;             // Плечо по умолчанию
         public bool FuturesIsolatedMargin { get; set; } = true;   // Изолированная маржа
         public bool FuturesHedgeMode { get; set; } = true;        // Hedge Mode
+        public decimal FuturesMaxRiskPercent { get; set; } = 0.10m; // Макс. риск на сделку (10%)
+
+        // Эшелоны ИИ (Золотая архитектура) — горячая перезагрузка
+        public bool AdaptiveAgentEnabled { get; set; } = true;
+        public decimal AdaptiveSlMultiplier { get; set; } = 0.4m;
+        public decimal AdaptivePeriodMultiplier { get; set; } = 0.3m;
+        public bool SignalValidatorEnabled { get; set; } = true;
+        public decimal ValidatorVolumeThreshold { get; set; } = 8.0m;
+        public decimal ValidatorAtrThreshold { get; set; } = 0.15m;
+        public int ValidatorRsiLow { get; set; } = 20;
+        public int ValidatorRsiHigh { get; set; } = 80;
+        public bool NewsSentinelEnabled { get; set; } = true;
+        public int NewsSentinelBlockMinutes { get; set; } = 5;
 
         // Настройки фильтрации
         public bool RequireVolumeConfirmation { get; set; } = true;

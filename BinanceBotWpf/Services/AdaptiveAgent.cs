@@ -64,17 +64,23 @@ namespace BinanceBotWpf.Services
             decimal priceVolatility = CalculatePriceVolatility (closes, lookback);
             result.PriceVolatility = priceVolatility;
 
+            decimal adx = CalculateADX (highs, lows, closes, 14);
+            result.Adx = adx;
+            decimal trendStrength = MapRange (adx, 0m, 60m, 0.7m, 1.3m);
+            result.TrendStrength = trendStrength;
+
             decimal atrFactor = MapRange (atrRatio, 0.5m, 2.0m, 0.7m, 1.5m);
             decimal volumeFactor = MapRange (volumeChange, 0.5m, 2.0m, 0.8m, 1.3m);
             decimal volatilityFactor = MapRange (priceVolatility, 0.005m, 0.05m, 0.8m, 1.4m);
 
-            decimal factor = (atrFactor * 0.4m + volumeFactor * 0.3m + volatilityFactor * 0.3m);
+            decimal factor = (atrFactor * 0.36m + volumeFactor * 0.27m + volatilityFactor * 0.27m + trendStrength * 0.10m);
             factor = Math.Clamp (factor, 0.5m, 1.5m);
 
             result.Factor = factor;
             result.AtrFactor = atrFactor;
             result.VolumeFactor = volumeFactor;
             result.VolatilityFactor = volatilityFactor;
+            result.TrendStrengthFactor = trendStrength;
             result.LsmaWindowMultiplier = 1.0m + (factor - 1.0m) * _periodMultiplier;
             result.SlMultiplier = 1.0m + (factor - 1.0m) * _slMultiplier;
 
@@ -88,7 +94,7 @@ namespace BinanceBotWpf.Services
             _lastAdaptiveFactor = factor;
             _lastCalculation = DateTime.UtcNow;
 
-            _logger?.Invoke ($"🔧 AdaptiveAgent: factor={factor:F3} (ATR={atrRatio:F2}x, Vol={volumeChange:F2}x, σ={priceVolatility:F4}) regime={result.Regime}");
+            _logger?.Invoke ($"🔧 AdaptiveAgent: factor={factor:F3} (ATR={atrRatio:F2}x, Vol={volumeChange:F2}x, σ={priceVolatility:F4}, ADX={adx:F1}) regime={result.Regime}");
 
             return result;
         }
@@ -124,6 +130,68 @@ namespace BinanceBotWpf.Services
             decimal t = (value - fromLow) / (fromHigh - fromLow);
             return toLow + t * (toHigh - toLow);
         }
+
+        private decimal CalculateADX (List<decimal> highs, List<decimal> lows, List<decimal> closes, int period)
+        {
+            if (highs.Count < period + 1 || lows.Count < period + 1 || closes.Count < period + 1)
+            {
+                return 25m;
+            }
+
+            var trList = new List<decimal> ();
+            var plusDmList = new List<decimal> ();
+            var minusDmList = new List<decimal> ();
+
+            for (int i = 1; i < highs.Count; i++)
+            {
+                decimal highDiff = highs[i] - highs[i - 1];
+                decimal lowDiff = lows[i - 1] - lows[i];
+                decimal tr = Math.Max (highs[i] - lows[i], Math.Max (Math.Abs (highs[i] - closes[i - 1]), Math.Abs (lows[i] - closes[i - 1])));
+                trList.Add (tr);
+                plusDmList.Add (highDiff > lowDiff && highDiff > 0 ? highDiff : 0m);
+                minusDmList.Add (lowDiff > highDiff && lowDiff > 0 ? lowDiff : 0m);
+            }
+
+            decimal smoothTr = 0m;
+            decimal smoothPlusDm = 0m;
+            decimal smoothMinusDm = 0m;
+
+            int startIdx = period;
+            if (startIdx > trList.Count)
+            {
+                return 25m;
+            }
+
+            for (int i = 0; i < period && i < trList.Count; i++)
+            {
+                smoothTr += trList[i];
+                smoothPlusDm += plusDmList[i];
+                smoothMinusDm += minusDmList[i];
+            }
+
+            var dxList = new List<decimal> ();
+
+            for (int i = period; i < trList.Count; i++)
+            {
+                smoothTr = smoothTr - smoothTr / period + trList[i];
+                smoothPlusDm = smoothPlusDm - smoothPlusDm / period + plusDmList[i];
+                smoothMinusDm = smoothMinusDm - smoothMinusDm / period + minusDmList[i];
+
+                decimal plusDi = smoothTr > 0 ? (smoothPlusDm / smoothTr) * 100m : 0m;
+                decimal minusDi = smoothTr > 0 ? (smoothMinusDm / smoothTr) * 100m : 0m;
+                decimal diSum = plusDi + minusDi;
+                decimal dx = diSum > 0 ? Math.Abs (plusDi - minusDi) / diSum * 100m : 0m;
+                dxList.Add (dx);
+            }
+
+            if (dxList.Count == 0)
+            {
+                return 25m;
+            }
+
+            decimal adx = dxList.Average ();
+            return Math.Clamp (adx, 0m, 100m);
+        }
     }
 
     public class AdaptiveResult
@@ -139,5 +207,8 @@ namespace BinanceBotWpf.Services
         public decimal AtrFactor { get; set; }
         public decimal VolumeFactor { get; set; }
         public decimal VolatilityFactor { get; set; }
+        public decimal Adx { get; set; }
+        public decimal TrendStrength { get; set; }
+        public decimal TrendStrengthFactor { get; set; }
     }
 }
