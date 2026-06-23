@@ -20,6 +20,8 @@ const TYPE_ICONS = { trade: '\u{1F4B0}', news: '\u{1F4F0}', system: '\u{2699}\uF
 const SEV_COLORS = { success: '#22c55e', info: '#3b82f6', warning: '#f59e0b', danger: '#ef4444' };
 const SEV_BG = { success: '#0a2e1a', info: '#0a1a2e', warning: '#2e2a0a', danger: '#2e0a0a' };
 
+const SEV_LABELS = { danger: 'sev_danger', warning: 'sev_warning', info: 'sev_info', success: 'sev_success' };
+
 export default function AlertsPage() {
   const { t } = useTranslation();
   const [filter, setFilter] = useState('all');
@@ -40,7 +42,7 @@ export default function AlertsPage() {
               background: filter === sev ? (sev === 'all' ? '#333' : SEV_COLORS[sev] + '33') : '#1a1a1a',
               color: sev === 'all' ? '#fff' : SEV_COLORS[sev] || '#888',
               textTransform: 'uppercase' }}>
-              {sev === 'all' ? t('all') : sev}
+              {sev === 'all' ? t('all') : t(SEV_LABELS[sev])}
           </button>
         ))}
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}

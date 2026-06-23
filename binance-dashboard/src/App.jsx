@@ -4,6 +4,7 @@ import './i18n';
 import LanguageSwitcher from './components/LanguageSwitcher';
 import NavBar from './components/NavBar';
 import ConnectionStatus from './components/ConnectionStatus';
+import ErrorBoundary from './components/ErrorBoundary';
 import OverviewPage from './pages/OverviewPage';
 import SignalsPage from './pages/SignalsPage';
 import TradesPage from './pages/TradesPage';
@@ -18,7 +19,7 @@ import useBotData from './hooks/useBotData';
 
 export default function App() {
   const { t } = useTranslation();
-  const { data, connected } = useBotData();
+  const { data, connected, send } = useBotData();
 
   return (
     <BrowserRouter>
@@ -34,19 +35,21 @@ export default function App() {
         <NavBar />
 
         <main style={{ padding: '20px 24px', maxWidth: '1400px', margin: '0 auto' }}>
-          <Routes>
-            <Route path="/overview" element={<OverviewPage data={data} />} />
-            <Route path="/signals" element={<SignalsPage data={data} />} />
-            <Route path="/positions" element={<PositionsPage data={data} />} />
-            <Route path="/trades" element={<TradesPage data={data} />} />
-            <Route path="/grid-bot" element={<GridBotPage data={data} />} />
-            <Route path="/analytics" element={<AnalyticsPage data={data} />} />
-            <Route path="/backtest" element={<BacktestPage data={data} />} />
-            <Route path="/settings" element={<SettingsPage />} />
-            <Route path="/logs" element={<LogsPage />} />
-            <Route path="/alerts" element={<AlertsPage />} />
-            <Route path="*" element={<Navigate to="/overview" replace />} />
-          </Routes>
+          <ErrorBoundary>
+            <Routes>
+              <Route path="/overview" element={<OverviewPage data={data} />} />
+              <Route path="/signals" element={<SignalsPage data={data} />} />
+              <Route path="/positions" element={<PositionsPage data={data} />} />
+              <Route path="/trades" element={<TradesPage data={data} />} />
+              <Route path="/grid_bot" element={<GridBotPage data={data} />} />
+              <Route path="/analytics" element={<AnalyticsPage data={data} />} />
+              <Route path="/backtest" element={<BacktestPage data={data} />} />
+              <Route path="/settings" element={<SettingsPage send={send} />} />
+              <Route path="/logs" element={<LogsPage data={data} />} />
+              <Route path="/alerts" element={<AlertsPage />} />
+              <Route path="*" element={<Navigate to="/overview" replace />} />
+            </Routes>
+          </ErrorBoundary>
         </main>
       </div>
     </BrowserRouter>

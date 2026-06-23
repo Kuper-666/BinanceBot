@@ -84,12 +84,12 @@ export default function BacktestPage({ data }) {
           <div>
             <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>{t('strategy_params')}</div>
             {[
-              { label: 'Fast SMA', value: '9' },
-              { label: 'Slow SMA', value: '21' },
-              { label: 'RSI Period', value: '14' },
+              { label: t('fast_sma'), value: '9' },
+              { label: t('slow_sma'), value: '21' },
+              { label: t('rsi_period'), value: '14' },
               { label: t('stop_loss'), value: 'ATR × 1.5' },
               { label: t('take_profit'), value: 'SL × 3' },
-              { label: 'Adaptive SL', value: '0.4x' },
+              { label: t('adaptive_sl'), value: '0.4x' },
             ].map(s => (
               <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #1a1a1a', fontSize: '12px' }}>
                 <span style={{ color: '#aaa' }}>{s.label}</span>

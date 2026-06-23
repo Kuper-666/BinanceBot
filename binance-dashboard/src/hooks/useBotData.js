@@ -4,6 +4,8 @@ import { MOCK_DATA } from '../data';
 
 const CHANNELS = ['prices', 'positions', 'signals', 'trades', 'grid', 'logs'];
 
+let mountCount = 0;
+
 export default function useBotData() {
   const [connected, setConnected] = useState(false);
   const [data, setData] = useState(MOCK_DATA);
@@ -11,6 +13,7 @@ export default function useBotData() {
 
   useEffect(() => {
     const ws = WebSocketService.getInstance();
+    mountCount++;
 
     CHANNELS.forEach(channel => {
       const handler = (newData) => {
@@ -49,15 +52,20 @@ export default function useBotData() {
 
     return () => {
       clearTimeout(fallbackTimer);
+      const handlers = handlersRef.current;
       CHANNELS.forEach(channel => {
-        const handler = handlersRef.current.get(channel);
+        const handler = handlers.get(channel);
         if (handler) {
           ws.off(channel, handler);
         }
         ws.unsubscribe(channel);
       });
-      handlersRef.current.clear();
+      handlers.clear();
       unsub();
+      mountCount--;
+      if (mountCount === 0) {
+        ws.disconnect();
+      }
     };
   }, []);
 

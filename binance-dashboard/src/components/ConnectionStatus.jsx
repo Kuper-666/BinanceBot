@@ -1,6 +1,9 @@
+import { useTranslation } from 'react-i18next';
+
 export default function ConnectionStatus({ connected }) {
+  const { t } = useTranslation();
   const color = connected ? '#22c55e' : '#ef4444';
-  const label = connected ? 'Connected' : 'Disconnected (mock data)';
+  const label = connected ? t('connected') : t('disconnected');
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '12px', color: '#999' }}>

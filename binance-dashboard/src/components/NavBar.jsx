@@ -1,7 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { useTranslation } from 'react-i18next';
 
-const TABS = ['overview', 'signals', 'positions', 'trades', 'grid-bot', 'analytics', 'backtest', 'settings', 'logs', 'alerts'];
+const TABS = ['overview', 'signals', 'positions', 'trades', 'grid_bot', 'analytics', 'backtest', 'settings', 'logs', 'alerts'];
 
 export default function NavBar() {
   const { t } = useTranslation();

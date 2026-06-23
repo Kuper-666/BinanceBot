@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const MOCK_LOGS = [
@@ -21,35 +21,40 @@ const MOCK_LOGS = [
 ];
 
 const LEVEL_COLORS = { info: '#22c55e', debug: '#6b7280', warn: '#f59e0b', error: '#ef4444' };
-const LEVEL_LABELS = { info: 'INFO', debug: 'DBG', warn: 'WARN', error: 'ERR' };
+const LEVEL_KEYS = { info: 'log_info', debug: 'log_debug', warn: 'log_warn', error: 'log_error' };
 
-export default function LogsPage() {
+export default function LogsPage({ data }) {
   const { t } = useTranslation();
   const [filter, setFilter] = useState('all');
   const [search, setSearch] = useState('');
 
-  const filtered = MOCK_LOGS.filter(log => {
+  const allLogs = useMemo(() => {
+    if (data?.logs?.length > 0) return data.logs;
+    return MOCK_LOGS;
+  }, [data?.logs]);
+
+  const filtered = useMemo(() => allLogs.filter(log => {
     if (filter !== 'all' && log.level !== filter) return false;
     if (search && !log.message.toLowerCase().includes(search.toLowerCase()) && !log.source.toLowerCase().includes(search.toLowerCase())) return false;
     return true;
-  });
+  }), [allLogs, filter, search]);
 
   return (
     <div style={{ display: 'grid', gap: '16px' }}>
       <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-        {['all', 'error', 'warn', 'info', 'debug'].map(level => (
+          {['all', 'error', 'warn', 'info', 'debug'].map(level => (
           <button key={level} onClick={() => setFilter(level)}
             style={{ padding: '6px 14px', borderRadius: '6px', border: 'none', cursor: 'pointer', fontSize: '13px', fontWeight: filter === level ? 600 : 400,
               background: filter === level ? (level === 'all' ? '#333' : LEVEL_COLORS[level] + '33') : '#1a1a1a',
               color: filter === 'all' ? '#fff' : level === 'all' ? '#fff' : LEVEL_COLORS[level] || '#888',
               textTransform: 'uppercase' }}>
-              {level === 'all' ? t('all') : LEVEL_LABELS[level]}
+              {level === 'all' ? t('all') : t(LEVEL_KEYS[level])}
           </button>
         ))}
         <input type="text" value={search} onChange={e => setSearch(e.target.value)}
           placeholder={t('search') + '...'}
           style={{ marginLeft: 'auto', padding: '6px 12px', borderRadius: '6px', border: '1px solid #333', background: '#1a1a1a', color: '#e5e5e5', fontSize: '13px', width: '260px', outline: 'none' }} />
-        <span style={{ fontSize: '12px', color: '#666' }}>{filtered.length} / {MOCK_LOGS.length}</span>
+        <span style={{ fontSize: '12px', color: '#666' }}>{filtered.length} / {allLogs.length}</span>
       </div>
 
       <div style={{ background: '#141414', borderRadius: '8px', border: '1px solid #222', overflow: 'hidden' }}>
@@ -57,7 +62,7 @@ export default function LogsPage() {
           {filtered.map((log, i) => (
             <div key={i} style={{ display: 'contents' }}>
               <span style={{ padding: '8px 12px', color: '#666', borderBottom: '1px solid #1a1a1a' }}>{log.time}</span>
-              <span style={{ padding: '8px 8px', color: LEVEL_COLORS[log.level], borderBottom: '1px solid #1a1a1a', fontWeight: 600 }}>{LEVEL_LABELS[log.level]}</span>
+              <span style={{ padding: '8px 8px', color: LEVEL_COLORS[log.level], borderBottom: '1px solid #1a1a1a', fontWeight: 600 }}>{t(LEVEL_KEYS[log.level])}</span>
               <span style={{ padding: '8px 12px', color: '#a78bfa', borderBottom: '1px solid #1a1a1a' }}>{log.source}</span>
               <span style={{ padding: '8px 12px', color: '#d4d4d4', borderBottom: '1px solid #1a1a1a', wordBreak: 'break-word' }}>{log.message}</span>
             </div>

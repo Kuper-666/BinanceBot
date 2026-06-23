@@ -35,10 +35,17 @@ const DEFAULT_SETTINGS = {
 
 function Toggle({ value, onChange }) {
   return (
-    <div onClick={() => onChange(!value)} style={{
-      width: '36px', height: '20px', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s',
-      background: value ? '#22c55e' : '#333', position: 'relative', flexShrink: 0,
-    }}>
+    <div
+      role="switch"
+      aria-checked={value}
+      tabIndex={0}
+      onClick={() => onChange(!value)}
+      onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onChange(!value); } }}
+      style={{
+        width: '36px', height: '20px', borderRadius: '10px', cursor: 'pointer', transition: 'all 0.2s',
+        background: value ? '#22c55e' : '#333', position: 'relative', flexShrink: 0, outline: 'none',
+      }}
+    >
       <div style={{
         width: '16px', height: '16px', borderRadius: '50%', background: '#fff',
         position: 'absolute', top: '2px', left: value ? '18px' : '2px', transition: 'all 0.2s',
@@ -71,7 +78,7 @@ function SettingRow({ label, children }) {
   );
 }
 
-export default function SettingsPage() {
+export default function SettingsPage({ send }) {
   const { t } = useTranslation();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
@@ -90,9 +97,17 @@ export default function SettingsPage() {
   };
 
   const handleSave = () => {
+    if (send) {
+      send({ type: 'settings', data: settings });
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
   };
+
+  const handleStart = () => { if (send) send({ type: 'command', action: 'start' }); };
+  const handleStop = () => { if (send) send({ type: 'command', action: 'stop' }); };
+  const handleRetrain = () => { if (send) send({ type: 'command', action: 'retrain' }); };
+  const handleExport = () => { if (send) send({ type: 'command', action: 'export' }); };
 
   return (
     <div style={{ display: 'grid', gap: '16px', gridTemplateColumns: '1fr 1fr' }}>
@@ -100,7 +115,7 @@ export default function SettingsPage() {
         <h3>{t('strategy')}</h3>
         <SettingRow label={t('fast_sma')}><NumberInput value={settings.strategy.fastSma} onChange={v => updateStrategy('fastSma', v)} min={3} max={50} /></SettingRow>
         <SettingRow label={t('slow_sma')}><NumberInput value={settings.strategy.slowSma} onChange={v => updateStrategy('slowSma', v)} min={10} max={200} /></SettingRow>
-        <SettingRow label="RSI Period"><NumberInput value={settings.strategy.rsiPeriod} onChange={v => updateStrategy('rsiPeriod', v)} min={5} max={30} /></SettingRow>
+        <SettingRow label={t('rsi_period')}><NumberInput value={settings.strategy.rsiPeriod} onChange={v => updateStrategy('rsiPeriod', v)} min={5} max={30} /></SettingRow>
         <SettingRow label={t('stop_loss')}><NumberInput value={settings.strategy.stopLoss} onChange={v => updateStrategy('stopLoss', v)} min={0.5} max={10} step={0.5} suffix="%" /></SettingRow>
         <SettingRow label={t('take_profit')}><NumberInput value={settings.strategy.takeProfit} onChange={v => updateStrategy('takeProfit', v)} min={1} max={20} step={0.5} suffix="%" /></SettingRow>
         <SettingRow label={t('risk_per_trade')}><NumberInput value={settings.strategy.riskPerTrade} onChange={v => updateStrategy('riskPerTrade', v)} min={0.1} max={5} step={0.1} suffix="%" /></SettingRow>
@@ -113,23 +128,23 @@ export default function SettingsPage() {
         <SettingRow label={t('echelon_1')}>
           <Toggle value={settings.echelons.adaptiveAgent} onChange={v => updateEchelon('adaptiveAgent', v)} />
         </SettingRow>
-        <SettingRow label="SL Multiplier">
+        <SettingRow label={t('sl_multiplier')}>
           <NumberInput value={settings.echelons.adaptiveSlMult} onChange={v => updateEchelon('adaptiveSlMult', v)} min={0.1} max={2.0} step={0.1} />
         </SettingRow>
-        <SettingRow label="Period Multiplier">
+        <SettingRow label={t('period_multiplier')}>
           <NumberInput value={settings.echelons.adaptivePeriodMult} onChange={v => updateEchelon('adaptivePeriodMult', v)} min={0.1} max={2.0} step={0.1} />
         </SettingRow>
         <div style={{ borderBottom: '1px solid #222', margin: '8px 0' }} />
         <SettingRow label={t('echelon_2')}>
           <Toggle value={settings.echelons.signalValidator} onChange={v => updateEchelon('signalValidator', v)} />
         </SettingRow>
-        <SettingRow label="Vol Threshold">
+        <SettingRow label={t('vol_threshold')}>
           <NumberInput value={settings.echelons.validatorVolThreshold} onChange={v => updateEchelon('validatorVolThreshold', v)} min={1} max={20} step={0.5} />
         </SettingRow>
-        <SettingRow label="ATR Threshold">
+        <SettingRow label={t('atr_threshold')}>
           <NumberInput value={settings.echelons.validatorAtrThreshold} onChange={v => updateEchelon('validatorAtrThreshold', v)} min={0.01} max={1.0} step={0.01} />
         </SettingRow>
-        <SettingRow label="RSI Range">
+        <SettingRow label={t('rsi_range')}>
           <span style={{ fontSize: '12px', fontFamily: 'monospace', color: '#22c55e' }}>{settings.echelons.validatorRsiLow} / {settings.echelons.validatorRsiHigh}</span>
         </SettingRow>
         <div style={{ borderBottom: '1px solid #222', margin: '8px 0' }} />
@@ -164,25 +179,25 @@ export default function SettingsPage() {
         <div>
           <h3>{t('bot_control')}</h3>
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
-            <button className="btn btn-primary">{t('start')}</button>
-            <button className="btn btn-danger">{t('stop')}</button>
-            <button className="btn btn-outline">{t('retrain')}</button>
+            <button className="btn btn-primary" onClick={handleStart}>{t('start')}</button>
+            <button className="btn btn-danger" onClick={handleStop}>{t('stop')}</button>
+            <button className="btn btn-outline" onClick={handleRetrain}>{t('retrain')}</button>
           </div>
           <div style={{ marginTop: '16px', padding: '12px', background: '#1a1a1a', borderRadius: '6px', fontSize: '12px' }}>
             <div style={{ color: '#888', marginBottom: '4px' }}>{t('bot_status')}</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e' }} />
               <span style={{ color: '#22c55e', fontWeight: 600 }}>{t('running')}</span>
-              <span style={{ color: '#666', marginLeft: '8px' }}>v1.10.4 · 7 pairs · 5x leverage</span>
+              <span style={{ color: '#666', marginLeft: '8px' }}>{t('version_info')}</span>
             </div>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '8px', justifyContent: 'flex-end', marginTop: '16px' }}>
-          <button className="btn btn-outline">{t('export')}</button>
+          <button className="btn btn-outline" onClick={handleExport}>{t('export')}</button>
           <button className="btn btn-primary" onClick={handleSave} style={{
             background: saved ? '#16a34a' : '#22c55e',
             transition: 'all 0.2s',
-          }}>{saved ? '✓ Saved' : t('save')}</button>
+          }}>{saved ? t('saved') : t('save')}</button>
         </div>
       </div>
     </div>

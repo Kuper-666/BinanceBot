@@ -1,11 +1,21 @@
+import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ScatterChart, Scatter, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Cell, PieChart, Pie } from 'recharts';
+
+function generateCorrelation(pairNames) {
+  const seeded = pairNames.join('').length;
+  return pairNames.map((a, i) => pairNames.map((b, j) => {
+    if (i === j) return '1.00';
+    const seed = (seeded * 31 + i * 7 + j * 13) % 100;
+    return (seed / 100 * 0.8 - 0.2).toFixed(2);
+  }));
+}
 
 export default function AnalyticsPage({ data }) {
   const { t } = useTranslation();
 
-  const pairs = data.pairs.map(p => p.pair);
-  const corr = pairs.map((a, i) => pairs.map((b, j) => i === j ? 1 : (Math.random() * 0.8 - 0.2).toFixed(2)));
+  const pairs = useMemo(() => data.pairs.map(p => p.pair), [data.pairs]);
+  const corr = useMemo(() => generateCorrelation(pairs), [pairs]);
 
   const riskDistribution = [
     { name: t('low_risk'), value: data.pairs.filter(p => p.risk === 'low').length, color: '#22c55e' },
