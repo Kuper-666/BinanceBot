@@ -1,0 +1,76 @@
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system, sans-serif; }
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: #111; }
+::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
+
+.page-grid-2 { display: grid; gap: 16px; grid-template-columns: 1fr 1fr; }
+.page-grid-3 { display: grid; gap: 16px; grid-template-columns: 1fr 1fr 1fr; }
+
+.card {
+  background: #141414;
+  border-radius: 8px;
+  padding: 16px;
+  border: 1px solid #222;
+}
+
+.card h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #ccc;
+}
+
+.badge {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 12px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  transition: all 0.2s;
+}
+
+.btn-primary {
+  background: #22c55e;
+  color: #000;
+}
+.btn-primary:hover { background: #16a34a; }
+
+.btn-danger {
+  background: #ef4444;
+  color: #fff;
+}
+.btn-danger:hover { background: #dc2626; }
+
+.btn-outline {
+  background: transparent;
+  border: 1px solid #333;
+  color: #888;
+}
+.btn-outline:hover { border-color: #555; color: #ccc; }
+
+.btn-sm {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+th { text-align: left; padding: 8px; color: #666; border-bottom: 1px solid #222; font-weight: 500; }
+td { padding: 8px; border-bottom: 1px solid #1a1a1a; }
+
+@media (max-width: 1024px) {
+  .page-grid-2, .page-grid-3 { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  header { flex-wrap: wrap; gap: 8px; }
+  nav { flex-wrap: wrap; }
+}

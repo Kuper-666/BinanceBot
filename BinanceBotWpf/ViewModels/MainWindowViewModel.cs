@@ -989,6 +989,67 @@ namespace BinanceBotWpf.ViewModels
             set { if (_tradingSettings != null) { _tradingSettings.FuturesLeverage = value; OnPropertyChanged (); SaveTradingSettings (); } }
         }
 
+        // Эшелоны ИИ (Золотая архитектура)
+        public bool AdaptiveAgentEnabled
+        {
+            get => _tradingSettings?.AdaptiveAgentEnabled ?? true;
+            set { if (_tradingSettings != null) { _tradingSettings.AdaptiveAgentEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal AdaptiveSlMultiplier
+        {
+            get => _tradingSettings?.AdaptiveSlMultiplier ?? 0.4m;
+            set { if (_tradingSettings != null) { _tradingSettings.AdaptiveSlMultiplier = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal AdaptivePeriodMultiplier
+        {
+            get => _tradingSettings?.AdaptivePeriodMultiplier ?? 0.3m;
+            set { if (_tradingSettings != null) { _tradingSettings.AdaptivePeriodMultiplier = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public bool SignalValidatorEnabled
+        {
+            get => _tradingSettings?.SignalValidatorEnabled ?? true;
+            set { if (_tradingSettings != null) { _tradingSettings.SignalValidatorEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal ValidatorVolumeThreshold
+        {
+            get => _tradingSettings?.ValidatorVolumeThreshold ?? 8.0m;
+            set { if (_tradingSettings != null) { _tradingSettings.ValidatorVolumeThreshold = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public decimal ValidatorAtrThreshold
+        {
+            get => _tradingSettings?.ValidatorAtrThreshold ?? 0.15m;
+            set { if (_tradingSettings != null) { _tradingSettings.ValidatorAtrThreshold = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public int ValidatorRsiLow
+        {
+            get => _tradingSettings?.ValidatorRsiLow ?? 20;
+            set { if (_tradingSettings != null) { _tradingSettings.ValidatorRsiLow = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public int ValidatorRsiHigh
+        {
+            get => _tradingSettings?.ValidatorRsiHigh ?? 80;
+            set { if (_tradingSettings != null) { _tradingSettings.ValidatorRsiHigh = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public bool NewsSentinelEnabled
+        {
+            get => _tradingSettings?.NewsSentinelEnabled ?? true;
+            set { if (_tradingSettings != null) { _tradingSettings.NewsSentinelEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public int NewsSentinelBlockMinutes
+        {
+            get => _tradingSettings?.NewsSentinelBlockMinutes ?? 5;
+            set { if (_tradingSettings != null) { _tradingSettings.NewsSentinelBlockMinutes = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
         private async void SaveTradingSettings()
         {
             if (_tradingSettings != null)

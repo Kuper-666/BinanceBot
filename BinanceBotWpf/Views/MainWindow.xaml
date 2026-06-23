@@ -512,6 +512,54 @@
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
+
+                        <!-- ИИ Эшелоны (Золотая архитектура) -->
+                        <Border Background="#252525" CornerRadius="5" Padding="10" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="ИИ Эшелоны (Золотая архитектура)" Foreground="#f1c40f" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                                <!-- AdaptiveAgent -->
+                                <Border Background="#1e1e1e" CornerRadius="3" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <CheckBox Content="AdaptiveAgent (ATR + Volume + Volatility + ADX)" IsChecked="{Binding AdaptiveAgentEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
+                                        <WrapPanel>
+                                            <TextBlock Text="SL множитель:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding AdaptiveSlMultiplier, StringFormat=F1}" Width="50" Margin="0,0,15,0"/>
+                                            <TextBlock Text="Период множитель:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding AdaptivePeriodMultiplier, StringFormat=F1}" Width="50"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- SignalValidator -->
+                                <Border Background="#1e1e1e" CornerRadius="3" Padding="8" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <CheckBox Content="SignalValidator (ONNX / Heuristic)" IsChecked="{Binding SignalValidatorEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
+                                        <WrapPanel>
+                                            <TextBlock Text="Volume порог:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding ValidatorVolumeThreshold, StringFormat=F1}" Width="50" Margin="0,0,15,0"/>
+                                            <TextBlock Text="ATR порог:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding ValidatorAtrThreshold, StringFormat=F2}" Width="50" Margin="0,0,15,0"/>
+                                            <TextBlock Text="RSI Buy &lt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding ValidatorRsiLow}" Width="40" Margin="0,0,15,0"/>
+                                            <TextBlock Text="RSI Sell &gt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding ValidatorRsiHigh}" Width="40"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- NewsSentinel -->
+                                <Border Background="#1e1e1e" CornerRadius="3" Padding="8">
+                                    <StackPanel>
+                                        <CheckBox Content="NewsSentinel (SQLite + новостной анализ)" IsChecked="{Binding NewsSentinelEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
+                                        <WrapPanel>
+                                            <TextBlock Text="Блокировка (мин):" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBox Text="{Binding NewsSentinelBlockMinutes}" Width="50"/>
+                                        </WrapPanel>
+                                    </StackPanel>
+                                </Border>
+                            </StackPanel>
+                        </Border>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

@@ -503,4 +503,195 @@ namespace BinanceBotWpf.Tests
             Assert.False (hasHigh);
         }
     }
+
+    public class AdaptiveAgentADX_Tests
+    {
+        private List<BinanceKline> GenerateTrendingKlines (int count, decimal startPrice, decimal step, decimal volatility)
+        {
+            var random = new Random (42);
+            var klines = new List<BinanceKline> ();
+            decimal price = startPrice;
+            for (int i = 0; i < count; i++)
+            {
+                decimal noise = (decimal)random.NextDouble () * volatility * 2 - volatility;
+                price += step + noise;
+                decimal high = price + (decimal)random.NextDouble () * volatility;
+                decimal low = price - (decimal)random.NextDouble () * volatility;
+                klines.Add (new BinanceKline
+                {
+                    Close = price,
+                    High = high,
+                    Low = low,
+                    Volume = 1000 + random.Next (0, 500)
+                });
+            }
+            return klines;
+        }
+
+        private List<BinanceKline> GenerateRangingKlines (int count, decimal basePrice, decimal range)
+        {
+            var random = new Random (99);
+            var klines = new List<BinanceKline> ();
+            for (int i = 0; i < count; i++)
+            {
+                decimal price = basePrice + (decimal)random.NextDouble () * range - range / 2;
+                decimal high = price + (decimal)random.NextDouble () * 1.0m;
+                decimal low = price - (decimal)random.NextDouble () * 1.0m;
+                klines.Add (new BinanceKline
+                {
+                    Close = price,
+                    High = high,
+                    Low = low,
+                    Volume = 1000 + random.Next (0, 200)
+                });
+            }
+            return klines;
+        }
+
+        [Fact]
+        public void CalculateADX_ReturnsPopulatedInResult ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
+
+            var result = agent.Calculate (klines);
+
+            Assert.True (result.Adx >= 0m && result.Adx <= 100m,
+                $"ADX must be in [0,100], got {result.Adx}");
+        }
+
+        [Fact]
+        public void CalculateADX_TrendingData_HighADX ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 1.0m, 0.5m);
+
+            var result = agent.Calculate (klines);
+
+            Assert.True (result.Adx > 20m,
+                $"Trending data should produce ADX > 20, got {result.Adx}");
+        }
+
+        [Fact]
+        public void CalculateADX_RangingData_LowerADX ()
+        {
+            var trendingAgent = new AdaptiveAgent (msg => { });
+            var rangingAgent = new AdaptiveAgent (msg => { });
+            var trendingKlines = GenerateTrendingKlines (120, 100m, 1.0m, 0.5m);
+            var rangingKlines = GenerateRangingKlines (120, 100m, 5m);
+
+            var trendingResult = trendingAgent.Calculate (trendingKlines);
+            var rangingResult = rangingAgent.Calculate (rangingKlines);
+
+            Assert.True (trendingResult.Adx >= rangingResult.Adx,
+                $"Trending ADX ({trendingResult.Adx}) should be >= ranging ADX ({rangingResult.Adx})");
+        }
+
+        [Fact]
+        public void CalculateADX_InsufficientData_ReturnsDefault25 ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = Enumerable.Range (0, 10).Select (i => new BinanceKline
+            {
+                Close = 100 + i,
+                High = 105 + i,
+                Low = 95 + i,
+                Volume = 1000
+            }).ToList ();
+
+            var result = agent.Calculate (klines);
+
+            Assert.Equal (1.0m, result.Factor);
+            Assert.Equal ("Normal", result.Regime);
+        }
+
+        [Fact]
+        public void TrendStrength_IsPopulated ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
+
+            var result = agent.Calculate (klines);
+
+            Assert.True (result.TrendStrength >= 0.7m && result.TrendStrength <= 1.3m,
+                $"TrendStrength must be in [0.7, 1.3], got {result.TrendStrength}");
+        }
+
+        [Fact]
+        public void TrendStrengthFactor_MatchesTrendStrength ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
+
+            var result = agent.Calculate (klines);
+
+            Assert.Equal (result.TrendStrength, result.TrendStrengthFactor);
+        }
+
+        [Fact]
+        public void Factor_ClampedToRange ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 2.0m, 5m);
+
+            var result = agent.Calculate (klines);
+
+            Assert.InRange (result.Factor, 0.5m, 1.5m);
+        }
+
+        [Fact]
+        public void Factor_IsWeightedCombination ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
+
+            var result = agent.Calculate (klines);
+
+            decimal expectedFactor = result.AtrFactor * 0.36m
+                + result.VolumeFactor * 0.27m
+                + result.VolatilityFactor * 0.27m
+                + result.TrendStrengthFactor * 0.10m;
+            expectedFactor = Math.Clamp (expectedFactor, 0.5m, 1.5m);
+
+            Assert.Equal (expectedFactor, result.Factor);
+        }
+
+        [Fact]
+        public void LsmaWindowMultiplier_ScalesWithFactor ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
+
+            var result = agent.Calculate (klines);
+
+            decimal expectedLsma = 1.0m + (result.Factor - 1.0m) * 0.3m;
+            Assert.Equal (expectedLsma, result.LsmaWindowMultiplier);
+        }
+
+        [Fact]
+        public void SlMultiplier_ScalesWithFactor ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
+
+            var result = agent.Calculate (klines);
+
+            decimal expectedSl = 1.0m + (result.Factor - 1.0m) * 0.4m;
+            Assert.Equal (expectedSl, result.SlMultiplier);
+        }
+
+        [Fact]
+        public void FourFactors_AllNonNegative ()
+        {
+            var agent = new AdaptiveAgent (msg => { });
+            var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
+
+            var result = agent.Calculate (klines);
+
+            Assert.True (result.AtrFactor >= 0m, "AtrFactor must be >= 0");
+            Assert.True (result.VolumeFactor >= 0m, "VolumeFactor must be >= 0");
+            Assert.True (result.VolatilityFactor >= 0m, "VolatilityFactor must be >= 0");
+            Assert.True (result.TrendStrengthFactor >= 0.7m, "TrendStrengthFactor must be >= 0.7");
+        }
+    }
 }

@@ -36,6 +36,7 @@ namespace BinanceBotWpf.Services
         private TradingSettings _tradingSettings;
         private BackupService _backupService;
         private AiRiskEngine _aiRiskEngine;
+        private DashboardWebSocketServer _dashboardServer;
 
         private MainWindowViewModel _ui;
         private bool _isRunning;
@@ -47,6 +48,8 @@ namespace BinanceBotWpf.Services
         private readonly Dictionary<string, DateTime> _lastBuyTime = new ();
         private readonly List<string> _recentErrors = new ();
         private readonly int MaxErrors = 20;
+        private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
+        private readonly object _klinesCacheLock = new ();
 
         // Настройки
         private readonly string _telegramBotToken;
@@ -84,6 +87,9 @@ namespace BinanceBotWpf.Services
             _tradingSettings = new TradingSettings ();
             _backupService = new BackupService (null);
             _aiRiskEngine = new AiRiskEngine (_mlManager, client, null);
+
+            // ✅ Дашборд WebSocket сервер
+            _dashboardServer = new DashboardWebSocketServer (null);
 
             // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
             _webSocketManager = new WebSocketPriceManager (null);
@@ -241,6 +247,7 @@ namespace BinanceBotWpf.Services
             _webSocketManager?.Dispose ();
             _webSocketManager = null;
             _gridBot?.Dispose ();
+            try { _dashboardServer?.Stop (); } catch { }
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
@@ -428,6 +435,18 @@ namespace BinanceBotWpf.Services
                     await StartAutoGridAsync (gridSymbol);
                 });
             }
+
+            // Запуск Dashboard WebSocket сервера
+            try
+            {
+                _dashboardServer = new DashboardWebSocketServer (msg => _ui?.AddLog (msg));
+                await _dashboardServer.StartAsync (8765);
+                _ui?.AddLog ("📡 Dashboard WebSocket доступен на ws://localhost:8765");
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"⚠️ Dashboard WS не запущен: {ex.Message}");
+            }
         }
 
         private async Task UpdatePairs()
@@ -561,6 +580,28 @@ namespace BinanceBotWpf.Services
         /// Возвращает клиент Binance для доступа к API
         /// </summary>
         public BinanceClient GetBinanceClient() => _client;
+
+        private async Task<List<BinanceKline>> GetKlinesCachedAsync (string symbol, string interval, int limit)
+        {
+            string cacheKey = $"{symbol}_{interval}_{limit}";
+            lock (_klinesCacheLock)
+            {
+                if (_klinesCache.TryGetValue (cacheKey, out var cached) && DateTime.UtcNow < cached.Expiry)
+                {
+                    return cached.Klines;
+                }
+            }
+            var klines = await _client.GetKlinesAsync (symbol, interval, limit);
+            if (klines != null)
+            {
+                lock (_klinesCacheLock)
+                {
+                    _klinesCache[cacheKey] = (klines, DateTime.UtcNow + TimeSpan.FromSeconds (30));
+                }
+            }
+            return klines;
+        }
+
         private async Task TradingLoop()
         {
             while (_isRunning)
@@ -624,7 +665,7 @@ namespace BinanceBotWpf.Services
                     // 4. Анализ пар
                     foreach (var sym in pairs)
                     {
-                        var klines = await _client.GetKlinesAsync (sym, candleInterval, 100);
+                        var klines = await GetKlinesCachedAsync (sym, candleInterval, 100);
                         if (klines == null || klines.Count < 30) continue;
 
                         if (_ui != null)
@@ -643,7 +684,7 @@ namespace BinanceBotWpf.Services
                         bool confirmed = true;
                         if (analysis.Action == TradeAction.Buy || analysis.Action == TradeAction.Sell)
                         {
-                            var entryKlines = await _client.GetKlinesAsync (sym, entryInterval, 30);
+                            var entryKlines = await GetKlinesCachedAsync (sym, entryInterval, 30);
                             confirmed = _strategy.CheckEntryConfirmation (entryKlines, analysis.Action);
                             if (!confirmed)
                             {
@@ -661,6 +702,7 @@ namespace BinanceBotWpf.Services
                         }
 
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
+                        bool traded = false;
                         if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             if (!_strategy.CheckNewsBeforePosition (sym))
@@ -670,13 +712,13 @@ namespace BinanceBotWpf.Services
                             else
                             {
                                 await ExecuteBuy (sym, analysis.Indicators, spotBalance);
-                                spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                                traded = true;
                             }
                         }
                         else if (analysis.Action == TradeAction.Sell && hasPosition && confirmed)
                         {
                             await ExecuteSell (sym);
-                            spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            traded = true;
                         }
 
                         // 6. Volume Breakout стратегия (если включена)
@@ -686,7 +728,7 @@ namespace BinanceBotWpf.Services
                             {
                                 _ui?.AddLog ($"🚀 {sym}: Volume Breakout сигнал!");
                                 await ExecuteBuy (sym, analysis.Indicators, spotBalance);
-                                spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                                traded = true;
                             }
                         }
 
@@ -697,13 +739,43 @@ namespace BinanceBotWpf.Services
                             {
                                 decimal buyAmount = _dcaStrategy.CalculateBuyAmount (spotBalance);
                                 _ui?.AddLog ($"📊 {sym}: DCA покупка на {buyAmount:F2} USDC");
-                                // DCA использует тот же механизм покупки, но с фиксированной суммой
                                 var indicators = new Dictionary<string, decimal> (analysis.Indicators);
                                 indicators["dcaBuyAmount"] = buyAmount;
                                 await ExecuteBuy (sym, indicators, spotBalance);
-                                spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                                traded = true;
                             }
                         }
+
+                        // Однократное обновление баланса за итерацию по паре
+                        if (traded)
+                        {
+                            spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                        }
+                    }
+
+                    // Push data to dashboard
+                    if (_dashboardServer?.IsRunning == true)
+                    {
+                        try
+                        {
+                            var positionsData = _positionManager.Positions.Select (kvp => new Dictionary<string, object>
+                            {
+                                ["pair"] = kvp.Key,
+                                ["entry"] = kvp.Value.EntryPrice,
+                                ["qty"] = kvp.Value.Quantity,
+                                ["sl"] = kvp.Value.StopLossPrice,
+                                ["tp"] = kvp.Value.TakeProfitPrice
+                            }).ToList ();
+                            _dashboardServer.BroadcastPositions (positionsData);
+
+                            _dashboardServer.BroadcastEchelons (new Dictionary<string, object>
+                            {
+                                ["adaptive"] = _tradingSettings?.AdaptiveAgentEnabled ?? true,
+                                ["validator"] = _tradingSettings?.SignalValidatorEnabled ?? true,
+                                ["newsSentinel"] = _tradingSettings?.NewsSentinelEnabled ?? true
+                            });
+                        }
+                        catch { }
                     }
 
                     await Task.Delay (60000);
