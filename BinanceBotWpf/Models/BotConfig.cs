@@ -53,6 +53,12 @@ namespace BinanceBotWpf.Models
         public int FuturesLeverage { get; set; } = 5;
         public decimal FuturesMaxRiskPercent { get; set; } = 0.10m;
 
+        // Настройки ИИ-агентов (Золотая архитектура)
+        public bool AdaptiveAgentEnabled { get; set; } = true;
+        public bool SignalValidatorEnabled { get; set; } = true;
+        public bool NewsSentinelEnabled { get; set; } = true;
+        public int NewsSentinelMaxAgeHours { get; set; } = 6;
+
         // Расшифрованные значения для использования в коде (не сериализуются в JSON)
         [JsonIgnore]
         public string ApiKey

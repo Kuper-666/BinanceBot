@@ -8,6 +8,7 @@ namespace BinanceBotWpf.Services
 {
     /// <summary>
     /// Основная торговая стратегия (SMA + RSI + MACD) с мульти-таймфрейм поддержкой
+    /// и Золотой архитектурой (3 эшелона ИИ)
     /// </summary>
     public class TradingStrategy
     {
@@ -22,6 +23,18 @@ namespace BinanceBotWpf.Services
         public string MainTimeframe { get; set; } = "1h";
         public string EntryTimeframe { get; set; } = "5m";
 
+        // Эшелон 1: AdaptiveAgent (ML.NET волатильность)
+        private AdaptiveAgent _adaptiveAgent;
+        private bool _adaptiveEnabled = true;
+
+        // Эшелон 2: SignalValidator (ONNX)
+        private SignalValidator _signalValidator;
+        private bool _signalValidatorEnabled = true;
+
+        // Эшелон 3: NewsSentinel (SQLite)
+        private NewsSentinel _newsSentinel;
+        private bool _newsSentinelEnabled = true;
+
         public TradingStrategy(Action<string> logger)
         {
             _logger = logger;
@@ -29,9 +42,43 @@ namespace BinanceBotWpf.Services
 
         private MlModelManager _mlManager;
 
-        public void SetMlManager(MlModelManager mlManager)
+        public void SetMlManager (MlModelManager mlManager)
         {
             _mlManager = mlManager;
+        }
+
+        public void SetAdaptiveAgent (AdaptiveAgent agent, bool enabled = true)
+        {
+            _adaptiveAgent = agent;
+            _adaptiveEnabled = enabled;
+        }
+
+        public void SetSignalValidator (SignalValidator validator, bool enabled = true)
+        {
+            _signalValidator = validator;
+            _signalValidatorEnabled = enabled;
+        }
+
+        public void SetNewsSentinel (NewsSentinel sentinel, bool enabled = true)
+        {
+            _newsSentinel = sentinel;
+            _newsSentinelEnabled = enabled;
+        }
+
+        /// <summary>
+        /// Проверка новостного фона перед открытием позиции.
+        /// Возвращает true, если торговля разрешена.
+        /// </summary>
+        public bool CheckNewsBeforePosition (string symbol = null)
+        {
+            if (!_newsSentinelEnabled || _newsSentinel == null) return true;
+
+            bool hasHighImpact = _newsSentinel.IsHighImpactNewsActive (symbol);
+            if (hasHighImpact)
+            {
+                _logger?.Invoke ($"⚠️ {symbol}: обнаружены высокорисковые новости — торговля приостановлена");
+            }
+            return !hasHighImpact;
         }
 
         // Публичный метод для установки логгера (если нужно обновить после создания)
@@ -42,10 +89,10 @@ namespace BinanceBotWpf.Services
         }
 
         /// <summary>
-        /// Анализ пары и генерация сигнала
+        /// Анализ пары и генерация сигнала с интеграцией 3 эшелонов ИИ
         /// </summary>
         public async Task<(TradeAction Action, string Reason, Dictionary<string, decimal> Indicators)>
-            AnalyzeAsync(string symbol, List<BinanceKline> klines)
+            AnalyzeAsync (string symbol, List<BinanceKline> klines)
         {
             var result = (Action: TradeAction.Hold, Reason: "Нет сигнала", Indicators: new Dictionary<string, decimal> ());
 
@@ -62,10 +109,32 @@ namespace BinanceBotWpf.Services
                 var lows = klines.Select (k => k.Low).ToList ();
                 var volumes = klines.Select (k => k.Volume).ToList ();
 
+                // ═══════ Эшелон 1: AdaptiveAgent — анализ волатильности ═══════
+                decimal adaptiveFactor = 1.0m;
+                decimal adaptiveLsmaMultiplier = 1.0m;
+                decimal adaptiveSlMultiplier = 1.0m;
+                string regime = "Normal";
+
+                if (_adaptiveEnabled && _adaptiveAgent != null)
+                {
+                    var adaptive = _adaptiveAgent.Calculate (klines);
+                    adaptiveFactor = adaptive.Factor;
+                    adaptiveLsmaMultiplier = adaptive.LsmaWindowMultiplier;
+                    adaptiveSlMultiplier = adaptive.SlMultiplier;
+                    regime = adaptive.Regime;
+
+                    result.Indicators["adaptiveFactor"] = adaptiveFactor;
+                    result.Indicators["adaptiveRegime"] = regime == "High Volatility" ? 2 : (regime == "Low Volatility" ? 0 : 1);
+                }
+
+                // Адаптивные периоды LSMA/SMA
+                int adaptiveFastSma = Math.Max (3, (int)Math.Round (FastSmaPeriod * adaptiveLsmaMultiplier));
+                int adaptiveSlowSma = Math.Max (adaptiveFastSma + 3, (int)Math.Round (SlowSmaPeriod * adaptiveLsmaMultiplier));
+
                 // Расчёт индикаторов
                 decimal currentPrice = closes.Last ();
-                decimal fastSma = CalculateSma (closes, FastSmaPeriod);
-                decimal slowSma = CalculateSma (closes, SlowSmaPeriod);
+                decimal fastSma = CalculateSma (closes, adaptiveFastSma);
+                decimal slowSma = CalculateSma (closes, adaptiveSlowSma);
                 decimal rsi = CalculateRsi (closes, RsiPeriod);
                 decimal avgVolume = volumes.TakeLast (20).Average ();
                 decimal volumeRatio = volumes.Last () / avgVolume;
@@ -77,7 +146,11 @@ namespace BinanceBotWpf.Services
                 var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
                 decimal bbUpper = bb.Upper.LastOrDefault () ?? currentPrice;
                 decimal bbLower = bb.Lower.LastOrDefault () ?? currentPrice;
-                decimal bbWidth = ( bbUpper - bbLower ) / ( currentPrice + 0.0001m );
+                decimal bbWidth = (bbUpper - bbLower) / (currentPrice + 0.0001m);
+
+                // LSMA расчёт
+                var lsmaValues = TechnicalAnalysis.LSMA (closes, Math.Max (5, (int)Math.Round (20 * adaptiveLsmaMultiplier)));
+                decimal lsma = lsmaValues.LastOrDefault () ?? currentPrice;
 
                 // Сохраняем индикаторы
                 result.Indicators["price"] = currentPrice;
@@ -90,27 +163,27 @@ namespace BinanceBotWpf.Services
                 result.Indicators["prevMacdHist"] = prevMacdHist;
                 result.Indicators["bbUpper"] = bbUpper;
                 result.Indicators["bbLower"] = bbLower;
+                result.Indicators["lsma"] = lsma;
 
                 // Дополнительно для ML
-                var atrList = TechnicalAnalysis.ATR(highs, lows, closes, 14);
-                decimal atr = atrList.LastOrDefault() ?? currentPrice * 0.02m;
-                var obvList = TechnicalAnalysis.OBV(klines);
-                decimal obv = obvList.LastOrDefault();
-                
-                // Предсказание ИИ
+                var atrList = TechnicalAnalysis.ATR (highs, lows, closes, 14);
+                decimal atr = atrList.LastOrDefault () ?? currentPrice * 0.02m;
+                var obvList = TechnicalAnalysis.OBV (klines);
+                decimal obv = obvList.LastOrDefault ();
+                decimal atrPercent = currentPrice > 0 ? atr / currentPrice : 0;
+
+                // Предсказание ML
                 if (_mlManager != null)
                 {
-                    var riskPrediction = _mlManager.PredictRisk(fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv);
+                    var riskPrediction = _mlManager.PredictRisk (fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv);
                     result.Indicators["aiProbability"] = (decimal)riskPrediction.Probability;
-                    
-                    // Сохраняем RiskLevel как число (например: Low=1, Medium=2, High=3) или просто логгируем, 
-                    // так как в Dictionary<string, decimal> нельзя сохранить строку.
+
                     decimal riskVal = riskPrediction.RiskLevel == "Low Risk" ? 1 : (riskPrediction.RiskLevel == "Medium Risk" ? 2 : 3);
                     result.Indicators["aiRiskLevel"] = riskVal;
                 }
 
-                // Базовый сигнал от SMA
-                var baseSignal = _strategyEngine.AnalyzePairWithWallet (symbol, closes, FastSmaPeriod, SlowSmaPeriod, currentPrice);
+                // ═══════ Базовый сигнал от SMA ═══════
+                var baseSignal = _strategyEngine.AnalyzePairWithWallet (symbol, closes, adaptiveFastSma, adaptiveSlowSma, currentPrice);
 
                 // Усиление сигнала от других индикаторов
                 if (baseSignal.Action == TradeAction.Buy)
@@ -122,7 +195,7 @@ namespace BinanceBotWpf.Services
                     if (bbOversold || macdBullish || rsiOversold)
                     {
                         result.Action = TradeAction.Buy;
-                        result.Reason = $"SMA Buy + {( bbOversold ? "BB " : "" )}{( macdBullish ? "MACD " : "" )}{( rsiOversold ? "RSI" : "" )}";
+                        result.Reason = $"SMA Buy + {(bbOversold ? "BB " : "")}{(macdBullish ? "MACD " : "")}{(rsiOversold ? "RSI" : "")}";
                     }
                     else
                     {
@@ -139,7 +212,7 @@ namespace BinanceBotWpf.Services
                     if (bbOverbought || macdBearish || rsiOverbought)
                     {
                         result.Action = TradeAction.Sell;
-                        result.Reason = $"SMA Sell + {( bbOverbought ? "BB " : "" )}{( macdBearish ? "MACD " : "" )}{( rsiOverbought ? "RSI" : "" )}";
+                        result.Reason = $"SMA Sell + {(bbOverbought ? "BB " : "")}{(macdBearish ? "MACD " : "")}{(rsiOverbought ? "RSI" : "")}";
                     }
                     else
                     {
@@ -153,7 +226,44 @@ namespace BinanceBotWpf.Services
                     result.Reason = baseSignal.Reason;
                 }
 
-                _logger?.Invoke ($"📊 {symbol}: {result.Reason} (RSI={rsi:F1}, MACD={macdHist:F4})");
+                // ═══════ Эшелон 2: SignalValidator — валидация сигнала ═══════
+                if (result.Action != TradeAction.Hold && _signalValidatorEnabled && _signalValidator != null)
+                {
+                    var validation = _signalValidator.Validate (new SignalValidationInput
+                    {
+                        Price = (float)currentPrice,
+                        Rsi = (float)rsi,
+                        MacdHistogram = (float)macdHist,
+                        BbWidth = (float)bbWidth,
+                        AtrPercent = (float)atrPercent,
+                        VolumeRatio = (float)volumeRatio,
+                        SmaFast = (float)fastSma,
+                        SmaSlow = (float)slowSma,
+                        SignalDirection = result.Action == TradeAction.Buy ? 1f : -1f
+                    });
+
+                    result.Indicators["validationConfidence"] = (decimal)validation.Confidence;
+                    result.Indicators["validationRiskFlag"] = validation.RiskFlag ? 1 : 0;
+
+                    if (!validation.IsValid)
+                    {
+                        result.Action = TradeAction.Hold;
+                        result.Reason = $"Blocked by validator (conf={validation.Confidence:P0}, risk={validation.RiskFlag})";
+                    }
+                    else if (validation.RiskFlag)
+                    {
+                        adaptiveSlMultiplier *= 1.3m;
+                        _logger?.Invoke ($"⚠️ {symbol}: валидатор — повышенный риск, SL увеличен на 30%");
+                    }
+                }
+
+                // Адаптивный стоп-лосс
+                if (result.Action != TradeAction.Hold && adaptiveSlMultiplier > 1.0m)
+                {
+                    result.Indicators["adaptiveSlMultiplier"] = adaptiveSlMultiplier;
+                }
+
+                _logger?.Invoke ($"📊 {symbol}: {result.Reason} (RSI={rsi:F1}, MACD={macdHist:F4}, LSMA={lsma:F2}, regime={regime})");
             }
             catch (Exception ex)
             {

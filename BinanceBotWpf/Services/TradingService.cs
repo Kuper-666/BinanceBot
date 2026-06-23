@@ -106,6 +106,31 @@ namespace BinanceBotWpf.Services
             _mlManager = new MlModelManager (modelPath, logger);
             _strategy.SetMlManager(_mlManager);
 
+            // ═══════ Золотая архитектура: 3 эшелона ИИ ═══════
+            try
+            {
+                var cfg = BotConfig.LoadOrMigrate (out _);
+                bool adaptiveEnabled = cfg?.AdaptiveAgentEnabled ?? true;
+                bool validatorEnabled = cfg?.SignalValidatorEnabled ?? true;
+                bool newsEnabled = cfg?.NewsSentinelEnabled ?? true;
+
+                var adaptiveAgent = new AdaptiveAgent (logger);
+                _strategy.SetAdaptiveAgent (adaptiveAgent, adaptiveEnabled);
+                _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {(adaptiveEnabled ? "включён" : "выключен")}");
+
+                var signalValidator = new SignalValidator (logger);
+                _strategy.SetSignalValidator (signalValidator, validatorEnabled);
+                _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")}");
+
+                var newsSentinel = new NewsSentinel (logger);
+                _strategy.SetNewsSentinel (newsSentinel, newsEnabled);
+                _ui?.AddLog ($"📰 Эшелон 3 (NewsSentinel): {(newsEnabled ? "включён" : "выключен")}");
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"⚠️ Ошибка инициализации ИИ-агентов: {ex.Message}");
+            }
+
             // У новых сервисов логгер уже установлен в конструкторе
             if (_webSocketManager == null)
             {
@@ -579,11 +604,18 @@ namespace BinanceBotWpf.Services
                                 analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0);
                         }
 
-                        // 5. Исполнение сигналов (только с подтверждением)
+                        // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
-                            await ExecuteBuy (sym, analysis.Indicators, spotBalance);
-                            spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            if (!_strategy.CheckNewsBeforePosition (sym))
+                            {
+                                _ui?.AddLog ($"🚫 {sym}: позиция заблокирована высокорисковыми новостями");
+                            }
+                            else
+                            {
+                                await ExecuteBuy (sym, analysis.Indicators, spotBalance);
+                                spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                            }
                         }
                         else if (analysis.Action == TradeAction.Sell && hasPosition && confirmed)
                         {
@@ -677,10 +709,11 @@ namespace BinanceBotWpf.Services
             }
             _lastBuyTime[symbol] = DateTime.UtcNow;
 
-            // === SL/TP от ИИ ===
-            decimal slPrice = price * (1 - aiRisk.StopLossPercent);
-            decimal tpPrice = price * (1 + aiRisk.TakeProfitPercent);
-            decimal slPct = aiRisk.StopLossPercent;
+            // === SL/TP от ИИ с адаптивным множителем ===
+            decimal adaptiveSlMult = indicators.ContainsKey ("adaptiveSlMultiplier") ? indicators["adaptiveSlMultiplier"] : 1.0m;
+            decimal slPrice = price * (1 - aiRisk.StopLossPercent * adaptiveSlMult);
+            decimal tpPrice = price * (1 + aiRisk.TakeProfitPercent * adaptiveSlMult);
+            decimal slPct = aiRisk.StopLossPercent * adaptiveSlMult;
 
             _ui?.AddLog ($"📐 {symbol}: Risk={riskAmount:F2} ({riskPerTrade:P2}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2}), R/R 1:{riskRewardRatio:F1}");
 

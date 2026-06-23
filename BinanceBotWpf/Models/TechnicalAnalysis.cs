@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -149,6 +149,67 @@ namespace BinanceBotWpf.Models
             decimal avg = values.Average ();
             decimal sumSq = values.Select (v => ( v - avg ) * ( v - avg )).Sum ();
             return (decimal)Math.Sqrt ((double)( sumSq / values.Count ));
+        }
+
+        public static List<decimal?> LSMA(List<decimal> data, int period)
+        {
+            var result = Enumerable.Repeat ((decimal?)null, data.Count).ToList ();
+            if (data.Count < period) return result;
+
+            for (int i = period - 1; i < data.Count; i++)
+            {
+                decimal sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+                for (int j = 0; j < period; j++)
+                {
+                    decimal x = j;
+                    decimal y = data[i - period + 1 + j];
+                    sumX += x;
+                    sumY += y;
+                    sumXY += x * y;
+                    sumX2 += x * x;
+                }
+                decimal denominator = period * sumX2 - sumX * sumX;
+                if (denominator == 0) { result[i] = sumY / period; continue; }
+                decimal slope = (period * sumXY - sumX * sumY) / denominator;
+                decimal intercept = (sumY - slope * sumX) / period;
+                result[i] = intercept + slope * (period - 1);
+            }
+            return result;
+        }
+
+        /// <summary>Расчёт Average True Range (ATR) в процентах от цены.</summary>
+        public static List<decimal?> ATRPercent(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period)
+        {
+            var atr = ATR (highs, lows, closes, period);
+            var result = new List<decimal?> ();
+            for (int i = 0; i < closes.Count; i++)
+            {
+                if (atr[i].HasValue && closes[i] > 0)
+                    result.Add (atr[i]!.Value / closes[i]);
+                else
+                    result.Add (null);
+            }
+            return result;
+        }
+
+        /// <summary>Расчёт скользящей гистограммы объёма (отношение текущего объёма к SMA объёма).</summary>
+        public static List<decimal?> VolumeHistogram(List<decimal> volumes, int period)
+        {
+            var result = Enumerable.Repeat ((decimal?)null, volumes.Count).ToList ();
+            if (volumes.Count < period) return result;
+
+            decimal sum = 0;
+            for (int i = 0; i < period; i++) sum += volumes[i];
+            for (int i = period - 1; i < volumes.Count; i++)
+            {
+                decimal avg = sum / period;
+                result[i] = avg > 0 ? volumes[i] / avg : 1m;
+                if (i + 1 < volumes.Count)
+                {
+                    sum += volumes[i + 1] - volumes[i - period + 1];
+                }
+            }
+            return result;
         }
 
         /// <summary>Расчёт On-Balance Volume (OBV) для списка свечей.</summary>

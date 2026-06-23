@@ -4,7 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <StartupUri>/Views/MainWindow.xaml</StartupUri>
-    <VersionPrefix>1.1.10</VersionPrefix>
+    <VersionPrefix>1.10.0</VersionPrefix>
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
     <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
     <Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
@@ -21,6 +21,9 @@
     <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.4" />
     <PackageReference Include="Microsoft.ML" Version="5.0.0" />
     <PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0" />
+    <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
+    <PackageReference Include="Microsoft.ML.OnnxTransformer" Version="5.0.0" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
     <PackageReference Include="Polly" Version="8.4.1" />
