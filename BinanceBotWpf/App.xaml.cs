@@ -18,6 +18,12 @@ namespace BinanceBotWpf
 
         protected override async void OnStartup(StartupEventArgs e)
         {
+            // Глобальный обработчик неотслеживаемых исключений Task (WebSocket обрывы и т.д.)
+            TaskScheduler.UnobservedTaskException += (sender, args) =>
+            {
+                System.Diagnostics.Debug.WriteLine ($"[UnobservedTask] {args.Exception?.InnerException?.Message ?? args.Exception?.Message}");
+                args.SetObserved ();
+            };
             // Защита от запуска нескольких копий
             const string mutexName = "Global\\{B9E8F2A1-5C7D-4A3E-8F2C-9D7E5B4A3C2F}";
             bool createdNew;
