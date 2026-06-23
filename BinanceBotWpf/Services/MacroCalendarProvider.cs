@@ -18,6 +18,8 @@ namespace BinanceBotWpf.Services
         private DateTime _lastFetchTime = DateTime.MinValue;
         private readonly TimeSpan _fetchInterval = TimeSpan.FromHours (6);
 
+        public bool HasRealApi => false;
+
         public MacroCalendarProvider(HttpClient httpClient, Action<string> logger)
         {
             _httpClient = httpClient;

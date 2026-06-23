@@ -199,6 +199,7 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (TradingLoop);
             _ = Task.Run (AutoOptimizeLoop);
             _ = Task.Run (PeriodicUpdateCheckLoop);
+            _ = Task.Run (DailyReportLoop);
         }
 
         public void StopTrading()
@@ -488,7 +489,8 @@ namespace BinanceBotWpf.Services
                     if (!_tradingLoopEnabled) { await Task.Delay (5000); continue; }
 
                     // 0. Проверка новостей и макро-событий
-                    if (_tradingSettings?.AvoidNewsTime == true)
+                    if (_tradingSettings?.AvoidNewsTime == true
+                        && (_newsProvider?.HasRealApi == true || _macroCalendar?.HasRealApi == true))
                     {
                         bool newsNear = await _newsProvider.IsEventNearAsync (30);
                         bool macroNear = await _macroCalendar.IsHighImpactEventNearAsync (60);
@@ -868,7 +870,19 @@ namespace BinanceBotWpf.Services
                     break;
                 case "/retrain":
                     await _telegram.SendMessageAsync ("🔄 Запускаю переобучение ML модели...", chatId);
-                    // TODO: добавить вызов переобучения
+                    try
+                    {
+                        var dc = new DataCollector (_client, _mlManager, msg => _ui?.AddLog (msg), _ui);
+                        await dc.FetchAndRetrainFromOrderHistoryAsync (
+                            _activePairs,
+                            _tradingSettings?.FastSmaPeriod ?? 12,
+                            _tradingSettings?.SlowSmaPeriod ?? 26);
+                        await _telegram.SendMessageAsync ("✅ Переобучение ML завершено.", chatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        await _telegram.SendMessageAsync ($"❌ Ошибка переобучения: {ex.Message}", chatId);
+                    }
                     break;
                 case "/pnl":
                     await _telegram.SendMessageAsync ($"📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {_ui?.WinRate ?? 0:F1}%", chatId);
@@ -1069,29 +1083,10 @@ namespace BinanceBotWpf.Services
                 {
                     if (!_isRunning) break;
 
-                    var httpClient = new System.Net.Http.HttpClient ();
-                    httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
-                    httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf");
-
-                    var checker = new UpdateChecker (httpClient, msg => { });
-                    checker.OnNewVersionAvailable += (version, url) =>
+                    if (_updateChecker != null)
                     {
-                        // Уведомляем только один раз за версию
-                        if (version != lastNotifiedVersion)
-                        {
-                            lastNotifiedVersion = version;
-                            _ui?.AddLog ($"🎉 Доступна новая версия: {version}");
-                            System.Windows.Application.Current.Dispatcher.Invoke (() =>
-                            {
-                                _ui.IsUpdateAvailable = true;
-                                _ui.AvailableVersion = version;
-                                _ui.UpdateDownloadUrl = url;
-                                _ui.UpdateStatusText = $"Доступна версия {version}";
-                            });
-                        }
-                    };
-
-                    await checker.CheckForUpdatesAsync ();
+                        await _updateChecker.CheckForUpdatesAsync ();
+                    }
                 }
                 catch { }
 
@@ -1101,6 +1096,32 @@ namespace BinanceBotWpf.Services
         }
 
         public bool IsTelegramEnabled() => _telegram != null && _telegram.IsEnabled;
+
+        private async Task DailyReportLoop()
+        {
+            while (_isRunning)
+            {
+                try
+                {
+                    var now = DateTime.UtcNow;
+                    var nextRun = now.Date.AddDays (1).AddHours (9);
+                    var delay = nextRun - now;
+                    if (delay.TotalMilliseconds > 0)
+                        await Task.Delay (delay);
+
+                    if (!_isRunning || _telegram == null) continue;
+
+                    decimal totalPnL = _ui?.TotalPnL ?? 0;
+                    decimal winRate = _ui?.WinRate ?? 0;
+                    int totalTrades = _ui?.TotalTrades ?? 0;
+                    int winningTrades = _ui?.WinningTrades ?? 0;
+                    int losingTrades = _ui?.LosingTrades ?? 0;
+
+                    await _telegram.SendDailyReport (totalPnL, winRate, totalTrades, winningTrades, losingTrades);
+                }
+                catch { }
+            }
+        }
 
         public async Task<bool> TestTelegramAsync()
         {

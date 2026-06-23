@@ -203,9 +203,7 @@ namespace BinanceBotWpf.Models
                     case "telegramchatid": config.TelegramChatId = value; break;
                     case "coingecooapikey":
                     case "coingeckoapikey": config.CoinGeckoApiKey = value; break;
-                    case "lunarcrushapkey":
-                    case "lunarcrushApikey":
-                    case "lunarcrushapıkey": config.LunarCrushApiKey = value; break;
+                    case "lunarcrushapikey": config.LunarCrushApiKey = value; break;
                     case "minbalanceforzeropercent": config.MinBalanceForZeroPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
                     case "targetbalanceforfullpercent": config.TargetBalanceForFullPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
                     case "maxtradepercent": config.MaxTradePercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;

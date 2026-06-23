@@ -61,8 +61,10 @@ namespace BinanceBotWpf.Services
                     decimal currentPrice = await getPrice (kv.Key);
                     if (currentPrice > 0)
                     {
-                        kv.Value.StopLossPrice = currentPrice * ( 1 - getStopLossPercent (currentPrice) );
-                        kv.Value.TakeProfitPrice = currentPrice * ( 1 + getTakeProfitPercent (currentPrice) );
+                        if (kv.Value.StopLossPrice <= 0)
+                            kv.Value.StopLossPrice = currentPrice * ( 1 - getStopLossPercent (currentPrice) );
+                        if (kv.Value.TakeProfitPrice <= 0)
+                            kv.Value.TakeProfitPrice = currentPrice * ( 1 + getTakeProfitPercent (currentPrice) );
                         kv.Value.HighestPrice = currentPrice;
                         _positions[kv.Key] = kv.Value;
                         _logger?.Invoke ($"🔄 Восстановлена позиция {kv.Key} ({kv.Value.Quantity} по {kv.Value.EntryPrice:F4})");

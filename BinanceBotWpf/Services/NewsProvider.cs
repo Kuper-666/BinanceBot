@@ -18,6 +18,8 @@ namespace BinanceBotWpf.Services
         private DateTime _lastFetchTime = DateTime.MinValue;
         private readonly TimeSpan _fetchInterval = TimeSpan.FromMinutes (15);
 
+        public bool HasRealApi => false;
+
         private static readonly string[] KeyWords = new[]
         {
             "launchpool", "airdrop", "listing", "delisting",
