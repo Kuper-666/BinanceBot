@@ -171,6 +171,7 @@ namespace BinanceBotWpf.Services
                 var obvList = TechnicalAnalysis.OBV (klines);
                 decimal obv = obvList.LastOrDefault ();
                 decimal atrPercent = currentPrice > 0 ? atr / currentPrice : 0;
+                result.Indicators["atr"] = atrPercent;
 
                 // Предсказание ML
                 if (_mlManager != null)

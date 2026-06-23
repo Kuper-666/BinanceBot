@@ -8,6 +8,7 @@
   "win_rate": "Win Rate",
   "max_drawdown": "Max Drawdown",
   "trades": "Trades",
+  "total_trades": "Total Trades",
   "active_pairs": "Active Pairs",
   "signals": "Signals",
   "buy": "BUY",

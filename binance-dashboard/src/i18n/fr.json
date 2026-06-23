@@ -8,6 +8,7 @@
   "win_rate": "Taux de réussite",
   "max_drawdown": "Drawdown max",
   "trades": "Transactions",
+  "total_trades": "Total des transactions",
   "active_pairs": "Paires actives",
   "signals": "Signaux",
   "buy": "ACHETER",

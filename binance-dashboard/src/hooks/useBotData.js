@@ -16,10 +16,22 @@ const POSITION_DEFAULTS = {
   echelons: { adaptive: 0, validator: 0, newsSentinel: 'unknown' },
 };
 
+function mapAnalysis(rp) {
+  const mapped = { ...rp };
+  if (rp.macdHist !== undefined) mapped.macd = rp.macdHist;
+  if (rp.bbWidth !== undefined) mapped.bb = rp.bbWidth;
+  if (rp.volumeRatio !== undefined) mapped.volume = rp.volumeRatio;
+  if (rp.aiProbability !== undefined) mapped.aiScore = rp.aiProbability;
+  if (rp.aiRiskLevel !== undefined) mapped.risk = rp.aiRiskLevel;
+  if (rp.action) mapped.signal = rp.action.toLowerCase();
+  return mapped;
+}
+
 function mergePairs(realPairs, mockPairs) {
   return realPairs.map(rp => {
-    const mock = mockPairs.find(mp => mp.pair === rp.pair);
-    const filled = { ...PAIR_DEFAULTS, ...(mock || {}), ...rp };
+    const mapped = mapAnalysis(rp);
+    const mock = mockPairs.find(mp => mp.pair === mapped.pair);
+    const filled = { ...PAIR_DEFAULTS, ...(mock || {}), ...mapped };
     if (!filled.lsma) filled.lsma = filled.price;
     return filled;
   });

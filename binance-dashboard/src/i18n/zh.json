@@ -8,6 +8,7 @@
   "win_rate": "胜率",
   "max_drawdown": "最大回撤",
   "trades": "交易",
+  "total_trades": "总交易数",
   "active_pairs": "活跃交易对",
   "signals": "信号",
   "buy": "买入",

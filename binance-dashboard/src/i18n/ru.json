@@ -8,6 +8,7 @@
   "win_rate": "Винрейт",
   "max_drawdown": "Макс. просадка",
   "trades": "Сделки",
+  "total_trades": "Всего сделок",
   "active_pairs": "Активные пары",
   "signals": "Сигналы",
   "buy": "КУПИТЬ",

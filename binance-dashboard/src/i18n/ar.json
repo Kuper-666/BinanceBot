@@ -8,6 +8,7 @@
   "win_rate": "نسبة الفوز",
   "max_drawdown": "أقصى تراجع",
   "trades": "الصفقات",
+  "total_trades": "إجمالي الصفقات",
   "active_pairs": "الأزواج النشطة",
   "signals": "الإشارات",
   "buy": "شراء",

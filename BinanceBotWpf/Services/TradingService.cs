@@ -62,6 +62,7 @@ namespace BinanceBotWpf.Services
         private bool _tradingLoopEnabled = true;
         private readonly List<Dictionary<string, object>> _equityHistory = new ();
         private const int MaxEquityHistory = 200;
+        private readonly Dictionary<string, Dictionary<string, object>> _lastAnalysis = new ();
 
         // TradingService.cs, конструктор:
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
@@ -640,7 +641,7 @@ namespace BinanceBotWpf.Services
                     decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                     if (spotBalance < 10)
                     {
-                        await Task.Delay (60000);
+                        await Task.Delay (15000);
                         continue;
                     }
 
@@ -706,6 +707,16 @@ namespace BinanceBotWpf.Services
                                 analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0);
                         }
 
+                        // Cache analysis for dashboard
+                        var cached = new Dictionary<string, object> ();
+                        foreach (var kvp in analysis.Indicators)
+                        {
+                            cached[kvp.Key] = kvp.Value;
+                        }
+                        cached["signal"] = analysis.Action.ToString ().ToLower ();
+                        cached["action"] = analysis.Action.ToString ();
+                        _lastAnalysis[sym] = cached;
+
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         bool traded = false;
                         if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
@@ -766,11 +777,22 @@ namespace BinanceBotWpf.Services
                             List<string> activePairList;
                             lock (_pairsLock) { activePairList = new List<string> (_activePairs); }
 
-                            var pricesData = activePairList.Select (sym => new Dictionary<string, object>
+                            var pricesData = activePairList.Select (sym =>
                             {
-                                ["pair"] = sym,
-                                ["price"] = _webSocketManager?.GetCurrentPrice (sym) ?? 0m,
-                                ["hasPosition"] = _positionManager.TryGet (sym, out _)
+                                var pairData = new Dictionary<string, object>
+                                {
+                                    ["pair"] = sym,
+                                    ["price"] = _webSocketManager?.GetCurrentPrice (sym) ?? 0m,
+                                    ["hasPosition"] = _positionManager.TryGet (sym, out _)
+                                };
+                                if (_lastAnalysis.TryGetValue (sym, out var indicators))
+                                {
+                                    foreach (var kvp in indicators)
+                                    {
+                                        pairData[kvp.Key] = kvp.Value;
+                                    }
+                                }
+                                return pairData;
                             }).ToList ();
                             _dashboardServer.BroadcastPrices (pricesData);
 
@@ -854,7 +876,7 @@ namespace BinanceBotWpf.Services
                         catch { }
                     }
 
-                    await Task.Delay (60000);
+                    await Task.Delay (30000);
                 }
                 catch (Exception ex)
                 {

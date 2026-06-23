@@ -1,0 +1,46 @@
+{
+  "timestamp": "2026-06-23T20:56:14.9911676Z",
+  "pairs": [
+    "BTCUSDT",
+    "ETHUSDT",
+    "BNBUSDT"
+  ],
+  "interval": "1h",
+  "candles": 2200,
+  "capital": 1000,
+  "basic": {
+    "label": "Basic SMA\u002BRSI",
+    "avgReturn": -6.801815293631983056641835260,
+    "avgWinRate": 41.728395061728395061728395063,
+    "totalTrades": 51,
+    "totalWins": 19,
+    "avgMaxDrawdown": 17.535494967308199463208863377,
+    "avgSharpe": 0.0311035465556972768487347061,
+    "avgCalmar": 0.7804466643817323568721667105,
+    "avgProfitFactor": 0.7792397660818713450292397661,
+    "avgMaxWinStreak": 1.6666666666666666666666666667,
+    "avgMaxLoseStreak": 3,
+    "avgTradeBars": 31.444444444444444444444444443
+  },
+  "enhanced": {
+    "label": "Golden Architecture",
+    "avgReturn": -4.6647571488141397265813769667,
+    "avgWinRate": 44.269881865789794178540981613,
+    "totalTrades": 47,
+    "totalWins": 17,
+    "avgMaxDrawdown": 16.520289024825610665571432030,
+    "avgSharpe": 0.1023155574662448437365908725,
+    "avgCalmar": 2.0608845330303189473994843065,
+    "avgProfitFactor": 1.1327985739750445632798573975,
+    "avgMaxWinStreak": 1.6666666666666666666666666667,
+    "avgMaxLoseStreak": 2.6666666666666666666666666667,
+    "avgTradeBars": 37.25283156740957252466203873
+  },
+  "comparison": {
+    "returnDelta": 2.1370581448178433300604582933,
+    "winRateDelta": 2.541486804061399116812586550,
+    "drawdownDelta": -1.015205942482588797637431347,
+    "pairsImproved": 2,
+    "totalPairs": 3
+  }
+}
