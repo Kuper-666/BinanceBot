@@ -233,7 +233,7 @@ namespace BinanceBotWpf.ViewModels
             CopyLogsCommand = new RelayCommand (_ => CopyLogs (), _ => true);
             ScrollLogsToEndCommand = new RelayCommand (_ => ScrollLogsToEnd (), _ => true);
             CheckForUpdatesCommand = new RelayCommand (async _ => await CheckForUpdatesAsync (silent: false), _ => !IsCheckingForUpdate);
-            UpdateNowCommand = new RelayCommand (async _ => await UpdateNowAsync (), _ => IsUpdateAvailable && !IsCheckingForUpdate);
+            UpdateNowCommand = new RelayCommand (async _ => await UpdateNowAsync (), _ => !IsCheckingForUpdate);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -350,24 +350,33 @@ namespace BinanceBotWpf.ViewModels
         /// </summary>
         public async Task UpdateNowAsync()
         {
-            if (!IsUpdateAvailable || string.IsNullOrEmpty (UpdateDownloadUrl)) return;
-
             IsCheckingForUpdate = true;
             UpdateStatusText = "Загрузка обновления...";
 
             try
             {
                 var updater = new UpdateManager (AddLog);
-                // Скачиваем напрямую по URL, без проверки версии
-                bool updated = await updater.DownloadByUrlAsync (UpdateDownloadUrl, AvailableVersion);
-                if (updated)
+
+                if (!string.IsNullOrEmpty (UpdateDownloadUrl))
                 {
-                    UpdateStatusText = "Обновление установлено. Перезапуск...";
+                    bool updated = await updater.DownloadByUrlAsync (UpdateDownloadUrl, AvailableVersion);
+                    if (updated)
+                    {
+                        UpdateStatusText = "Обновление установлено. Перезапуск...";
+                    }
+                    else
+                    {
+                        UpdateStatusText = "Ошибка установки обновления";
+                        IsUpdateAvailable = false;
+                    }
                 }
                 else
                 {
-                    UpdateStatusText = "Ошибка установки обновления";
-                    IsUpdateAvailable = false;
+                    bool updated = await updater.CheckAndUpdateAsync (silent: true);
+                    if (!updated)
+                    {
+                        UpdateStatusText = "Обновлений не найдено или ошибка";
+                    }
                 }
             }
             catch (Exception ex)

@@ -33,7 +33,7 @@ namespace BinanceBotWpf.Services
         {
             _cts = new CancellationTokenSource ();
             _listener = new HttpListener ();
-            _listener.Prefixes.Add ($"http://+:{port}/");
+            _listener.Prefixes.Add ($"http://localhost:{port}/");
             _listener.Start ();
             _logger?.Invoke ($"📡 Dashboard WS server started on port {port}");
 

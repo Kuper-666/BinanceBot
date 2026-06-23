@@ -185,8 +185,47 @@ namespace BinanceBotWpf.Services
                 // ═══════ Базовый сигнал от SMA ═══════
                 var baseSignal = _strategyEngine.AnalyzePairWithWallet (symbol, closes, adaptiveFastSma, adaptiveSlowSma, currentPrice);
 
-                // Усиление сигнала от других индикаторов
-                if (baseSignal.Action == TradeAction.Buy)
+                // ═══════ Дополнительные сигналы (если SMA crossover редок) ═══════
+                if (baseSignal.Action == TradeAction.Hold)
+                {
+                    // RSI extremes + LSMA trend alignment
+                    if (rsi < 30 && lsma > 0 && currentPrice > lsma)
+                    {
+                        baseSignal.Action = TradeAction.Buy;
+                        baseSignal.Reason = $"RSI oversold ({rsi:F1}) + LSMA uptrend";
+                    }
+                    else if (rsi > 70 && lsma > 0 && currentPrice < lsma)
+                    {
+                        baseSignal.Action = TradeAction.Sell;
+                        baseSignal.Reason = $"RSI overbought ({rsi:F1}) + LSMA downtrend";
+                    }
+                    // MACD histogram reversal
+                    else if (macdHist > 0 && prevMacdHist <= 0 && rsi < 45)
+                    {
+                        baseSignal.Action = TradeAction.Buy;
+                        baseSignal.Reason = $"MACD cross up + RSI={rsi:F1}";
+                    }
+                    else if (macdHist < 0 && prevMacdHist >= 0 && rsi > 55)
+                    {
+                        baseSignal.Action = TradeAction.Sell;
+                        baseSignal.Reason = $"MACD cross down + RSI={rsi:F1}";
+                    }
+                    // BB bounce
+                    else if (currentPrice <= bbLower * 1.002m && rsi < 35)
+                    {
+                        baseSignal.Action = TradeAction.Buy;
+                        baseSignal.Reason = $"BB bounce lower + RSI={rsi:F1}";
+                    }
+                    else if (currentPrice >= bbUpper * 0.998m && rsi > 65)
+                    {
+                        baseSignal.Action = TradeAction.Sell;
+                        baseSignal.Reason = $"BB bounce upper + RSI={rsi:F1}";
+                    }
+                }
+
+                // Усиление сигнала от других индикаторов (только для SMA crossover)
+                bool isSmaCrossover = baseSignal.Reason.Contains ("SMA");
+                if (isSmaCrossover && baseSignal.Action == TradeAction.Buy)
                 {
                     bool bbOversold = currentPrice <= bbLower;
                     bool macdBullish = macdHist > 0 && macdHist > prevMacdHist;
@@ -203,7 +242,7 @@ namespace BinanceBotWpf.Services
                         result.Reason = "SMA Buy but no confirmation";
                     }
                 }
-                else if (baseSignal.Action == TradeAction.Sell)
+                else if (isSmaCrossover && baseSignal.Action == TradeAction.Sell)
                 {
                     bool bbOverbought = currentPrice >= bbUpper;
                     bool macdBearish = macdHist < 0 && macdHist < prevMacdHist;
@@ -219,6 +258,12 @@ namespace BinanceBotWpf.Services
                         result.Action = TradeAction.Hold;
                         result.Reason = "SMA Sell but no confirmation";
                     }
+                }
+                else if (baseSignal.Action != TradeAction.Hold)
+                {
+                    // Дополнительные сигналы (RSI, MACD, BB) — уже содержат подтверждение
+                    result.Action = baseSignal.Action;
+                    result.Reason = baseSignal.Reason;
                 }
                 else
                 {
