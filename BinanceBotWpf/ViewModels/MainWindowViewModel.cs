@@ -262,14 +262,23 @@ namespace BinanceBotWpf.ViewModels
                 await Task.Delay (5000);
                 await CheckForUpdatesAsync (silent: true);
             });
+        }
 
-            // Загружаем пары для отображения в таблице до старта торговли
-            _ = Task.Run (async () =>
+        /// <summary>
+        /// Загружает пары для отображения в таблице до старта торговли.
+        /// Вызывается после SetLogger(), чтобы ошибки были видны в логах.
+        /// </summary>
+        public async Task LoadPairsOnStartupAsync ()
+        {
+            try
             {
-                await Task.Delay (2000);
-                try { await _tradingService.LoadPairsForDisplayAsync (this); }
-                catch { }
-            });
+                AddLog ("📊 Загрузка пар для отображения...");
+                await _tradingService.LoadPairsForDisplayAsync (this);
+            }
+            catch (Exception ex)
+            {
+                AddLog ($"⚠️ Не удалось загрузить пары: {ex.Message}");
+            }
         }
 
         public void RefreshTelegramStatus()

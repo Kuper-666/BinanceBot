@@ -10,6 +10,10 @@ namespace BinanceBotWpf.Services
     public class SignalValidator
     {
         private readonly Action<string> _logger;
+        private readonly decimal _volumeThreshold;
+        private readonly decimal _atrThreshold;
+        private readonly int _rsiLow;
+        private readonly int _rsiHigh;
         private MLContext _mlContext;
         private ITransformer _onnxModel;
         private bool _modelLoaded;
@@ -23,9 +27,13 @@ namespace BinanceBotWpf.Services
 
         public bool IsModelLoaded => _modelLoaded;
 
-        public SignalValidator (Action<string> logger)
+        public SignalValidator (Action<string> logger, decimal volumeThreshold = 8.0m, decimal atrThreshold = 0.15m, int rsiLow = 20, int rsiHigh = 80)
         {
             _logger = logger;
+            _volumeThreshold = volumeThreshold;
+            _atrThreshold = atrThreshold;
+            _rsiLow = rsiLow;
+            _rsiHigh = rsiHigh;
             LoadOnnxModel ();
         }
 
@@ -98,7 +106,7 @@ namespace BinanceBotWpf.Services
             int totalFactors = 0;
 
             totalFactors++;
-            if (input.Rsi > 20 && input.Rsi < 80)
+            if (input.Rsi > _rsiLow && input.Rsi < _rsiHigh)
             {
                 positiveFactors++;
                 confidence += 0.1f;
@@ -114,7 +122,7 @@ namespace BinanceBotWpf.Services
                 positiveFactors++;
                 confidence += 0.1f;
             }
-            else if (input.VolumeRatio > 8.0f)
+            else if (input.VolumeRatio > (float)_volumeThreshold)
             {
                 riskFlag = true;
                 confidence -= 0.15f;
@@ -126,7 +134,7 @@ namespace BinanceBotWpf.Services
                 positiveFactors++;
                 confidence += 0.05f;
             }
-            else if (input.AtrPercent > 0.15f)
+            else if (input.AtrPercent > (float)_atrThreshold)
             {
                 riskFlag = true;
                 confidence -= 0.2f;

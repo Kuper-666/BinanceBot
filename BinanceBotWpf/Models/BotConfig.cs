@@ -59,6 +59,14 @@ namespace BinanceBotWpf.Models
         public bool NewsSentinelEnabled { get; set; } = true;
         public int NewsSentinelMaxAgeHours { get; set; } = 6;
 
+        // Калиброванные пороги эшелонов (по результатам бэктеста)
+        public decimal AdaptiveSlMultiplier { get; set; } = 0.4m;
+        public decimal AdaptivePeriodMultiplier { get; set; } = 0.3m;
+        public decimal ValidatorVolumeThreshold { get; set; } = 8.0m;
+        public decimal ValidatorAtrThreshold { get; set; } = 0.15m;
+        public int ValidatorRsiLow { get; set; } = 20;
+        public int ValidatorRsiHigh { get; set; } = 80;
+
         // Расшифрованные значения для использования в коде (не сериализуются в JSON)
         [JsonIgnore]
         public string ApiKey

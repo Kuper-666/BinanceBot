@@ -160,6 +160,13 @@ namespace BinanceBotWpf
                 viewModel.AddLog ($"🚀 Бот запущен в режиме: {( isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ" )}");
                 viewModel.AddLog ($"🔌 API Key: {apiKey.Substring (0, Math.Min (8, apiKey.Length))}...");
                 viewModel.AddLog ($"📡 Статус подключения: {serverInfo}");
+
+                // Загружаем пары для отображения в таблице (после SetLogger)
+                _ = Task.Run (async () =>
+                {
+                    await Task.Delay (1000);
+                    await viewModel.LoadPairsOnStartupAsync ();
+                });
             }
             catch (Exception ex)
             {

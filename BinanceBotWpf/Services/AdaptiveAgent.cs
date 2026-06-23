@@ -8,15 +8,19 @@ namespace BinanceBotWpf.Services
     public class AdaptiveAgent
     {
         private readonly Action<string> _logger;
+        private readonly decimal _slMultiplier;
+        private readonly decimal _periodMultiplier;
         private decimal _lastAdaptiveFactor = 1.0m;
         private DateTime _lastCalculation = DateTime.MinValue;
         private readonly TimeSpan _cooldown = TimeSpan.FromMinutes (5);
 
         public decimal AdaptiveFactor => _lastAdaptiveFactor;
 
-        public AdaptiveAgent (Action<string> logger)
+        public AdaptiveAgent (Action<string> logger, decimal slMultiplier = 0.4m, decimal periodMultiplier = 0.3m)
         {
             _logger = logger;
+            _slMultiplier = slMultiplier;
+            _periodMultiplier = periodMultiplier;
         }
 
         public AdaptiveResult Calculate (List<BinanceKline> klines)
@@ -71,8 +75,8 @@ namespace BinanceBotWpf.Services
             result.AtrFactor = atrFactor;
             result.VolumeFactor = volumeFactor;
             result.VolatilityFactor = volatilityFactor;
-            result.LsmaWindowMultiplier = 1.0m + (factor - 1.0m) * 0.3m;
-            result.SlMultiplier = 1.0m + (factor - 1.0m) * 0.4m;
+            result.LsmaWindowMultiplier = 1.0m + (factor - 1.0m) * _periodMultiplier;
+            result.SlMultiplier = 1.0m + (factor - 1.0m) * _slMultiplier;
 
             if (factor > 1.2m)
                 result.Regime = "High Volatility";

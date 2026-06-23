@@ -114,13 +114,20 @@ namespace BinanceBotWpf.Services
                 bool validatorEnabled = cfg?.SignalValidatorEnabled ?? true;
                 bool newsEnabled = cfg?.NewsSentinelEnabled ?? true;
 
-                var adaptiveAgent = new AdaptiveAgent (logger);
-                _strategy.SetAdaptiveAgent (adaptiveAgent, adaptiveEnabled);
-                _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {(adaptiveEnabled ? "включён" : "выключен")}");
+                decimal slMult = cfg?.AdaptiveSlMultiplier ?? 0.4m;
+                decimal periodMult = cfg?.AdaptivePeriodMultiplier ?? 0.3m;
+                decimal volThresh = cfg?.ValidatorVolumeThreshold ?? 8.0m;
+                decimal atrThresh = cfg?.ValidatorAtrThreshold ?? 0.15m;
+                int rsiLow = cfg?.ValidatorRsiLow ?? 20;
+                int rsiHigh = cfg?.ValidatorRsiHigh ?? 80;
 
-                var signalValidator = new SignalValidator (logger);
+                var adaptiveAgent = new AdaptiveAgent (logger, slMult, periodMult);
+                _strategy.SetAdaptiveAgent (adaptiveAgent, adaptiveEnabled);
+                _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {(adaptiveEnabled ? "включён" : "выключен")} SL×{slMult} Period×{periodMult}");
+
+                var signalValidator = new SignalValidator (logger, volThresh, atrThresh, rsiLow, rsiHigh);
                 _strategy.SetSignalValidator (signalValidator, validatorEnabled);
-                _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")}");
+                _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")} Vol>{volThresh} ATR>{atrThresh} RSI {rsiLow}/{rsiHigh}");
 
                 var newsSentinel = new NewsSentinel (logger);
                 _strategy.SetNewsSentinel (newsSentinel, newsEnabled);
@@ -475,7 +482,13 @@ namespace BinanceBotWpf.Services
             {
                 var pairs = await _client.GetTopVolumePairsAsync ("USDC", 10);
                 pairs = pairs.Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC")).ToList ();
-                if (pairs.Count == 0) return;
+                if (pairs.Count == 0)
+                {
+                    ui.AddLog ("⚠️ Не удалось получить список пар");
+                    return;
+                }
+
+                ui.AddLog ($"📊 Загружено {pairs.Count} пар, анализ индикаторов...");
 
                 foreach (var sym in pairs)
                 {
@@ -492,12 +505,20 @@ namespace BinanceBotWpf.Services
                         var signal = new StrategyEngine ().AnalyzePairWithWallet (sym, closes, 9, 21, price);
 
                         ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma);
-                        await Task.Delay (200);
+                        await Task.Delay (150);
                     }
-                    catch { }
+                    catch (Exception ex)
+                    {
+                        ui.AddLog ($"⚠️ {sym}: {ex.Message}");
+                    }
                 }
+
+                ui.AddLog ($"✅ Таблица обновлена: {pairs.Count} пар");
             }
-            catch { }
+            catch (Exception ex)
+            {
+                ui.AddLog ($"❌ Ошибка загрузки пар: {ex.Message}");
+            }
         }
 
         private async Task LoadPositions()
