@@ -1,4 +1,4 @@
-﻿using BinanceBotWpf.Models;
+using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -55,8 +55,24 @@ namespace BinanceBotWpf.Services
                         {
                             decimal entryPrice = decimal.Parse (buy["price"].ToString (), System.Globalization.CultureInfo.InvariantCulture);
                             decimal exitPrice = decimal.Parse (sell["price"].ToString (), System.Globalization.CultureInfo.InvariantCulture);
-                            bool profitable = exitPrice > entryPrice;
-                            allClosedTrades.Add ((DateTimeOffset.FromUnixTimeMilliseconds ((long)sell["time"]).DateTime, sym, entryPrice, exitPrice, qty, profitable));
+
+                            // Для рыночных ордеров price=0, считаем реальную цену из cummulativeQuoteQty
+                            if (entryPrice <= 0 && buy.TryGetValue ("cummulativeQuoteQty", out var buyQuote))
+                            {
+                                decimal quoteQty = decimal.Parse (buyQuote.ToString (), System.Globalization.CultureInfo.InvariantCulture);
+                                if (quoteQty > 0 && buyQty > 0) entryPrice = quoteQty / buyQty;
+                            }
+                            if (exitPrice <= 0 && sell.TryGetValue ("cummulativeQuoteQty", out var sellQuote))
+                            {
+                                decimal quoteQty = decimal.Parse (sellQuote.ToString (), System.Globalization.CultureInfo.InvariantCulture);
+                                if (quoteQty > 0 && sellQty > 0) exitPrice = quoteQty / sellQty;
+                            }
+
+                            if (entryPrice > 0 && exitPrice > 0)
+                            {
+                                bool profitable = exitPrice > entryPrice;
+                                allClosedTrades.Add ((DateTimeOffset.FromUnixTimeMilliseconds ((long)sell["time"]).DateTime, sym, entryPrice, exitPrice, qty, profitable));
+                            }
                         }
                         if (buyQty <= sellQty) buyIdx++;
                         if (sellQty <= buyQty) sellIdx++;
@@ -64,6 +80,9 @@ namespace BinanceBotWpf.Services
                 }
 
                 _logger?.Invoke ($"📊 Найдено {allClosedTrades.Count} закрытых позиций");
+                int profitableCount = allClosedTrades.Count (t => t.IsProfitable);
+                int unprofitableCount = allClosedTrades.Count - profitableCount;
+                _logger?.Invoke ($"   Прибыльных: {profitableCount}, Убыточных: {unprofitableCount}");
                 if (allClosedTrades.Count < 30)
                 {
                     _logger?.Invoke ($"⚠️ Недостаточно сделок ({allClosedTrades.Count}) для обучения, требуется 30.");
