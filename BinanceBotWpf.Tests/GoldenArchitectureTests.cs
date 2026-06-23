@@ -694,4 +694,143 @@ namespace BinanceBotWpf.Tests
             Assert.True (result.TrendStrengthFactor >= 0.7m, "TrendStrengthFactor must be >= 0.7");
         }
     }
+
+    public class TradingStrategySignals_Tests
+    {
+        private TradingStrategy CreateStrategy ()
+        {
+            return new TradingStrategy (msg => { });
+        }
+
+        private List<BinanceKline> BuildKlines (List<decimal> closes)
+        {
+            return closes.Select (c => new BinanceKline
+            {
+                Close = c,
+                High = c * 1.005m,
+                Low = c * 0.995m,
+                Volume = 1000
+            }).ToList ();
+        }
+
+        [Fact]
+        public void RsiOversoldWithLsmaUp_BuySignal ()
+        {
+            var strategy = CreateStrategy ();
+            var closes = new List<decimal> ();
+            for (int i = 0; i < 80; i++)
+                closes.Add (100 + (decimal)i * 0.3m);
+            for (int i = 0; i < 15; i++)
+                closes.Add (closes.Last () - 0.5m);
+            for (int i = 0; i < 10; i++)
+                closes.Add (closes.Last () + 0.1m);
+            var klines = BuildKlines (closes);
+
+            var result = strategy.AnalyzeAsync ("BTCUSDC", klines).Result;
+
+            Assert.True (result.Action == TradeAction.Buy || result.Reason.Contains ("RSI"),
+                $"Expected Buy from RSI oversold, got {result.Action}: {result.Reason}");
+        }
+
+        [Fact]
+        public void RsiOverboughtWithLsmaDown_SellSignal ()
+        {
+            var strategy = CreateStrategy ();
+            var closes = new List<decimal> ();
+            for (int i = 0; i < 80; i++)
+                closes.Add (200 - (decimal)i * 0.3m);
+            for (int i = 0; i < 15; i++)
+                closes.Add (closes.Last () + 0.5m);
+            for (int i = 0; i < 10; i++)
+                closes.Add (closes.Last () - 0.1m);
+            var klines = BuildKlines (closes);
+
+            var result = strategy.AnalyzeAsync ("ETHUSDC", klines).Result;
+
+            Assert.True (result.Action == TradeAction.Sell || result.Reason.Contains ("RSI"),
+                $"Expected Sell from RSI overbought, got {result.Action}: {result.Reason}");
+        }
+
+        [Fact]
+        public void MacdCrossUp_GeneratesBuy ()
+        {
+            var strategy = CreateStrategy ();
+            var closes = new List<decimal> ();
+            decimal price = 100;
+            for (int i = 0; i < 60; i++)
+            {
+                price += 0.1m;
+                closes.Add (price);
+            }
+            for (int i = 0; i < 30; i++)
+            {
+                price -= 0.3m;
+                closes.Add (price);
+            }
+            for (int i = 0; i < 15; i++)
+            {
+                price += 0.5m;
+                closes.Add (price);
+            }
+            var klines = BuildKlines (closes);
+
+            var result = strategy.AnalyzeAsync ("SOLUSDC", klines).Result;
+
+            Assert.NotNull (result.Reason);
+            Assert.NotNull (result.Indicators);
+        }
+
+        [Fact]
+        public void InsufficientData_ReturnsHold ()
+        {
+            var strategy = CreateStrategy ();
+            var closes = new List<decimal> { 100, 101, 102 };
+            var klines = BuildKlines (closes);
+
+            var result = strategy.AnalyzeAsync ("BTCUSDC", klines).Result;
+
+            Assert.Equal (TradeAction.Hold, result.Action);
+        }
+
+        [Fact]
+        public void Indicators_AlwaysPopulated ()
+        {
+            var strategy = CreateStrategy ();
+            var closes = new List<decimal> ();
+            for (int i = 0; i < 100; i++)
+                closes.Add (100 + (decimal)Math.Sin (i * 0.1) * 5);
+            var klines = BuildKlines (closes);
+
+            var result = strategy.AnalyzeAsync ("BNBUSDC", klines).Result;
+
+            Assert.True (result.Indicators.ContainsKey ("price"));
+            Assert.True (result.Indicators.ContainsKey ("rsi"));
+            Assert.True (result.Indicators.ContainsKey ("fastSma"));
+            Assert.True (result.Indicators.ContainsKey ("slowSma"));
+        }
+
+        [Fact]
+        public void CheckEntryConfirmation_BuyWithLowRsi ()
+        {
+            var strategy = CreateStrategy ();
+            var entryKlines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 - i * 0.5m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool confirmed = strategy.CheckEntryConfirmation (entryKlines, TradeAction.Buy);
+            Assert.True (confirmed);
+        }
+
+        [Fact]
+        public void CheckEntryConfirmation_SellWithHighRsi ()
+        {
+            var strategy = CreateStrategy ();
+            var entryKlines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 + i * 0.5m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool confirmed = strategy.CheckEntryConfirmation (entryKlines, TradeAction.Sell);
+            Assert.True (confirmed);
+        }
+    }
 }

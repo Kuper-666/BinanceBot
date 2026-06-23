@@ -49,6 +49,7 @@ namespace BacktestRunner
 
             List<BacktestResult> allBasicResults = new List<BacktestResult> ();
             List<BacktestResult> allEnhancedResults = new List<BacktestResult> ();
+            List<BacktestResult> allSignalsResults = new List<BacktestResult> ();
             List<(string Pair, string Strategy, List<decimal> Curve)> allCurves = new List<(string, string, List<decimal>)> ();
 
             foreach (string pair in pairs)
@@ -65,14 +66,18 @@ namespace BacktestRunner
 
                 BacktestResult basicResult = RunBasicSmaStrategy (klines, capital);
                 BacktestResult enhancedResult = RunEnhancedStrategy (klines, capital);
+                BacktestResult allSignalsResult = RunAllSignalsStrategy (klines, capital);
 
                 allBasicResults.Add (basicResult);
                 allEnhancedResults.Add (enhancedResult);
+                allSignalsResults.Add (allSignalsResult);
                 allCurves.Add ((pair, "basic", basicResult.EquityCurve));
                 allCurves.Add ((pair, "enhanced", enhancedResult.EquityCurve));
+                allCurves.Add ((pair, "all_signals", allSignalsResult.EquityCurve));
 
-                Console.WriteLine ($"  Базовая:  доходность={basicResult.TotalReturn,7:F2}%  winRate={basicResult.WinRate,5:F1}%  сделок={basicResult.TotalTrades,3}  maxDD={basicResult.MaxDrawdown,5:F2}%  Sharpe={basicResult.SharpeRatio,5:F2}  maxWinStreak={basicResult.MaxWinStreak}  maxLoseStreak={basicResult.MaxLoseStreak}  avgBars={basicResult.AvgTradeBars:F1}");
-                Console.WriteLine ($"  Улучш.:   доходность={enhancedResult.TotalReturn,7:F2}%  winRate={enhancedResult.WinRate,5:F1}%  сделок={enhancedResult.TotalTrades,3}  maxDD={enhancedResult.MaxDrawdown,5:F2}%  Sharpe={enhancedResult.SharpeRatio,5:F2}  maxWinStreak={enhancedResult.MaxWinStreak}  maxLoseStreak={enhancedResult.MaxLoseStreak}  avgBars={enhancedResult.AvgTradeBars:F1}");
+                Console.WriteLine ($"  Базовая:  доходность={basicResult.TotalReturn,7:F2}%  winRate={basicResult.WinRate,5:F1}%  сделок={basicResult.TotalTrades,3}  maxDD={basicResult.MaxDrawdown,5:F2}%  Sharpe={basicResult.SharpeRatio,5:F2}");
+                Console.WriteLine ($"  Улучш.:   доходность={enhancedResult.TotalReturn,7:F2}%  winRate={enhancedResult.WinRate,5:F1}%  сделок={enhancedResult.TotalTrades,3}  maxDD={enhancedResult.MaxDrawdown,5:F2}%  Sharpe={enhancedResult.SharpeRatio,5:F2}");
+                Console.WriteLine ($"  Все信号:  доходность={allSignalsResult.TotalReturn,7:F2}%  winRate={allSignalsResult.WinRate,5:F1}%  сделок={allSignalsResult.TotalTrades,3}  maxDD={allSignalsResult.MaxDrawdown,5:F2}%  Sharpe={allSignalsResult.SharpeRatio,5:F2}");
                 Console.WriteLine ();
             }
 
@@ -88,6 +93,7 @@ namespace BacktestRunner
             Console.WriteLine ();
             PrintAggregated ("Базовая SMA+RSI", allBasicResults);
             PrintAggregated ("Золотая архитектура (LSMA+Adaptive+Validator)", allEnhancedResults);
+            PrintAggregated ("Все сигналы (RSI+MACD+BB+SMA)", allSignalsResults);
 
             Console.WriteLine ();
             Console.WriteLine ("════════════════════════════════════════════════════════════════");
@@ -96,14 +102,17 @@ namespace BacktestRunner
 
             decimal basicAvg = allBasicResults.Average (r => r.TotalReturn);
             decimal enhancedAvg = allEnhancedResults.Average (r => r.TotalReturn);
+            decimal signalsAvg = allSignalsResults.Average (r => r.TotalReturn);
             decimal basicWinRate = allBasicResults.Average (r => r.WinRate);
             decimal enhancedWinRate = allEnhancedResults.Average (r => r.WinRate);
+            decimal signalsWinRate = allSignalsResults.Average (r => r.WinRate);
             decimal basicDD = allBasicResults.Average (r => r.MaxDrawdown);
             decimal enhancedDD = allEnhancedResults.Average (r => r.MaxDrawdown);
+            decimal signalsDD = allSignalsResults.Average (r => r.MaxDrawdown);
 
-            Console.WriteLine ($"  Доходность:    {basicAvg,7:F2}% → {enhancedAvg,7:F2}%  ({(enhancedAvg - basicAvg):+.F2;-F2}%)");
-            Console.WriteLine ($"  Win Rate:       {basicWinRate,6:F1}% → {enhancedWinRate,6:F1}%  ({(enhancedWinRate - basicWinRate):+.F1;-F1}%)");
-            Console.WriteLine ($"  Max Drawdown:   {basicDD,6:F2}% → {enhancedDD,6:F2}%  ({(enhancedDD - basicDD):+.F2;-F2}%)");
+            Console.WriteLine ($"  Доходность:    {basicAvg,7:F2}% → {enhancedAvg,7:F2}% → {signalsAvg,7:F2}%");
+            Console.WriteLine ($"  Win Rate:       {basicWinRate,6:F1}% → {enhancedWinRate,6:F1}% → {signalsWinRate,6:F1}%");
+            Console.WriteLine ($"  Max Drawdown:   {basicDD,6:F2}% → {enhancedDD,6:F2}% → {signalsDD,6:F2}%");
 
             int pairsImproved = 0;
             for (int i = 0; i < allBasicResults.Count; i++)
@@ -111,7 +120,14 @@ namespace BacktestRunner
                 if (allEnhancedResults[i].TotalReturn > allBasicResults[i].TotalReturn)
                     pairsImproved++;
             }
-            Console.WriteLine ($"  Пар с улучшением: {pairsImproved}/{allBasicResults.Count}");
+            int pairsSignalsBetter = 0;
+            for (int i = 0; i < allBasicResults.Count; i++)
+            {
+                if (allSignalsResults[i].TotalReturn > allBasicResults[i].TotalReturn)
+                    pairsSignalsBetter++;
+            }
+            Console.WriteLine ($"  Улучш vs базовая:   {pairsImproved}/{allBasicResults.Count} пар");
+            Console.WriteLine ($"  Все信号 vs базовая: {pairsSignalsBetter}/{allBasicResults.Count} пар");
             Console.WriteLine ();
 
             // ═══ Equity Curve CSV Export ═══
@@ -585,6 +601,149 @@ namespace BacktestRunner
         {
             return RunBacktest (klines, fastPeriod: 9, slowPeriod: 21, rsiPeriod: 14,
                 stopLoss: 0.02m, takeProfit: 0.04m, useAdaptive: true, useLsma: true, useValidator: true, capital: capital);
+        }
+
+        // ═══════════════════════════════════════════════════
+        //  СТРАТЕГИЯ "ВСЕ СИГНАЛЫ" (RSI + MACD + BB + SMA)
+        // ═══════════════════════════════════════════════════
+
+        static BacktestResult RunAllSignalsStrategy (List<Kline> klines, decimal capital)
+        {
+            List<decimal> closes = klines.Select (k => k.Close).ToList ();
+            List<decimal> highs = klines.Select (k => k.High).ToList ();
+            List<decimal> lows = klines.Select (k => k.Low).ToList ();
+            List<decimal> volumes = klines.Select (k => k.Volume).ToList ();
+
+            int fastPeriod = 9, slowPeriod = 21, rsiPeriod = 14;
+            decimal stopLoss = 0.02m, takeProfit = 0.04m;
+            decimal commission = 0.0004m;
+
+            List<decimal> fastSma = CalcSMA (closes, fastPeriod);
+            List<decimal> slowSma = CalcSMA (closes, slowPeriod);
+            List<decimal> rsi = CalcRSI (closes, rsiPeriod);
+            List<decimal> atrList = CalcATR (highs, lows, closes, 14);
+            (List<decimal> upper, List<decimal> lower) bb = CalcBollingerBands (closes, 20);
+            List<decimal> macd = CalcMACD (closes);
+            List<decimal> lsma = CalcLSMA (closes, 20);
+
+            decimal capitalStart = capital;
+            decimal position = 0, entryPrice = 0, peakCapital = capital, maxDrawdown = 0;
+            int winning = 0, losing = 0, tradeBars = 0, totalTradeBars = 0;
+            int currentWinStreak = 0, currentLoseStreak = 0;
+            int maxWinStreak = 0, maxLoseStreak = 0;
+            List<decimal> equityCurve = new List<decimal> { capital };
+
+            int startIdx = slowPeriod + 10;
+
+            for (int i = startIdx; i < closes.Count; i++)
+            {
+                decimal price = closes[i];
+                bool buySignal = false, sellSignal = false;
+
+                // 1. SMA crossover
+                if (i > 0 && fastSma[i] > 0 && slowSma[i] > 0)
+                {
+                    if (fastSma[i - 1] <= slowSma[i - 1] && fastSma[i] > slowSma[i])
+                    {
+                        bool c = rsi[i] < 40 || price <= bb.lower[i] || (macd[i] > 0 && macd[i] > macd[Math.Max (0, i - 1)]);
+                        if (c) buySignal = true;
+                    }
+                    if (fastSma[i - 1] >= slowSma[i - 1] && fastSma[i] < slowSma[i])
+                    {
+                        bool c = rsi[i] > 60 || price >= bb.upper[i] || (macd[i] < 0 && macd[i] < macd[Math.Max (0, i - 1)]);
+                        if (c) sellSignal = true;
+                    }
+                }
+
+                // 2. RSI extreme + LSMA trend
+                if (!buySignal && !sellSignal && lsma[i] > 0 && i > 1)
+                {
+                    if (rsi[i] < 30 && price > lsma[i]) buySignal = true;
+                    else if (rsi[i] > 70 && price < lsma[i]) sellSignal = true;
+                }
+
+                // 3. MACD histogram reversal
+                if (!buySignal && !sellSignal && i > 0)
+                {
+                    decimal prevMacd = macd[Math.Max (0, i - 1)];
+                    if (macd[i] > 0 && prevMacd <= 0 && rsi[i] < 45) buySignal = true;
+                    else if (macd[i] < 0 && prevMacd >= 0 && rsi[i] > 55) sellSignal = true;
+                }
+
+                // 4. BB bounce
+                if (!buySignal && !sellSignal && bb.lower[i] > 0 && bb.upper[i] > 0)
+                {
+                    if (price <= bb.lower[i] * 1.002m && rsi[i] < 35) buySignal = true;
+                    else if (price >= bb.upper[i] * 0.998m && rsi[i] > 65) sellSignal = true;
+                }
+
+                // LSMA filter
+                if (lsma[i] > 0 && i > 1)
+                {
+                    if (buySignal && closes[i] < lsma[i] && lsma[i] < lsma[i - 1]) buySignal = false;
+                    if (sellSignal && closes[i] > lsma[i] && lsma[i] > lsma[i - 1]) sellSignal = false;
+                }
+
+                if (position == 0 && buySignal)
+                {
+                    decimal cost = capital * commission;
+                    capital -= cost;
+                    position = capital / price;
+                    capital = 0;
+                    entryPrice = price;
+                    tradeBars = 0;
+                }
+                else if (position > 0)
+                {
+                    tradeBars++;
+                    decimal sl = entryPrice * (1 - stopLoss);
+                    decimal tp = entryPrice * (1 + takeProfit);
+
+                    if (sellSignal || price <= sl || price >= tp)
+                    {
+                        capital = position * price;
+                        decimal cost = capital * commission;
+                        capital -= cost;
+                        position = 0;
+                        totalTradeBars += tradeBars;
+
+                        decimal pnl = (price - entryPrice) / entryPrice;
+                        if (pnl > 0) { winning++; currentWinStreak++; currentLoseStreak = 0; if (currentWinStreak > maxWinStreak) maxWinStreak = currentWinStreak; }
+                        else { losing++; currentLoseStreak++; currentWinStreak = 0; if (currentLoseStreak > maxLoseStreak) maxLoseStreak = currentLoseStreak; }
+
+                        if (capital > peakCapital) peakCapital = capital;
+                        decimal dd = (peakCapital - capital) / peakCapital * 100;
+                        if (dd > maxDrawdown) maxDrawdown = dd;
+                    }
+                }
+
+                equityCurve.Add (position > 0 ? position * price : capital);
+            }
+
+            if (position > 0) capital = position * closes.Last ();
+            decimal totalReturn = (capital - capitalStart) / capitalStart * 100;
+            int totalTrades = winning + losing;
+            decimal winRate = totalTrades > 0 ? (decimal)winning / totalTrades * 100 : 0;
+            decimal profitFactor = losing > 0 && winning > 0 ? (decimal)winning / losing : 0;
+
+            decimal sharpe = 0;
+            if (equityCurve.Count > 1)
+            {
+                List<decimal> rets = new List<decimal> ();
+                for (int j = 1; j < equityCurve.Count; j++)
+                    if (equityCurve[j - 1] > 0) rets.Add ((equityCurve[j] - equityCurve[j - 1]) / equityCurve[j - 1]);
+                if (rets.Count > 0) { decimal avg = rets.Average (); decimal std = StdDev (rets); sharpe = std > 0 ? avg / std * (decimal)Math.Sqrt (252) : 0; }
+            }
+
+            return new BacktestResult
+            {
+                TotalReturn = totalReturn, WinRate = winRate, TotalTrades = totalTrades,
+                WinningTrades = winning, LosingTrades = losing, MaxDrawdown = maxDrawdown,
+                SharpeRatio = sharpe, ProfitFactor = profitFactor,
+                EquityCurve = equityCurve,
+                MaxWinStreak = maxWinStreak, MaxLoseStreak = maxLoseStreak,
+                AvgTradeBars = totalTrades > 0 ? (decimal)totalTradeBars / totalTrades : 0
+            };
         }
 
         // ═══════════════════════════════════════════════════
