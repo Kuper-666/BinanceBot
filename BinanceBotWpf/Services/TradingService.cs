@@ -443,7 +443,7 @@ namespace BinanceBotWpf.Services
             {
                 _dashboardServer = new DashboardWebSocketServer (msg => _ui?.AddLog (msg));
                 await _dashboardServer.StartAsync (8765);
-                _ui?.AddLog ("📡 Dashboard WebSocket доступен на ws://localhost:8765");
+                _ui?.AddLog ("📡 Dashboard WebSocket доступен на http://localhost:8765");
             }
             catch (Exception ex)
             {

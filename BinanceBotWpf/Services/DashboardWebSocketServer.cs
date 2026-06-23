@@ -46,8 +46,10 @@ namespace BinanceBotWpf.Services
             {
                 Process.Start (new ProcessStartInfo
                 {
-                    FileName = $"http://localhost:{port}",
-                    UseShellExecute = true
+                    FileName = "cmd",
+                    Arguments = $"/c start http://localhost:{port}",
+                    CreateNoWindow = true,
+                    WindowStyle = ProcessWindowStyle.Hidden
                 });
             }
             catch { }
