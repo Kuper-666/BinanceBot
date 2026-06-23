@@ -148,6 +148,11 @@ namespace BinanceBotWpf.Services
             _ = BroadcastAsync ("equity", equityPoints);
         }
 
+        public void BroadcastStats (Dictionary<string, object> stats)
+        {
+            _ = BroadcastAsync ("stats", stats);
+        }
+
         private async Task AcceptLoopAsync (CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)

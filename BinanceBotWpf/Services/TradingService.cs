@@ -802,6 +802,54 @@ namespace BinanceBotWpf.Services
                                 _equityHistory.RemoveAt (0);
                             }
                             _dashboardServer.BroadcastEquity (new List<Dictionary<string, object>> (_equityHistory));
+
+                            // Stats — real balance (Spot + Simple Earn), PnL, win rate, positions
+                            decimal totalPnL = _ui?.TotalPnL ?? 0;
+                            decimal winRate = _ui?.WinRate ?? 0;
+                            int totalTrades = _ui?.TotalTrades ?? 0;
+                            int openPosCount = _positionManager.Count;
+                            int maxPos = _ui?.MaxPositions ?? _tradingSettings?.MaxConcurrentTrades ?? 3;
+                            decimal realBalance = _wallet?.GetTotalBalance ("USDC") ?? spotBalance;
+                            decimal ddStr = 0;
+                            if (decimal.TryParse ((_ui?.MaxDrawdownDisplay ?? "0").Replace ("%", "").Replace (",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal ddParsed))
+                            {
+                                ddStr = Math.Abs (ddParsed);
+                            }
+
+                            _dashboardServer.BroadcastStats (new Dictionary<string, object>
+                            {
+                                ["balance"] = realBalance,
+                                ["pnl"] = totalPnL,
+                                ["pnlPercent"] = realBalance > 0 ? Math.Round (totalPnL / realBalance * 100, 1) : 0,
+                                ["winRate"] = winRate,
+                                ["maxDrawdown"] = ddStr,
+                                ["totalTrades"] = totalTrades,
+                                ["openPositions"] = openPosCount,
+                                ["maxPositions"] = maxPos,
+                                ["leverage"] = _tradingSettings?.FuturesLeverage ?? 5,
+                            });
+
+                            // Trades — last 50 from history
+                            var tradesHistory = _ui?.TradesHistory;
+                            if (tradesHistory != null && tradesHistory.Count > 0)
+                            {
+                                var recentTrades = tradesHistory.TakeLast (Math.Min (50, tradesHistory.Count))
+                                    .Reverse ()
+                                    .Select (t => new Dictionary<string, object>
+                                    {
+                                        ["time"] = t.CloseTime.ToString ("HH:mm"),
+                                        ["pair"] = t.Symbol,
+                                        ["action"] = t.IsLong ? "BUY" : "SELL",
+                                        ["entry"] = t.EntryPrice,
+                                        ["exit"] = t.ExitPrice,
+                                        ["pnl"] = t.PnLPercent,
+                                        ["duration"] = t.Duration.TotalMinutes >= 60
+                                            ? $"{(int)t.Duration.TotalHours}h {t.Duration.Minutes}m"
+                                            : $"{(int)t.Duration.TotalMinutes}m",
+                                        ["reason"] = t.Reason
+                                    }).ToList ();
+                                _dashboardServer.BroadcastTrades (recentTrades);
+                            }
                         }
                         catch { }
                     }

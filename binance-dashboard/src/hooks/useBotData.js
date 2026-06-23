@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import WebSocketService from '../services/WebSocketService';
 import { MOCK_DATA } from '../data';
 
-const CHANNELS = ['prices', 'positions', 'signals', 'trades', 'grid', 'logs'];
+const CHANNELS = ['prices', 'positions', 'signals', 'trades', 'grid', 'logs', 'stats'];
 
 let mountCount = 0;
 
@@ -62,6 +62,15 @@ export default function useBotData() {
           if (channel === 'positions') {
             if (Array.isArray(newData)) {
               return { ...prev, positions: mergePositions(newData, prev.positions || []) };
+            }
+            return { ...prev, [channel]: newData };
+          }
+          if (channel === 'stats') {
+            return { ...prev, ...newData };
+          }
+          if (channel === 'trades') {
+            if (Array.isArray(newData)) {
+              return { ...prev, trades: newData };
             }
             return { ...prev, [channel]: newData };
           }
