@@ -37,6 +37,10 @@ namespace BinanceBotWpf.Services
         private BackupService _backupService;
         private AiRiskEngine _aiRiskEngine;
         private DashboardWebSocketServer _dashboardServer;
+        private WhaleMonitor _whaleMonitor;
+        private SimpleEarnStrategy _earnStrategy;
+        private P2PArbitrageMonitor _p2pMonitor;
+        private CopyTradingAnalyzer _copyAnalyzer;
 
         private MainWindowViewModel _ui;
         private bool _isRunning;
@@ -243,6 +247,10 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (AutoOptimizeLoop);
             _ = Task.Run (PeriodicUpdateCheckLoop);
             _ = Task.Run (DailyReportLoop);
+            _ = Task.Run (WhaleLoop);
+            _ = Task.Run (EarnOptimizeLoop);
+            _ = Task.Run (P2PCheckLoop);
+            _ = Task.Run (CopyTradeAnalysisLoop);
         }
 
         public void StopTrading()
@@ -1509,6 +1517,85 @@ namespace BinanceBotWpf.Services
             catch (Exception ex)
             {
                 _ui?.AddLog ($"❌ Ошибка обработки команды дашборда: {ex.Message}");
+            }
+        }
+
+        private async Task WhaleLoop()
+        {
+            Action<string> log = (msg) => _ui?.AddLog (msg);
+            while (_isRunning)
+            {
+                try
+                {
+                    List<string> pairs;
+                    lock (_pairsLock) { pairs = new List<string> (_activePairs); }
+
+                    if (pairs.Count > 0)
+                    {
+                        _whaleMonitor = new WhaleMonitor (log, 100000);
+                        _whaleMonitor.OnWhaleDetected += whale =>
+                        {
+                            _ui?.AddLog ($"🐋 WHALE {whale.Side} {whale.Symbol}: ${whale.ValueUsdc:N0}");
+                        };
+                        await _whaleMonitor.StartAsync (pairs.ToArray ());
+                        _ui?.AddLog ($"🐋 Whale monitor запущен для {pairs.Count} пар (порог: $100k)");
+                        break;
+                    }
+                    await Task.Delay (10000);
+                }
+                catch (Exception ex)
+                {
+                    _ui?.AddLog ($"❌ Whale monitor ошибка: {ex.Message}");
+                    await Task.Delay (30000);
+                }
+            }
+        }
+
+        private async Task EarnOptimizeLoop()
+        {
+            Action<string> log = (msg) => _ui?.AddLog (msg);
+            _earnStrategy = new SimpleEarnStrategy (_client, log);
+            while (_isRunning)
+            {
+                try
+                {
+                    await Task.Delay (TimeSpan.FromHours (6));
+                    if (!_isRunning) break;
+                    await _earnStrategy.OptimizeEarnAsync ();
+                }
+                catch { }
+            }
+        }
+
+        private async Task P2PCheckLoop()
+        {
+            Action<string> log = (msg) => _ui?.AddLog (msg);
+            _p2pMonitor = new P2PArbitrageMonitor (log, 1.0m);
+            while (_isRunning)
+            {
+                try
+                {
+                    await Task.Delay (TimeSpan.FromMinutes (30));
+                    if (!_isRunning) break;
+                    await _p2pMonitor.CheckOpportunitiesAsync ();
+                }
+                catch { }
+            }
+        }
+
+        private async Task CopyTradeAnalysisLoop()
+        {
+            Action<string> log = (msg) => _ui?.AddLog (msg);
+            _copyAnalyzer = new CopyTradingAnalyzer (log);
+            while (_isRunning)
+            {
+                try
+                {
+                    await Task.Delay (TimeSpan.FromHours (12));
+                    if (!_isRunning) break;
+                    await _copyAnalyzer.AnalyzeTopTradersAsync ();
+                }
+                catch { }
             }
         }
     }

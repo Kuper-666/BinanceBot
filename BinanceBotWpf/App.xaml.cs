@@ -160,6 +160,7 @@ namespace BinanceBotWpf
                     System.Diagnostics.Debug.WriteLine ($"Не удалось загрузить иконку: {ex.Message}");
                 }
 
+                mainWindow.Title = $"Торговый помощник v{AppConstants.AppVersion}";
                 mainWindow.Show ();
 
                 // Логируем запуск
