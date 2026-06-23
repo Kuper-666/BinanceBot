@@ -4,7 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <StartupUri>/Views/MainWindow.xaml</StartupUri>
-    <VersionPrefix>1.10.10</VersionPrefix>
+    <VersionPrefix>1.10.11</VersionPrefix>
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
     <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
     <Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
@@ -42,13 +42,10 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-  <Target Name="CopyDashboard" AfterTargets="Build"
-          Condition="Exists('$(MSBuildProjectDirectory)\..\binance-dashboard\dist\index.html')">
+  <Target Name="CopyDashboard" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\..\binance-dashboard\dist\index.html')">
     <ItemGroup>
       <DashboardFiles Include="$(MSBuildProjectDirectory)\..\binance-dashboard\dist\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(DashboardFiles)"
-          DestinationFiles="@(DashboardFiles->'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')"
-          SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles-&gt;'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 </Project>
