@@ -10,6 +10,7 @@ using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
 
 namespace BinanceBotWpf.Services
 {
@@ -20,15 +21,15 @@ namespace BinanceBotWpf.Services
         private CancellationTokenSource _cts;
         private readonly ConcurrentDictionary<WebSocket, HashSet<string>> _clients = new ();
         private readonly ConcurrentDictionary<WebSocket, (int Count, DateTime WindowStart)> _rateLimits = new ();
-        private readonly Action<string> _logger;
+        private readonly ILogger<DashboardWebSocketServer> _log;
         private const int MaxMessagesPerSecond = 50;
 
         public bool IsRunning => _listener?.IsListening == true;
         public int ClientCount => _clients.Count;
 
-        public DashboardWebSocketServer (Action<string> logger)
+        public DashboardWebSocketServer (ILogger<DashboardWebSocketServer> logger)
         {
-            _logger = logger;
+            _log = logger;
         }
 
         public async Task StartAsync (int port = 8765)
@@ -37,7 +38,7 @@ namespace BinanceBotWpf.Services
             _listener = new HttpListener ();
             _listener.Prefixes.Add ($"http://localhost:{port}/");
             _listener.Start ();
-            _logger?.Invoke ($"📡 Dashboard WS server started on port {port}");
+            _log.LogInformation ("Dashboard WS server started on port {Port}", port);
 
             _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
 
@@ -68,7 +69,7 @@ namespace BinanceBotWpf.Services
             _clients.Clear ();
             try { _listener?.Stop (); } catch { }
             _listener = null;
-            _logger?.Invoke ("📡 Dashboard WS server stopped");
+            _log.LogInformation ("Dashboard WS server stopped");
         }
 
         public async Task BroadcastAsync (string channel, object data)
@@ -179,7 +180,7 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    _logger?.Invoke ($"❌ Dashboard WS accept error: {ex.Message}");
+                    _log.LogError (ex, "Dashboard WS accept error");
                 }
             }
         }

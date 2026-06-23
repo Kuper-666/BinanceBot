@@ -91,7 +91,7 @@ namespace BinanceBotWpf.Services
             _aiRiskEngine = new AiRiskEngine (_mlManager, client, null);
 
             // ✅ Дашборд WebSocket сервер
-            _dashboardServer = new DashboardWebSocketServer (null);
+            _dashboardServer = new DashboardWebSocketServer (ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ());
 
             // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
             _webSocketManager = new WebSocketPriceManager (null);
@@ -103,6 +103,8 @@ namespace BinanceBotWpf.Services
         {
             if (_loggerSet) return;
             _loggerSet = true;
+
+            ServiceLogger.Instance.SetRootLogger (logger);
 
             _wallet.OnLogGenerated += logger;
             _earn.OnLogGenerated += logger;
@@ -441,7 +443,8 @@ namespace BinanceBotWpf.Services
             // Запуск Dashboard WebSocket сервера
             try
             {
-                _dashboardServer = new DashboardWebSocketServer (msg => _ui?.AddLog (msg));
+                var dashboardLogger = ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ();
+                _dashboardServer = new DashboardWebSocketServer (dashboardLogger);
                 await _dashboardServer.StartAsync (8765);
                 _ui?.AddLog ("📡 Dashboard WebSocket доступен на http://localhost:8765");
             }
