@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.WebSockets;
@@ -38,6 +40,18 @@ namespace BinanceBotWpf.Services
             _logger?.Invoke ($"📡 Dashboard WS server started on port {port}");
 
             _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
+
+            // Авто-открытие браузера
+            try
+            {
+                Process.Start (new ProcessStartInfo
+                {
+                    FileName = $"http://localhost:{port}",
+                    UseShellExecute = true
+                });
+            }
+            catch { }
+
             await Task.CompletedTask;
         }
 
@@ -150,8 +164,7 @@ namespace BinanceBotWpf.Services
                     }
                     else
                     {
-                        ctx.Response.StatusCode = 400;
-                        ctx.Response.Close ();
+                        ServeStaticFile (ctx);
                     }
                 }
                 catch (ObjectDisposedException)
@@ -270,6 +283,86 @@ namespace BinanceBotWpf.Services
                 return true;
             }
             return false;
+        }
+
+        private static readonly Dictionary<string, string> MimeTypes = new ()
+        {
+            [".html"] = "text/html",
+            [".js"] = "application/javascript",
+            [".css"] = "text/css",
+            [".json"] = "application/json",
+            [".svg"] = "image/svg+xml",
+            [".png"] = "image/png",
+            [".ico"] = "image/x-icon",
+            [".woff"] = "font/woff",
+            [".woff2"] = "font/woff2",
+        };
+
+        private static string _staticDir;
+
+        private static string GetStaticDir ()
+        {
+            if (!string.IsNullOrEmpty (_staticDir) && Directory.Exists (_staticDir))
+                return _staticDir;
+
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string[] candidates = new[]
+            {
+                Path.Combine (baseDir, "dashboard"),
+                Path.Combine (baseDir, "..", "..", "..", "..", "binance-dashboard", "dist"),
+                Path.Combine (baseDir, "binance-dashboard", "dist"),
+            };
+
+            foreach (string candidate in candidates)
+            {
+                string full = Path.GetFullPath (candidate);
+                if (Directory.Exists (full) && File.Exists (Path.Combine (full, "index.html")))
+                {
+                    _staticDir = full;
+                    return _staticDir;
+                }
+            }
+
+            return null;
+        }
+
+        private void ServeStaticFile (HttpListenerContext ctx)
+        {
+            string staticDir = GetStaticDir ();
+            if (string.IsNullOrEmpty (staticDir))
+            {
+                string html = "<html><body style='background:#0a0a0a;color:#fff;font-family:monospace;padding:40px'>" +
+                    "<h2>BinanceBot Dashboard</h2>" +
+                    "<p>Dashboard static files not found.</p>" +
+                    "<p>Build the React app first:<br><code>cd binance-dashboard && npm run build</code></p>" +
+                    "<p>Then copy <code>dist/</code> to the bot's output directory as <code>dashboard/</code></p>" +
+                    "</body></html>";
+                byte[] bytes = Encoding.UTF8.GetBytes (html);
+                ctx.Response.ContentType = "text/html";
+                ctx.Response.ContentLength64 = bytes.Length;
+                ctx.Response.OutputStream.Write (bytes, 0, bytes.Length);
+                ctx.Response.Close ();
+                return;
+            }
+
+            string localPath = ctx.Request.Url.LocalPath.TrimStart ('/');
+            if (string.IsNullOrEmpty (localPath))
+                localPath = "index.html";
+
+            string filePath = Path.Combine (staticDir, localPath.Replace ('/', Path.DirectorySeparatorChar));
+
+            if (!File.Exists (filePath))
+            {
+                filePath = Path.Combine (staticDir, "index.html");
+            }
+
+            string ext = Path.GetExtension (filePath).ToLowerInvariant ();
+            ctx.Response.ContentType = MimeTypes.TryGetValue (ext, out string mime) ? mime : "application/octet-stream";
+
+            byte[] fileBytes = File.ReadAllBytes (filePath);
+            ctx.Response.ContentLength64 = fileBytes.Length;
+            ctx.Response.OutputStream.Write (fileBytes, 0, fileBytes.Length);
+            ctx.Response.Close ();
         }
     }
 }
