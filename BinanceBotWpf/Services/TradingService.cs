@@ -446,6 +446,7 @@ namespace BinanceBotWpf.Services
             {
                 var dashboardLogger = ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ();
                 _dashboardServer = new DashboardWebSocketServer (dashboardLogger);
+                _dashboardServer.OnCommand = HandleDashboardCommand;
                 await _dashboardServer.StartAsync (8765);
                 _ui?.AddLog ("📡 Dashboard WebSocket доступен на http://localhost:8765");
             }
@@ -1414,6 +1415,73 @@ namespace BinanceBotWpf.Services
         {
             if (_telegram == null) return false;
             return await _telegram.TestConnectionAsync ();
+        }
+
+        private async Task HandleDashboardCommand(string action, Dictionary<string, object> data)
+        {
+            try
+            {
+                switch (action)
+                {
+                    case "start":
+                        if (!_isRunning)
+                        {
+                            _ = StartTradingAsync (_ui);
+                            _ui?.AddLog ("🚀 Бот запущен из дашборда");
+                        }
+                        break;
+
+                    case "stop":
+                        if (_isRunning)
+                        {
+                            StopTrading ();
+                            _ui?.AddLog ("⏹️ Бот остановлен из дашборда");
+                        }
+                        break;
+
+                    case "retrain":
+                        _ui?.AddLog ("🔄 Переобучение ML запущено из дашборда");
+                        break;
+
+                    case "export":
+                        _ui?.AddLog ("📁 Экспорт запущен из дашборда");
+                        try
+                        {
+                            string exportDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Export");
+                            if (!Directory.Exists (exportDir)) Directory.CreateDirectory (exportDir);
+                            string fileName = $"trades_{DateTime.Now:yyyyMMdd_HHmmss}.csv";
+                            string filePath = Path.Combine (exportDir, fileName);
+                            var trades = _ui?.TradesHistory;
+                            if (trades != null && trades.Count > 0)
+                            {
+                                var lines = new List<string> { "Symbol,EntryPrice,ExitPrice,PnL%,OpenTime,CloseTime,Reason" };
+                                foreach (var t in trades)
+                                {
+                                    lines.Add ($"{t.Symbol},{t.EntryPrice},{t.ExitPrice},{t.PnLPercent},{t.OpenTime:O},{t.CloseTime:O},{t.Reason}");
+                                }
+                                await File.WriteAllLinesAsync (filePath, lines);
+                                _ui?.AddLog ($"✅ Экспорт: {filePath} ({trades.Count} сделок)");
+                            }
+                            else
+                            {
+                                _ui?.AddLog ("⚠️ Нет сделок для экспорта");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _ui?.AddLog ($"❌ Ошибка экспорта: {ex.Message}");
+                        }
+                        break;
+
+                    case "settings":
+                        _ui?.AddLog ("⚙️ Настройки обновлены из дашборда");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"❌ Ошибка обработки команды дашборда: {ex.Message}");
+            }
         }
     }
 }

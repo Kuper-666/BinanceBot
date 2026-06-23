@@ -26,6 +26,7 @@ namespace BinanceBotWpf.Services
 
         public bool IsRunning => _listener?.IsListening == true;
         public int ClientCount => _clients.Count;
+        public Func<string, Dictionary<string, object>, Task> OnCommand { get; set; }
 
         public DashboardWebSocketServer (ILogger<DashboardWebSocketServer> logger)
         {
@@ -247,6 +248,20 @@ namespace BinanceBotWpf.Services
                 else if (type == "ping")
                 {
                     _ = SendAsync (ws, new { channel = "pong", data = new { ts = DateTime.UtcNow.ToString ("o") } });
+                }
+                else if (type == "command" || type == "settings")
+                {
+                    string action = root.TryGetProperty ("action", out JsonElement actionEl) ? actionEl.GetString () : type;
+                    var data = new Dictionary<string, object> ();
+                    if (root.TryGetProperty ("data", out JsonElement dataEl) && dataEl.ValueKind == JsonValueKind.Object)
+                    {
+                        foreach (var prop in dataEl.EnumerateObject ())
+                        {
+                            data[prop.Name] = prop.Value.ToString ();
+                        }
+                    }
+                    _ = OnCommand?.Invoke (action, data);
+                    _ = SendAsync (ws, new { channel = "command_ack", data = new { action, ok = true } });
                 }
             }
             catch
