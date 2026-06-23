@@ -467,27 +467,36 @@ namespace BinanceBotWpf.Services
                     return;
                 }
 
-                var newPairs = await _client.GetTopVolumePairsAsync ("USDC", 10);
-                newPairs = newPairs.Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC")).ToList ();
+                // Динамическое число пар по балансу
+                decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
+                int maxPairs = balance < 50 ? 3 : balance < 200 ? 5 : balance < 500 ? 7 : 10;
 
-                if (newPairs.Count > 0)
+                // Мульти-котировка: USDC + USDT
+                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", maxPairs);
+                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", maxPairs);
+                var allPairs = usdcPairs.Concat (usdtPairs)
+                    .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
+                    .Select (g => g.First ())
+                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD"))
+                    .Take (maxPairs)
+                    .ToList ();
+
+                if (allPairs.Count > 0)
                 {
-                    lock (_pairsLock) { _activePairs = newPairs; }
+                    lock (_pairsLock) { _activePairs = allPairs; }
                     var subscribedSymbols = _webSocketManager.GetSubscribedSymbols ();
                     
                     if (subscribedSymbols == null || subscribedSymbols.Length == 0)
                     {
-                        // Первая подписка на символы
-                        await _webSocketManager.SubscribeToSymbolsAsync (newPairs.ToArray ());
+                        await _webSocketManager.SubscribeToSymbolsAsync (allPairs.ToArray ());
                     }
                     else
                     {
-                        // Подписываемся только на новые символы
-                        var newSymbols = newPairs.Except (subscribedSymbols).ToArray ();
+                        var newSymbols = allPairs.Except (subscribedSymbols).ToArray ();
                         if (newSymbols.Any ())
                             await _webSocketManager.SubscribeToSymbolsAsync (newSymbols);
                     }
-                    _ui?.AddLog ($"📊 Обновлено {_activePairs.Count} пар");
+                    _ui?.AddLog ($"📊 Обновлено {_activePairs.Count} пар (баланс: {balance:F0} USDC, лимит: {maxPairs})");
                 }
             }
             catch (Exception ex) 
@@ -506,8 +515,13 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                var pairs = await _client.GetTopVolumePairsAsync ("USDC", 10);
-                pairs = pairs.Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC")).ToList ();
+                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", 10);
+                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", 10);
+                var pairs = usdcPairs.Concat (usdtPairs)
+                    .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
+                    .Select (g => g.First ())
+                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD"))
+                    .ToList ();
                 if (pairs.Count == 0)
                 {
                     ui.AddLog ("⚠️ Не удалось получить список пар");
@@ -674,6 +688,20 @@ namespace BinanceBotWpf.Services
                     {
                         var klines = await GetKlinesCachedAsync (sym, candleInterval, 100);
                         if (klines == null || klines.Count < 30) continue;
+
+                        // Дневной тренд-фильтр: проверяем тренд на 1d
+                        var dailyKlines = await GetKlinesCachedAsync (sym, "1d", 30);
+                        bool dailyBullish = true;
+                        if (dailyKlines != null && dailyKlines.Count >= 20)
+                        {
+                            decimal sma20 = dailyKlines.TakeLast (20).Average (k => (k.High + k.Low + k.Close) / 3);
+                            decimal currentClose = dailyKlines.Last ().Close;
+                            dailyBullish = currentClose > sma20;
+                            if (!dailyBullish && !_positionManager.TryGet (sym, out _))
+                            {
+                                continue;
+                            }
+                        }
 
                         if (_ui != null)
                         {
