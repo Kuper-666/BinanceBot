@@ -16,16 +16,20 @@ namespace BinanceBotWpf
         private static Mutex? _appMutex;
         private static string LogDir => Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
         private static ServiceProvider? _serviceProvider;
+        private static FileLogger? _fileLogger;
 
         protected override async void OnStartup (StartupEventArgs e)
         {
             base.OnStartup (e);
 
+            _fileLogger = new FileLogger ();
+            _fileLogger.Info ("App", "Запуск приложения");
+
             // #27: Глобальный обработчик исключений UI
             DispatcherUnhandledException += (sender, args) =>
             {
                 string msg = $"[UI Exception] {args.Exception}";
-                System.Diagnostics.Debug.WriteLine (msg);
+                _fileLogger?.Error ("UI", msg);
                 WriteCrashLog (msg);
                 args.Handled = true;
             };
@@ -34,7 +38,7 @@ namespace BinanceBotWpf
             TaskScheduler.UnobservedTaskException += (sender, args) =>
             {
                 string msg = $"[UnobservedTask] {args.Exception?.InnerException?.Message ?? args.Exception?.Message}";
-                System.Diagnostics.Debug.WriteLine (msg);
+                _fileLogger?.Error ("Task", msg);
                 WriteCrashLog (msg);
                 args.SetObserved ();
             };
@@ -150,10 +154,10 @@ namespace BinanceBotWpf
             var earnManager = new EarnManager (consoleLock);
             var rebalancer = new BalanceRebalancer (consoleLock, 0.1m);
 
-            walletManager.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Wallet] {msg}");
-            earnManager.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Earn] {msg}");
-            rebalancer.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Rebalancer] {msg}");
-            binanceClient.OnLogGenerated += (msg) => System.Diagnostics.Debug.WriteLine ($"[Binance] {msg}");
+            walletManager.OnLogGenerated += (msg) => _fileLogger?.Info ("Wallet", msg);
+            earnManager.OnLogGenerated += (msg) => _fileLogger?.Info ("Earn", msg);
+            rebalancer.OnLogGenerated += (msg) => _fileLogger?.Info ("Rebalancer", msg);
+            binanceClient.OnLogGenerated += (msg) => _fileLogger?.Info ("Binance", msg);
 
             var tradingService = new TradingService (
                 binanceClient, walletManager, earnManager, rebalancer,
@@ -222,7 +226,10 @@ namespace BinanceBotWpf
 
         protected override void OnExit (ExitEventArgs e)
         {
-            // #3: Гарантированное освобождение Mutex
+            _fileLogger?.Info ("App", "Завершение приложения");
+            _fileLogger?.Dispose ();
+            _fileLogger = null;
+
             try
             {
                 _appMutex?.ReleaseMutex ();

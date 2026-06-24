@@ -47,6 +47,7 @@ namespace BinanceBotWpf.Services
         private MainWindowViewModel _ui;
         private bool _isRunning;
         private TelegramNotifier _telegram;
+        private CancellationTokenSource _shutdownCts;
 
         // Списки и кэш
         private List<string> _activePairs = new ();
@@ -268,6 +269,7 @@ namespace BinanceBotWpf.Services
             if (_isRunning) return;
             _ui = vm;
             _isRunning = true;
+            _shutdownCts = new CancellationTokenSource ();
             if (_ui != null) _ui.IsRunning = true;
 
             SetLogger (vm.AddLog);
@@ -290,6 +292,7 @@ namespace BinanceBotWpf.Services
         public void StopTrading()
         {
             _isRunning = false;
+            _shutdownCts?.Cancel ();
             if (_ui != null) _ui.IsRunning = false;
 
             // ИСПРАВЛЕНИЕ: Правильная обработка ошибок при остановке ресурсов
@@ -309,6 +312,9 @@ namespace BinanceBotWpf.Services
 
             try { _dashboardServer?.Stop (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки DashboardServer: {ex.Message}"); }
+
+            try { _shutdownCts?.Dispose (); } catch { }
+            _shutdownCts = null;
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
@@ -1543,37 +1549,43 @@ namespace BinanceBotWpf.Services
             int lastTradeCount = 0;
             while (_isRunning)
             {
-                // Ждём 24 часа
-                await Task.Delay (TimeSpan.FromHours (24));
-
-                if (!_isRunning) break;
-
-                // Проверяем количество новых сделок (минимум 10 для оптимизации)
-                int currentTradeCount = _ui?.TotalTrades ?? 0;
-                int newTrades = currentTradeCount - lastTradeCount;
-
-                if (newTrades < 10)
+                try
                 {
-                    _ui?.AddLog ($"🧠 Оптимизация пропущена: только {newTrades} новых сделок (нужно минимум 10)");
+                    await Task.Delay (TimeSpan.FromHours (24));
+
+                    if (!_isRunning) break;
+
+                    int currentTradeCount = _ui?.TotalTrades ?? 0;
+                    int newTrades = currentTradeCount - lastTradeCount;
+
+                    if (newTrades < 10)
+                    {
+                        _ui?.AddLog ($"🧠 Оптимизация пропущена: только {newTrades} новых сделок (нужно минимум 10)");
+                        lastTradeCount = currentTradeCount;
+                        continue;
+                    }
+
+                    _ui?.AddLog ($"🧠 Запуск оптимизации ({newTrades} новых сделок)...");
+
+                    var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
+                    bool success = await optimizer.RunOptimizationAsync ();
+
+                    if (success)
+                    {
+                        _ui?.AddLog ("✅ Оптимизация завершена");
+                    }
+                    else
+                    {
+                        _ui?.AddLog ("⚠️ Оптимизация не дала результатов");
+                    }
+
                     lastTradeCount = currentTradeCount;
-                    continue;
                 }
-
-                _ui?.AddLog ($"🧠 Запуск оптимизации ({newTrades} новых сделок)...");
-
-                var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
-                bool success = await optimizer.RunOptimizationAsync ();
-
-                if (success)
+                catch (Exception ex)
                 {
-                    _ui?.AddLog ("✅ Оптимизация завершена");
+                    _ui?.AddLog ($"❌ Ошибка оптимизации: {ex.Message}");
+                    await Task.Delay (60000);
                 }
-                else
-                {
-                    _ui?.AddLog ("⚠️ Оптимизация не дала результатов");
-                }
-
-                lastTradeCount = currentTradeCount;
             }
         }
 

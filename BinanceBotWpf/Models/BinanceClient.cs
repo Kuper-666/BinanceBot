@@ -35,6 +35,9 @@ namespace BinanceBotWpf.Models
 
         private void Log(string message) => OnLogGenerated?.Invoke (message);
 
+        private static string TruncateLog(string s, int maxLen = 200) =>
+            string.IsNullOrEmpty (s) ? "" : (s.Length <= maxLen ? s : s.Substring (0, maxLen) + "...");
+
         private readonly SemaphoreSlim _rateLimiter = new (10, 10);
         private readonly Queue<DateTime> _requestTimes = new ();
         private readonly int _maxRequestsPerSecond = 10;
@@ -241,10 +244,10 @@ namespace BinanceBotWpf.Models
                 string json = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
                 {
-                    Log ($"Dust conversion success: {json}");
+                    Log ($"Dust conversion success");
                     return true;
                 }
-                Log ($"Dust conversion error: {json}");
+                Log ($"Dust conversion error: {TruncateLog (json)}");
             }
             catch (Exception ex) { Log ($"ConvertDustToBnb exception: {ex.Message}"); }
             return false;
@@ -319,7 +322,7 @@ namespace BinanceBotWpf.Models
                     return _dustCache;
                 }
 
-                Log ($"GetDustAssets error: {json}");
+                Log ($"GetDustAssets error: {TruncateLog (json)}");
             }
             catch (Exception ex) { Log ($"GetDustAssets exception: {ex.Message}"); }
             return new JArray ();
@@ -375,11 +378,11 @@ namespace BinanceBotWpf.Models
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
 
-                Log ($"DEBUG Redeem response: {json}");
+                Log ($"DEBUG Redeem response: {TruncateLog (json)}");
 
                 if (!response.IsSuccessStatusCode)
                 {
-                    Log ($"❌ Ошибка выкупа {asset}: HTTP {response.StatusCode}, ответ: {json}");
+                    Log ($"❌ Ошибка выкупа {asset}: HTTP {response.StatusCode}");
                     return false;
                 }
 
@@ -755,7 +758,7 @@ namespace BinanceBotWpf.Models
 
                     if (!response.IsSuccessStatusCode)
                     {
-                        Log ($"GetFlexibleEarnBalanceAsync error: {jsonString}");
+                        Log ($"GetFlexibleEarnBalanceAsync error: {TruncateLog (jsonString)}");
                         break;
                     }
 
@@ -947,7 +950,7 @@ namespace BinanceBotWpf.Models
                     var result = JObject.Parse (json);
                     return result["rows"] as JArray ?? new JArray ();
                 }
-                Log ($"GetFlexibleProducts error: {json}");
+                Log ($"GetFlexibleProducts error: {TruncateLog (json)}");
             }
             catch (Exception ex) { Log ($"GetFlexibleProducts exception: {ex.Message}"); }
             return new JArray ();
@@ -972,7 +975,7 @@ namespace BinanceBotWpf.Models
                 if (response.IsSuccessStatusCode)
                     return true;
 
-                Log ($"Subscribe error: {json}");
+                Log ($"Subscribe error: {TruncateLog (json)}");
             }
             catch (Exception ex) { Log ($"Subscribe exception: {ex.Message}"); }
             return false;
