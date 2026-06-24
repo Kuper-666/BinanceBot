@@ -46,10 +46,12 @@ namespace BinanceBotWpf.Services
 
             // 1. Получаем предсказание ML
             decimal atr = 0;
-            try { atr = await _client.GetATRAsync (symbol, 14); } catch { }
+            if (_client != null) try { atr = await _client.GetATRAsync (symbol, 14); } catch { }
             if (atr <= 0) atr = price * 0.02m;
 
-            var prediction = _mlManager.PredictRisk (fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv);
+            var prediction = _mlManager != null
+                ? _mlManager.PredictRisk (fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv)
+                : (IsProfitable: true, Probability: 1.0f, RiskLevel: "Low Risk");
             int aiRiskLevel = prediction.RiskLevel == "Low Risk" ? 1 : (prediction.RiskLevel == "Medium Risk" ? 2 : 3);
 
             // 2. Волатильность市场的
