@@ -600,7 +600,18 @@ namespace BinanceBotWpf.Services
             try
             {
                 decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
-                var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
+
+                // Загружаем minNotional с fallback на дефолтные значения
+                Dictionary<string, decimal> allMinNotionals;
+                try
+                {
+                    allMinNotionals = await _client.GetAllMinNotionalsAsync ();
+                }
+                catch
+                {
+                    allMinNotionals = new Dictionary<string, decimal> ();
+                    ui.AddLog ("⚠️ Не удалось загрузить minNotional, используются дефолтные значения");
+                }
 
                 var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", 20);
                 var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", 20);
@@ -612,7 +623,7 @@ namespace BinanceBotWpf.Services
                     {
                         if (allMinNotionals.TryGetValue (p, out decimal minNot))
                             return balance >= minNot * 2m;
-                        return true;
+                        return true; // Нет данных — пропускаем фильтр
                     })
                     .OrderBy (p =>
                     {
@@ -621,13 +632,14 @@ namespace BinanceBotWpf.Services
                     })
                     .Take (balance < 50 ? 5 : balance < 200 ? 7 : 10)
                     .ToList ();
+
+                ui.AddLog ($"📊 Найдено {pairs.Count} пар для баланса {balance:F2} USDC (всего кандидатов: {usdcPairs.Count + usdtPairs.Count})");
+
                 if (pairs.Count == 0)
                 {
-                    ui.AddLog ("⚠️ Не удалось получить список пар, подходящих под баланс");
+                    ui.AddLog ("⚠️ Нет пар, подходящих под баланс. Пополните счёт или уменьшите минимальный notional.");
                     return;
                 }
-
-                ui.AddLog ($"📊 Загружено {pairs.Count} пар (баланс: {balance:F0} USDC), анализ индикаторов...");
 
                 foreach (var sym in pairs)
                 {
