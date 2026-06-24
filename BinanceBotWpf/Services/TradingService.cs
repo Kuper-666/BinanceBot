@@ -14,7 +14,7 @@ namespace BinanceBotWpf.Services
     /// <summary>
     /// Основной сервис торговли (упрощённая версия после рефакторинга)
     /// </summary>
-    public class TradingService
+    public class TradingService : ITradingService
     {
         // Основные компоненты
         private readonly BinanceClient _client;
