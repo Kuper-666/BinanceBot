@@ -1541,7 +1541,6 @@ namespace BinanceBotWpf.Services
         /// </summary>
         private async Task PeriodicUpdateCheckLoop()
         {
-            string lastNotifiedVersion = "";
             // Первая проверка через 5 минут после запуска
             await Task.Delay (TimeSpan.FromMinutes (5));
 

@@ -25,12 +25,12 @@ namespace BinanceBotWpf.Services
     public class PriceAlertManager : IDisposable
     {
         private readonly ConcurrentDictionary<string, PriceAlert> _alerts = new();
-        private readonly Func<string, Task>? _notifyTelegram;
+        private readonly Func<string, Task> _notifyTelegram;
         private readonly Action<string> _logger;
         private readonly Func<string, decimal> _getCurrentPrice;
         private readonly Timer _checkTimer;
 
-        public event Action<PriceAlert>? OnAlertTriggered;
+        public event Action<PriceAlert> OnAlertTriggered;
 
         public PriceAlertManager(
             Func<string, decimal> getCurrentPrice,

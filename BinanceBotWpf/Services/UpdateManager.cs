@@ -19,7 +19,6 @@ namespace BinanceBotWpf.Services
         private readonly HttpClient _httpClient = new HttpClient ();
         private readonly Action<string> _logger;
         private DateTime _lastUpdateCheckDate = DateTime.MinValue;
-        private bool _isUpdating = false;
 
         public UpdateManager(Action<string> logger)
         {

@@ -834,7 +834,7 @@ namespace BinanceBotWpf.ViewModels
                     });
                     await Task.Delay (2000);
                 }
-                catch (Exception ex)
+                catch (Exception)
                 {
                     await Task.Delay (10000);
                 }

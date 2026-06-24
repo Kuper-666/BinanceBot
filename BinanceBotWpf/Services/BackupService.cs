@@ -80,12 +80,12 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Восстанавливает конфигурацию из указанного бэкапа
         /// </summary>
-        public async Task<bool> RestoreFromBackupAsync(string backupDir)
+        public Task<bool> RestoreFromBackupAsync(string backupDir)
         {
             if (!Directory.Exists (backupDir))
             {
                 _logger?.Invoke ($"❌ Бэкап не найден: {backupDir}");
-                return false;
+                return Task.FromResult (false);
             }
 
             try
@@ -104,12 +104,12 @@ namespace BinanceBotWpf.Services
                 }
 
                 _logger?.Invoke ($"✅ Конфигурация восстановлена из {backupDir}");
-                return true;
+                return Task.FromResult (true);
             }
             catch (Exception ex)
             {
                 _logger?.Invoke ($"❌ Ошибка восстановления: {ex.Message}");
-                return false;
+                return Task.FromResult (false);
             }
         }
 

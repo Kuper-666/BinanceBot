@@ -15,7 +15,6 @@ namespace BinanceBotWpf.Tests
     public class BotConfigTests : IDisposable
     {
         private readonly string _testDir;
-        private readonly string _originalBaseDirectory;
 
         public BotConfigTests()
         {
