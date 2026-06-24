@@ -134,8 +134,8 @@ namespace BinanceBotWpf.ViewModels
         public int SlowSma { get => _slowSma; set { _slowSma = value; OnPropertyChanged (); SaveSettings (); } }
         public int RsiBuyThreshold { get => _rsiBuyThreshold; set { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } }
         public int RsiSellThreshold { get => _rsiSellThreshold; set { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } }
-        public decimal StopLossPercent { get => _stopLossPercent; set { _stopLossPercent = value; OnPropertyChanged (); SaveSettings (); } }
-        public decimal TakeProfitPercent { get => _takeProfitPercent; set { _takeProfitPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        public decimal StopLossPercent { get => _stopLossPercent; set { _stopLossPercent = Math.Clamp (value, 0.005m, 0.10m); OnPropertyChanged (); SaveSettings (); } }
+        public decimal TakeProfitPercent { get => _takeProfitPercent; set { _takeProfitPercent = Math.Clamp (value, 0.01m, 0.20m); OnPropertyChanged (); SaveSettings (); } }
         public decimal TrailingStopPercent { get => _trailingStopPercent; set { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } }
         public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } }
         public decimal MaxRiskPercent { get => _maxRiskPercent; set { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } }
@@ -980,7 +980,7 @@ namespace BinanceBotWpf.ViewModels
         public int MaxConcurrentTrades
         {
             get => _tradingSettings?.MaxConcurrentTrades ?? 2;
-            set { if (_tradingSettings != null) { _tradingSettings.MaxConcurrentTrades = value; OnPropertyChanged (); SaveTradingSettings (); } }
+            set { if (_tradingSettings != null) { _tradingSettings.MaxConcurrentTrades = Math.Clamp (value, 1, 10); OnPropertyChanged (); SaveTradingSettings (); } }
         }
 
         public decimal RiskPerTradePercent
@@ -990,10 +990,10 @@ namespace BinanceBotWpf.ViewModels
             {
                 if (_tradingSettings != null)
                 {
-                    _tradingSettings.RiskPerTradePercent = value;
+                    _tradingSettings.RiskPerTradePercent = Math.Clamp (value, 0.001m, 0.05m);
                     OnPropertyChanged ();
                     SaveTradingSettings ();
-                    UpdateRiskDisplay (value);
+                    UpdateRiskDisplay (_tradingSettings.RiskPerTradePercent);
                 }
             }
         }
@@ -1005,7 +1005,7 @@ namespace BinanceBotWpf.ViewModels
             {
                 if (_tradingSettings != null)
                 {
-                    _tradingSettings.RiskRewardRatio = value;
+                    _tradingSettings.RiskRewardRatio = Math.Clamp (value, 1.0m, 5.0m);
                     OnPropertyChanged ();
                     SaveTradingSettings ();
                 }
@@ -1079,7 +1079,7 @@ namespace BinanceBotWpf.ViewModels
         public int FuturesLeverage
         {
             get => _tradingSettings?.FuturesLeverage ?? 3;
-            set { if (_tradingSettings != null) { _tradingSettings.FuturesLeverage = value; OnPropertyChanged (); SaveTradingSettings (); } }
+            set { if (_tradingSettings != null) { _tradingSettings.FuturesLeverage = Math.Clamp (value, 1, 20); OnPropertyChanged (); SaveTradingSettings (); } }
         }
 
         // Эшелоны ИИ (Золотая архитектура)
