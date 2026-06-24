@@ -938,6 +938,17 @@ namespace BinanceBotWpf.Services
                                 ["openPositions"] = openPosCount,
                                 ["maxPositions"] = maxPos,
                                 ["leverage"] = _tradingSettings?.FuturesLeverage ?? 5,
+                                // Новые поля для дашборда
+                                ["winningTrades"] = _ui?.WinningTrades ?? 0,
+                                ["losingTrades"] = _ui?.LosingTrades ?? 0,
+                                ["bestPnL"] = _ui?.BestPnL ?? 0,
+                                ["worstPnL"] = _ui?.WorstPnL ?? 0,
+                                ["fearGreedValue"] = _fearGreedProvider?.GetCurrentAsync ()?.Result?.Value ?? 50,
+                                ["fearGreedClassification"] = _fearGreedProvider?.GetCurrentAsync ()?.Result?.Classification ?? "Neutral",
+                                ["dcaEnabled"] = _tradingSettings?.DcaEnabled ?? false,
+                                ["futuresEnabled"] = _tradingSettings?.FuturesEnabled ?? false,
+                                ["gridBotRunning"] = _gridBot?.IsRunning ?? false,
+                                ["telegramStatus"] = _telegram?.IsEnabled == true ? "connected" : "disconnected",
                             });
 
                             // Trades — last 50 from history

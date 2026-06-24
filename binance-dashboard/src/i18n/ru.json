@@ -132,5 +132,17 @@
   "sev_success": "УСПЕХ",
   "status": "Статус",
   "bot_status": "Статус бота",
-  "version_info": "v1.10.4 · 7 пар · плечо 5x"
+  "version_info": "v1.10.4 · 7 пар · плечо 5x",
+  "winning_trades": "Прибыльные сделки",
+  "losing_trades": "Убыточные сделки",
+  "best_trade": "Лучшая сделка",
+  "worst_trade": "Худшая сделка",
+  "fear_greed": "Страх и Жадность",
+  "dca_enabled": "DCA включён",
+  "futures_enabled": "Фьючерсы включены",
+  "grid_bot_running": "Грид-бот работает",
+  "price_alerts": "Ценовые алерты",
+  "whale_alerts": "Китовые алерты",
+  "p2p_opportunities": "P2P возможности",
+  "copy_trading": "Копитрейдинг"
 }

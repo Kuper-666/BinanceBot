@@ -48,6 +48,38 @@ export default function OverviewPage({ data }) {
         <StatCard label={t('positions')} value={`${data.openPositions}/${data.maxPositions}`} />
       </div>
 
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px' }}>
+        <div className="card" style={{ padding: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{t('winning_trades')}</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#22c55e' }}>{data.winningTrades || 0}</div>
+        </div>
+        <div className="card" style={{ padding: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{t('losing_trades')}</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#ef4444' }}>{data.losingTrades || 0}</div>
+        </div>
+        <div className="card" style={{ padding: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{t('best_trade')}</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#22c55e' }}>+${(data.bestPnL || 0).toFixed(2)}</div>
+        </div>
+        <div className="card" style={{ padding: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{t('worst_trade')}</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#ef4444' }}>${(data.worstPnL || 0).toFixed(2)}</div>
+        </div>
+        <div className="card" style={{ padding: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{t('fear_greed')}</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <div style={{ fontSize: '18px', fontWeight: 700, color: (data.fearGreedValue || 50) > 60 ? '#22c55e' : (data.fearGreedValue || 50) < 40 ? '#ef4444' : '#f59e0b' }}>
+              {data.fearGreedValue || 50}
+            </div>
+            <div style={{ fontSize: '10px', color: '#888' }}>{data.fearGreedClassification || 'Neutral'}</div>
+          </div>
+        </div>
+        <div className="card" style={{ padding: '12px' }}>
+          <div style={{ fontSize: '11px', color: '#888', marginBottom: '4px' }}>{t('leverage')}</div>
+          <div style={{ fontSize: '18px', fontWeight: 700, color: '#3498db' }}>{data.leverage || 5}x</div>
+        </div>
+      </div>
+
       <div className="page-grid-2">
         <div className="card">
           <h3>{t('equity_curve')}</h3>

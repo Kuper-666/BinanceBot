@@ -132,5 +132,17 @@
   "sev_success": "SUCCESS",
   "status": "Status",
   "bot_status": "Bot Status",
-  "version_info": "v1.10.4 · 7 pairs · 5x leverage"
+  "version_info": "v1.10.4 · 7 pairs · 5x leverage",
+  "winning_trades": "Winning Trades",
+  "losing_trades": "Losing Trades",
+  "best_trade": "Best Trade",
+  "worst_trade": "Worst Trade",
+  "fear_greed": "Fear & Greed",
+  "dca_enabled": "DCA Enabled",
+  "futures_enabled": "Futures Enabled",
+  "grid_bot_running": "Grid Bot Running",
+  "price_alerts": "Price Alerts",
+  "whale_alerts": "Whale Alerts",
+  "p2p_opportunities": "P2P Opportunities",
+  "copy_trading": "Copy Trading"
 }
