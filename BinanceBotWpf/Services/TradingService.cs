@@ -599,8 +599,17 @@ namespace BinanceBotWpf.Services
         {
             try
             {
+                // Баланс может быть 0 если WalletManager ещё не обновился — запрашиваем напрямую
                 decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
-                ui.AddLog ($"🔍 [DEBUG] Баланс: {balance:F2} USDC");
+                if (balance <= 0)
+                {
+                    try { balance = await _client.GetAccountBalanceAsync ("USDC"); } catch { }
+                    ui.AddLog ($"🔍 [DEBUG] Баланс из API: {balance:F2} USDC");
+                }
+                else
+                {
+                    ui.AddLog ($"🔍 [DEBUG] Баланс из WalletManager: {balance:F2} USDC");
+                }
 
                 // Загружаем minNotional с fallback
                 Dictionary<string, decimal> allMinNotionals;
