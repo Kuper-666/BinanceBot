@@ -130,10 +130,11 @@ namespace BinanceBotWpf.Services
                                             MaxDrawdown = maxDrawdown
                                         };
 
-                                        // Требуем минимум сделок по совокупности всех пар и отсекаем нереалистичные значения
-                                        bool isPlausible = aggregated.TotalReturn > -100 && aggregated.TotalReturn < 200;
+                                        // Требуем минимум сделок по совокупности всех пар и отсекаем нереалистичные значения.
+                                        // Порог сделок поднят с 5 до 30 — 5 сделок это статистический шум (оверфит).
+                                        bool isPlausible = aggregated.TotalReturn > -90 && aggregated.TotalReturn < 150;
 
-                                        if (isPlausible && ( bestResult == null || aggregated.TotalReturn > bestResult.TotalReturn ) && aggregated.TotalTrades >= 5)
+                                        if (isPlausible && ( bestResult == null || aggregated.TotalReturn > bestResult.TotalReturn ) && aggregated.TotalTrades >= 30)
                                         {
                                             bestResult = aggregated;
                                             bestParams["FastSma"] = fast;

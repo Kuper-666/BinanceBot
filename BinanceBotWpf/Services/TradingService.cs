@@ -1666,12 +1666,22 @@ namespace BinanceBotWpf.Services
         private async Task WhaleLoop()
         {
             Action<string> log = (msg) => _ui?.AddLog (msg);
+            // Стейблкоины не информативны для whale-мониторинга: крупные сделки там — норма,
+            // а не сигнал. Фильтруем их, чтобы не засорять лог (например USDCUSDT).
+            HashSet<string> stablecoinPairs = new HashSet<string> (StringComparer.OrdinalIgnoreCase)
+            {
+                "USDCUSDT", "USDTUSDC", "BUSDUSDT", "FDUSDUSDT", "TUSDUSDT", "USDCUSDC", "DAIUSDT"
+            };
+
             while (_isRunning)
             {
                 try
                 {
                     List<string> pairs;
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
+
+                    // Исключаем стейблкоин-пары из мониторинга
+                    pairs = pairs.Where (p => !stablecoinPairs.Contains (p)).ToList ();
 
                     if (pairs.Count > 0)
                     {
@@ -1681,7 +1691,7 @@ namespace BinanceBotWpf.Services
                             _ui?.AddLog ($"🐋 WHALE {whale.Side} {whale.Symbol}: ${whale.ValueUsdc:N0}");
                         };
                         await _whaleMonitor.StartAsync (pairs.ToArray ());
-                        _ui?.AddLog ($"🐋 Whale monitor запущен для {pairs.Count} пар (порог: $100k)");
+                        _ui?.AddLog ($"🐋 Whale monitor запущен для {pairs.Count} пар (порог: $100k, стейблкоины исключены)");
                         break;
                     }
                     await Task.Delay (10000);

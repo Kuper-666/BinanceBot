@@ -30,6 +30,20 @@ namespace BinanceBotWpf.Services
         {
             var result = new AiRiskResult ();
 
+            // 0. Hard-stop: недостаточно средств для торговли (защита от слива малого депозита).
+            //    При балансе ниже минимума возвращаем минимальный риск — сделка не откроется.
+            const decimal MinTradableBalance = 50m;
+            if (balance < MinTradableBalance)
+            {
+                result.RiskPerTradePercent = 0.003m; // минимум — фактически блокирует сделку
+                result.RiskRewardRatio = 1.5m;
+                result.StopLossPercent = 0.015m;
+                result.TakeProfitPercent = result.StopLossPercent * result.RiskRewardRatio;
+                result.Grid = CalculateGridParameters (balance, 0.05m, price * 0.02m, price, 3);
+                _logger?.Invoke ($"🛑 ИИ Риск: баланс {balance:F2} USDC < минимума {MinTradableBalance} USDC — торговля блокируется");
+                return result;
+            }
+
             // 1. Получаем предсказание ML
             decimal atr = 0;
             try { atr = await _client.GetATRAsync (symbol, 14); } catch { }
@@ -86,15 +100,18 @@ namespace BinanceBotWpf.Services
         }
 
         /// <summary>
-        /// Баланс-фактор: больше баланс → ниже процент (крупные суммы консервативнее)
+        /// Баланс-фактор: меньше баланс → ниже процент (маленький депозит консервативнее).
+        /// Раньше логика была инвертирована (мало денег → полный риск), что ведёт к
+        /// быстрому сливу депозита, особенно с плечом. Теперь наоборот.
         /// </summary>
         private decimal CalculateBalanceFactor(decimal balance)
         {
-            if (balance < 50) return 1.0m;      // Маленький баланс — полный риск
-            if (balance < 200) return 0.9m;     // Средний
-            if (balance < 1000) return 0.8m;    // Крупный
-            if (balance < 5000) return 0.7m;    // Очень крупный
-            return 0.6m;                         // Максимальный — максимально консервативно
+            // Недостаточно средств для осмысленной торговли — минимальный риск
+            if (balance < 50) return 0.3m;       // Маленький баланс — консервативно
+            if (balance < 200) return 0.6m;      // Средний
+            if (balance < 1000) return 0.8m;     // Крупный
+            if (balance < 5000) return 0.9m;     // Очень крупный
+            return 1.0m;                          // Максимальный — можно рисковать полнее
         }
 
         /// <summary>
