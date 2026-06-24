@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import WebSocketService from '../services/WebSocketService';
 import { MOCK_DATA } from '../data';
 
-const CHANNELS = ['prices', 'positions', 'trades', 'stats', 'echelons', 'equity', 'feargreed'];
+const CHANNELS = ['prices', 'positions', 'trades', 'stats', 'echelons', 'equity', 'feargreed', 'pnl'];
 
 let mountCount = 0;
 
@@ -57,6 +57,7 @@ export default function useBotData() {
     pairs: MOCK_DATA.pairs,
     echelons: { adaptive: true, validator: true, newsSentinel: true },
     equity: [],
+    pnlHistory: [],
     news: [],
     trades: [],
     positions: [],
@@ -102,6 +103,12 @@ export default function useBotData() {
           }
           if (channel === 'feargreed') {
             return { ...prev, fearGreedValue: newData.value, fearGreedClassification: newData.classification };
+          }
+          if (channel === 'pnl') {
+            if (Array.isArray(newData)) {
+              return { ...prev, pnlHistory: newData };
+            }
+            return { ...prev, pnlHistory: [] };
           }
           return { ...prev, [channel]: newData };
         });

@@ -100,8 +100,52 @@ export default function OverviewPage({ data }) {
         </div>
 
         <div className="card">
-          <h3>{t('volume_analysis')}</h3>
-          <VolumeBar pairs={data.pairs} />
+          <h3>PnL за сессию</h3>
+          {data.pnlHistory && data.pnlHistory.length > 0 ? (
+            <ResponsiveContainer width="100%" height={180}>
+              <AreaChart data={data.pnlHistory} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                <defs>
+                  <linearGradient id="pnlGradPos" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#22c55e" stopOpacity={0} />
+                  </linearGradient>
+                  <linearGradient id="pnlGradNeg" x1="0" y1="1" x2="0" y2="0">
+                    <stop offset="0%" stopColor="#ef4444" stopOpacity={0.3} />
+                    <stop offset="100%" stopColor="#ef4444" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <XAxis dataKey="time" tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} />
+                <YAxis tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false}
+                  tickFormatter={(v) => `$${v}`} domain={['dataMin - 5', 'dataMax + 5']} />
+                <Tooltip
+                  contentStyle={{ background: '#1a1a1a', border: '1px solid #333', borderRadius: '6px', fontSize: '12px' }}
+                  formatter={(v, name) => name === 'pnl' ? [`$${v}`, 'PnL'] : [v, name]}
+                  labelStyle={{ color: '#888' }}
+                />
+                <Area type="monotone" dataKey="pnl" stroke="#22c55e" strokeWidth={2}
+                  fill="url(#pnlGradPos)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div style={{ height: 180, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: '12px' }}>
+              Ожидание данных...
+            </div>
+          )}
+          {data.pnlHistory && data.pnlHistory.length > 0 && (
+            <div style={{ display: 'flex', gap: '16px', marginTop: '8px', fontSize: '12px' }}>
+              <span style={{ color: '#888' }}>Начало: <b style={{ color: '#fff' }}>${(data.pnlHistory[0]?.startBalance || 0).toLocaleString()}</b></span>
+              <span style={{ color: '#888' }}>Текущий: <b style={{ color: '#22c55e' }}>${(data.pnlHistory[data.pnlHistory.length - 1]?.balance || 0).toLocaleString()}</b></span>
+              <span style={{ color: '#888' }}>PnL: <b style={{ color: (data.pnlHistory[data.pnlHistory.length - 1]?.pnl || 0) >= 0 ? '#22c55e' : '#ef4444' }}>
+                ${(data.pnlHistory[data.pnlHistory.length - 1]?.pnl || 0).toFixed(2)} ({(data.pnlHistory[data.pnlHistory.length - 1]?.pnlPercent || 0).toFixed(1)}%)
+              </b></span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div className="card">
+        <h3>{t('volume_analysis')}</h3>
+        <VolumeBar pairs={data.pairs} />
           <div style={{ marginTop: '16px' }}>
             <h3 style={{ fontSize: '12px', marginBottom: '8px' }}>{t('echelon_1')}</h3>
             {Object.entries(data.echelons).map(([key, val]) => (
@@ -120,7 +164,6 @@ export default function OverviewPage({ data }) {
             ))}
           </div>
         </div>
-      </div>
 
       <div className="card">
         <h3>{t('signals')}</h3>

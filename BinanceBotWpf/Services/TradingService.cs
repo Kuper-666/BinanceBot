@@ -67,6 +67,10 @@ namespace BinanceBotWpf.Services
         private readonly List<Dictionary<string, object>> _equityHistory = new ();
         private const int MaxEquityHistory = 200;
         private readonly Dictionary<string, Dictionary<string, object>> _lastAnalysis = new ();
+        private decimal _sessionStartBalance;
+        private bool _sessionStartBalanceCaptured;
+        private readonly List<Dictionary<string, object>> _pnlHistory = new ();
+        private const int MaxPnlHistory = 200;
 
         // TradingService.cs, конструктор:
         public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
@@ -937,6 +941,29 @@ namespace BinanceBotWpf.Services
                                 _equityHistory.RemoveAt (0);
                             }
                             _dashboardServer.BroadcastEquity (new List<Dictionary<string, object>> (_equityHistory));
+
+                            // PnL curve: разница от начального баланса сессии
+                            if (!_sessionStartBalanceCaptured && spotBalance > 0)
+                            {
+                                _sessionStartBalance = spotBalance;
+                                _sessionStartBalanceCaptured = true;
+                            }
+                            if (_sessionStartBalanceCaptured && _sessionStartBalance > 0)
+                            {
+                                decimal sessionPnl = spotBalance - _sessionStartBalance;
+                                decimal sessionPnlPercent = _sessionStartBalance > 0 ? sessionPnl / _sessionStartBalance * 100 : 0;
+                                _pnlHistory.Add (new Dictionary<string, object>
+                                {
+                                    ["time"] = DateTime.UtcNow.ToString ("HH:mm"),
+                                    ["pnl"] = Math.Round (sessionPnl, 2),
+                                    ["pnlPercent"] = Math.Round (sessionPnlPercent, 2),
+                                    ["balance"] = spotBalance,
+                                    ["startBalance"] = _sessionStartBalance
+                                });
+                                if (_pnlHistory.Count > MaxPnlHistory)
+                                    _pnlHistory.RemoveAt (0);
+                                _dashboardServer.BroadcastPnl (new List<Dictionary<string, object>> (_pnlHistory));
+                            }
 
                             // Stats — real balance (Spot + Simple Earn), PnL, win rate, positions
                             decimal totalPnL = _ui?.TotalPnL ?? 0;

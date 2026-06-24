@@ -162,6 +162,11 @@ namespace BinanceBotWpf.Services
             _ = BroadcastAsync ("equity", equityPoints);
         }
 
+        public void BroadcastPnl (List<Dictionary<string, object>> pnlPoints)
+        {
+            _ = BroadcastAsync ("pnl", pnlPoints);
+        }
+
         public void BroadcastStats (Dictionary<string, object> stats)
         {
             _ = BroadcastAsync ("stats", stats);
