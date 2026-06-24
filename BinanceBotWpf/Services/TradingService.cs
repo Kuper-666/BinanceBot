@@ -39,8 +39,6 @@ namespace BinanceBotWpf.Services
         private DashboardWebSocketServer _dashboardServer;
         private WhaleMonitor _whaleMonitor;
         private SimpleEarnStrategy _earnStrategy;
-        private P2PArbitrageMonitor _p2pMonitor;
-        private CopyTradingAnalyzer _copyAnalyzer;
         private FearGreedIndexProvider _fearGreedProvider;
         private PriceAlertManager _priceAlertManager;
 
@@ -54,7 +52,6 @@ namespace BinanceBotWpf.Services
         private readonly object _pairsLock = new ();
         private readonly Dictionary<string, DateTime> _lastBuyTime = new ();
         private readonly List<string> _recentErrors = new ();
-        private readonly int MaxErrors = 20;
         private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
         private readonly object _klinesCacheLock = new ();
 
@@ -283,10 +280,6 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (WhaleLoop);
             _ = Task.Run (EarnOptimizeLoop);
             _ = Task.Run (FearGreedLoop);
-            // P2: P2PCheckLoop и CopyTradeAnalysisLoop отключены — не используются в текущей стратегии.
-            // _ = Task.Run (P2PCheckLoop);
-            // _ = Task.Run (CopyTradeAnalysisLoop);
-            // P2: PriceAlertLoop удалён — был пустой заглушкой.
         }
 
         public void StopTrading()
@@ -1788,38 +1781,6 @@ namespace BinanceBotWpf.Services
                     await Task.Delay (TimeSpan.FromHours (6));
                     if (!_isRunning) break;
                     await _earnStrategy.OptimizeEarnAsync ();
-                }
-                catch { }
-            }
-        }
-
-        private async Task P2PCheckLoop()
-        {
-            Action<string> log = (msg) => _ui?.AddLog (msg);
-            _p2pMonitor = new P2PArbitrageMonitor (log, 1.0m);
-            while (_isRunning)
-            {
-                try
-                {
-                    await Task.Delay (TimeSpan.FromMinutes (30));
-                    if (!_isRunning) break;
-                    await _p2pMonitor.CheckOpportunitiesAsync ();
-                }
-                catch { }
-            }
-        }
-
-        private async Task CopyTradeAnalysisLoop()
-        {
-            Action<string> log = (msg) => _ui?.AddLog (msg);
-            _copyAnalyzer = new CopyTradingAnalyzer (log);
-            while (_isRunning)
-            {
-                try
-                {
-                    await Task.Delay (TimeSpan.FromHours (12));
-                    if (!_isRunning) break;
-                    await _copyAnalyzer.AnalyzeTopTradersAsync ();
                 }
                 catch { }
             }

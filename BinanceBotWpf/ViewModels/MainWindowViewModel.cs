@@ -217,6 +217,7 @@ namespace BinanceBotWpf.ViewModels
         // Команды
         public ICommand StartCommand { get; }
         public ICommand StopCommand { get; }
+        public ICommand EmergencyStopCommand { get; }
         public ICommand ExportDataCommand { get; }
         public ICommand OptimizeStrategyCommand { get; }
         public ICommand ClearLogsCommand { get; }
@@ -243,6 +244,7 @@ namespace BinanceBotWpf.ViewModels
 
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);
+            EmergencyStopCommand = new RelayCommand (async _ => await EmergencyStop (), _ => true);
             ExportDataCommand = new RelayCommand (_ => ExportData (), _ => true);
             OptimizeStrategyCommand = new RelayCommand (async _ => await RunOptimization (), _ => !IsRunning);
             ClearLogsCommand = new RelayCommand (_ => ClearLogs (), _ => true);
@@ -629,6 +631,54 @@ namespace BinanceBotWpf.ViewModels
             _tradingService.StopTrading ();
             IsRunning = false;
             AddLog ("⏹ Торговля остановлена");
+        }
+
+        private async Task EmergencyStop()
+        {
+            AddLog ("🚨 АВАРИЙНАЯ ОСТАНОВКА: отмена всех ордеров...");
+
+            // 1. Останавливаем торговлю
+            _tradingService.StopTrading ();
+            IsRunning = false;
+
+            // 2. Отменяем все активные ордера на Binance
+            try
+            {
+                var client = _tradingService.GetBinanceClient ();
+                var activePairs = _tradingSettings?.GridSymbol != null
+                    ? new List<string> { _tradingSettings.GridSymbol }
+                    : new List<string> { "BTCUSDC", "ETHUSDC", "SOLUSDC" };
+
+                foreach (string symbol in activePairs)
+                {
+                    try
+                    {
+                        var orders = await client.GetAllOrdersAsync (symbol);
+                        if (orders != null)
+                        {
+                            foreach (var order in orders)
+                            {
+                                if (order["status"]?.ToString () == "NEW")
+                                {
+                                    long orderId = Convert.ToInt64 (order["orderId"]);
+                                    await client.CancelOrder (symbol, orderId);
+                                    AddLog ($"❌ Отменён ордер {orderId} на {symbol}");
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        AddLog ($"⚠️ Ошибка отмены ордеров {symbol}: {ex.Message}");
+                    }
+                }
+
+                AddLog ("🚨 Аварийная остановка завершена");
+            }
+            catch (Exception ex)
+            {
+                AddLog ($"❌ Ошибка аварийной остановки: {ex.Message}");
+            }
         }
 
         private async Task RunOptimization()
