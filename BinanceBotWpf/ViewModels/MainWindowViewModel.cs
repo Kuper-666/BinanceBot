@@ -326,14 +326,32 @@ namespace BinanceBotWpf.ViewModels
                         IsUpdateAvailable = true;
                         AvailableVersion = version;
                         UpdateDownloadUrl = url;
-                        UpdateStatusText = $"Доступна версия {version}";
+                        UpdateStatusText = $"Версия {version} доступна";
                     });
                 };
 
                 await checker.CheckForUpdatesAsync ();
 
-                if (!IsUpdateAvailable && !silent)
+                if (IsUpdateAvailable && !silent)
+                {
+                    // Сразу скачиваем и устанавливаем
+                    UpdateStatusText = "Загрузка обновления...";
+                    var updater = new UpdateManager (AddLog);
+                    bool updated = await updater.DownloadByUrlAsync (UpdateDownloadUrl, AvailableVersion);
+                    if (updated)
+                    {
+                        UpdateStatusText = "Обновление установлено. Перезапуск...";
+                    }
+                    else
+                    {
+                        UpdateStatusText = "Ошибка установки обновления";
+                        IsUpdateAvailable = false;
+                    }
+                }
+                else if (!IsUpdateAvailable && !silent)
+                {
                     AddLog ("✅ Обновлений не найдено, установлена актуальная версия.");
+                }
             }
             catch (Exception ex)
             {

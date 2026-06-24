@@ -117,8 +117,10 @@ namespace BinanceBotWpf.Services
                 ZipFile.ExtractToDirectory (tempZip, extractPath);
                 _logger?.Invoke ("📦 Файлы распакованы.");
 
-                string currentExe = Environment.ProcessPath ?? Assembly.GetExecutingAssembly ().Location;
+                string currentExe = Environment.ProcessPath;
                 if (string.IsNullOrEmpty (currentExe))
+                    currentExe = Assembly.GetExecutingAssembly ().Location;
+                if (string.IsNullOrEmpty (currentExe) || !File.Exists (currentExe))
                     currentExe = Path.Combine (AppContext.BaseDirectory, "BinanceBotWpf.exe");
                 string appDir = Path.GetDirectoryName (currentExe) ?? AppContext.BaseDirectory;
                 string backupDir = Path.Combine (appDir, "Backup_" + DateTime.Now.ToString ("yyyyMMdd_HHmmss"));
@@ -161,15 +163,18 @@ namespace BinanceBotWpf.Services
             string batContent = $@"
 @echo off
 timeout /t 3 /nobreak > nul
-echo Создание резервной копии в {backupDir}
-xcopy ""{targetDir}"" ""{backupDir}"" /E /I /Y /Q > nul
 taskkill /f /im ""{Path.GetFileName (currentExe)}"" > nul 2>&1
+timeout /t 2 /nobreak > nul
+echo Создение резервной копии...
+if not exist ""{backupDir}"" mkdir ""{backupDir}""
+xcopy ""{targetDir}\*"" ""{backupDir}"" /E /I /Y /Q > nul 2>&1
 echo Обновление файлов...
 xcopy ""{sourceDir}\*"" ""{targetDir}"" /E /I /Y /Q > nul
 echo Запуск обновлённого бота...
 start "" "" ""{currentExe}""
-rmdir /S /Q ""{sourceDir}""
-del ""{batPath}""
+timeout /t 2 /nobreak > nul
+rmdir /S /Q ""{sourceDir}"" > nul 2>&1
+del ""{batPath}"" > nul 2>&1
 ";
             File.WriteAllText (batPath, batContent);
             return batPath;
