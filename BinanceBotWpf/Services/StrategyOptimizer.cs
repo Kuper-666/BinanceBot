@@ -54,7 +54,7 @@ namespace BinanceBotWpf.Services
                 var klinesByPair = new Dictionary<string, List<BinanceKline>> ();
                 foreach (var pair in topPairs)
                 {
-                    var klines = await _client.GetKlinesAsync (pair, "1h", 500); // 1h: меньше шума при оптимизации
+                    var klines = await _client.GetKlinesAsync (pair, "1h", 3000); // 1h: 3000+ свечей для статистически достоверной оптимизации (125 дней)
                     if (klines != null && klines.Count > 100)
                     {
                         klinesByPair[pair] = klines;
@@ -131,10 +131,10 @@ namespace BinanceBotWpf.Services
                                         };
 
                                         // Требуем минимум сделок по совокупности всех пар и отсекаем нереалистичные значения.
-                                        // Порог сделок поднят с 5 до 30 — 5 сделок это статистический шум (оверфит).
+                                        // Порог 50 сделок: меньше — статистический шум (оверфит), 2000+ свечей дают достаточно данных.
                                         bool isPlausible = aggregated.TotalReturn > -90 && aggregated.TotalReturn < 150;
 
-                                        if (isPlausible && ( bestResult == null || aggregated.TotalReturn > bestResult.TotalReturn ) && aggregated.TotalTrades >= 30)
+                                        if (isPlausible && ( bestResult == null || aggregated.TotalReturn > bestResult.TotalReturn ) && aggregated.TotalTrades >= 50)
                                         {
                                             bestResult = aggregated;
                                             bestParams["FastSma"] = fast;

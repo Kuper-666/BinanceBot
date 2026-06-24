@@ -157,6 +157,19 @@ namespace BinanceBotWpf.Services
             var grid = new GridParameters ();
             decimal minNotional = 6m; // Минимальный нотионал Binance
 
+            // GridBot требует минимум 500 USDC — иначе сетка из 1-2 уровней бессмысленна,
+            // комиссии съедают всю прибыль, и баланс не покрывает minNotional на все уровни.
+            const decimal MinGridBalance = 500m;
+            if (balance < MinGridBalance)
+            {
+                grid.Levels = 0;
+                grid.InvestmentPercent = 0;
+                grid.RangePercent = 0;
+                grid.UseDynamicStep = false;
+                _logger?.Invoke ($"⛔ Сетка отключена: баланс {balance:F2} USDC < минимума {MinGridBalance} USDC");
+                return grid;
+            }
+
             // Инвестиции в сетку: от баланса
             if (balance < 100)
                 grid.InvestmentPercent = 0.15m;
@@ -173,8 +186,14 @@ namespace BinanceBotWpf.Services
 
             decimal investmentUsdc = balance * grid.InvestmentPercent;
 
-            // Диапазон сетки: от волатильности
-            if (volatility <= 0.03m)
+            // Диапазон сетки: от волатильности.
+            // Для малых балансов (< 200 USDC) используем узкий диапазон (1.5%–3%),
+            // чтобы не раздувать ордера за пределы реальной волатильности.
+            if (balance < 200)
+            {
+                grid.RangePercent = volatility <= 0.03m ? 0.015m : (volatility <= 0.06m ? 0.025m : 0.035m);
+            }
+            else if (volatility <= 0.03m)
                 grid.RangePercent = 0.05m;
             else if (volatility <= 0.06m)
                 grid.RangePercent = 0.08m;
@@ -183,24 +202,36 @@ namespace BinanceBotWpf.Services
             else
                 grid.RangePercent = 0.15m;
 
-            // Количество уровней: рассчитываем чтобы каждый ордер был >= minNotional
-            // 2 ордера на уровень (buy + sell), значит总投资 / (уровни * 2) >= minNotional
-            int maxLevels = Math.Max (1, (int)(investmentUsdc / (minNotional * 2)));
-            grid.Levels = Math.Clamp (maxLevels, 1, 15);
+            // Количество уровней: 10–20 в каждую сторону.
+            // Для 500 USDC с плечом 5x (2500 покуп. способность) — 15 уровней по ~8 USDC/ордер.
+            // minNotional = 6 USDC (Binance минимум). Каждый ордер = buy + sell →总投资/(levels*2) >= minNotional.
+            int maxLevelsByFunds = Math.Max (1, (int)(investmentUsdc / (minNotional * 2)));
+            int minLevelsForGrid = balance < 1000 ? 10 : 15;
+            grid.Levels = Math.Clamp (Math.Max (maxLevelsByFunds, minLevelsForGrid), 10, 20);
 
-            // Если инвестиций не хватает даже на 1 уровень — подтягиваем до минимума
+            // Если инвестиций не хватает на минимальный набор уровней — подтягиваем до минимума
             decimal perLevel = investmentUsdc / (grid.Levels * 2);
             if (perLevel < minNotional)
             {
-                investmentUsdc = minNotional * 2 * grid.Levels; // минимум на каждый buy+sell
+                investmentUsdc = minNotional * 2 * grid.Levels;
                 grid.InvestmentPercent = investmentUsdc / balance;
                 grid.InvestmentPercent = Math.Clamp (grid.InvestmentPercent, 0.10m, 0.50m);
-                _logger?.Invoke ($"⚠️ Автоподстройка: инвестиции увеличены до {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC) для покрытия минимума");
+                _logger?.Invoke ($"⚠️ Автоподстройка: инвестиции увеличены до {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC) для покрытия минимума ({grid.Levels} уровней)");
             }
 
             grid.UseDynamicStep = atr > 0 && volatility > 0.03m;
 
-            _logger?.Invoke ($"🔲 Авто-сетка: баланс={balance:F2}, инвестиции={grid.InvestmentPercent:P0} ({balance * grid.InvestmentPercent:F2} USDC), уровней={grid.Levels}, на уровень={balance * grid.InvestmentPercent / (grid.Levels * 2):F2} USDC");
+            // Корректируем диапазон чтобы stepPercent = rangePercent/levels был в 0.5%–1.5%.
+            // Если шаг слишком мелкий — расширяем диапазон; если слишком крупный — сужаем.
+            decimal calculatedStep = grid.RangePercent / grid.Levels;
+            const decimal MinStep = 0.005m; // 0.5%
+            const decimal MaxStep = 0.015m; // 1.5%
+            if (calculatedStep < MinStep)
+                grid.RangePercent = MinStep * grid.Levels;
+            else if (calculatedStep > MaxStep)
+                grid.RangePercent = MaxStep * grid.Levels;
+
+            _logger?.Invoke ($"🔲 Авто-сетка: баланс={balance:F2}, инвестиции={grid.InvestmentPercent:P0} ({balance * grid.InvestmentPercent:F2} USDC), уровней={grid.Levels}, шаг={grid.RangePercent / grid.Levels * 100:F2}%, диапазон=±{grid.RangePercent * 100:F1}%");
 
             return grid;
         }

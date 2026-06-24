@@ -35,12 +35,13 @@ namespace BinanceBotWpf.Models
 
         private void Log(string message) => OnLogGenerated?.Invoke (message);
 
-        private readonly SemaphoreSlim _rateLimiter = new (20, 20);
+        private readonly SemaphoreSlim _rateLimiter = new (10, 10);
         private readonly Queue<DateTime> _requestTimes = new ();
-        private readonly int _maxRequestsPerSecond = 10; // Консервативное значение
+        private readonly int _maxRequestsPerSecond = 10;
         private readonly int _maxWeightPerMinute = 1200;
         private int _currentWeight = 0;
         private DateTime _weightResetTime = DateTime.UtcNow;
+        private readonly SemaphoreSlim _throttleLock = new (1, 1);
 
         public BinanceClient(string apiKey, string apiSecret, bool useTestnet = false)
         {
@@ -982,7 +983,8 @@ namespace BinanceBotWpf.Models
         /// </summary>
         private async Task ThrottleAsync(int estimatedWeight = 1)
         {
-            lock (_requestTimes)
+            await _throttleLock.WaitAsync ();
+            try
             {
                 var now = DateTime.UtcNow;
 
@@ -998,7 +1000,9 @@ namespace BinanceBotWpf.Models
                 {
                     int waitMs = (int)( _weightResetTime.AddMinutes (1) - now ).TotalMilliseconds + 100;
                     System.Diagnostics.Debug.WriteLine ($"⏳ Rate limit: ждём {waitMs}мс (вес {_currentWeight}/{_maxWeightPerMinute})");
-                    Thread.Sleep (Math.Max (100, waitMs));
+                    _throttleLock.Release ();
+                    await Task.Delay (Math.Max (100, waitMs));
+                    await _throttleLock.WaitAsync ();
                     _currentWeight = 0;
                     _weightResetTime = DateTime.UtcNow;
                 }
@@ -1014,18 +1018,23 @@ namespace BinanceBotWpf.Models
                     if (delayMs > 0 && delayMs < 5000)
                     {
                         System.Diagnostics.Debug.WriteLine ($"⏳ Throttle: ждём {delayMs}мс (запросов {_requestTimes.Count}/{_maxRequestsPerSecond})");
-                        Thread.Sleep (delayMs);
+                        _throttleLock.Release ();
+                        await Task.Delay (delayMs);
+                        await _throttleLock.WaitAsync ();
                     }
                 }
 
                 _requestTimes.Enqueue (DateTime.UtcNow);
                 _currentWeight += estimatedWeight;
             }
+            finally
+            {
+                _throttleLock.Release ();
+            }
 
             await _rateLimiter.WaitAsync ();
             try
             {
-                // Небольшая задержка между запросами
                 await Task.Delay (50);
             }
             finally

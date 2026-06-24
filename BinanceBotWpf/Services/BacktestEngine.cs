@@ -216,7 +216,7 @@ namespace BinanceBotWpf.Services
 
                                 var result = Run (klines, fast, slow, rsiP, sl, tp);
 
-                                if (result != null && result.TotalReturn > bestResult.TotalReturn && result.TotalTrades >= 5)
+                                if (result != null && result.TotalReturn > bestResult.TotalReturn && result.TotalTrades >= 15)
                                 {
                                     bestResult = result;
                                     bestParams["FastSma"] = fast;

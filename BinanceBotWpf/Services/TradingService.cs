@@ -280,10 +280,11 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (DailyReportLoop);
             _ = Task.Run (WhaleLoop);
             _ = Task.Run (EarnOptimizeLoop);
-            _ = Task.Run (P2PCheckLoop);
-            _ = Task.Run (CopyTradeAnalysisLoop);
             _ = Task.Run (FearGreedLoop);
-            _ = Task.Run (PriceAlertLoop);
+            // P2: P2PCheckLoop и CopyTradeAnalysisLoop отключены — не используются в текущей стратегии.
+            // _ = Task.Run (P2PCheckLoop);
+            // _ = Task.Run (CopyTradeAnalysisLoop);
+            // P2: PriceAlertLoop удалён — был пустой заглушкой.
         }
 
         public void StopTrading()
@@ -980,7 +981,26 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    _ui?.AddLog ($"❌ TradingLoop: {ex.Message}");
+                    string msg = ex.Message;
+                    _ui?.AddLog ($"❌ TradingLoop: {msg}");
+
+                    // P1: Graceful shutdown на критических ошибках API.
+                    // -2015 = Invalid API-key/IP (keys скомпрометированы, IP заблокирован)
+                    // -2010 = Order would trigger immediately (ликвидация, TP/SL конфликт)
+                    if (msg.Contains ("-2015") || msg.Contains ("UNAUTHORIZED") || msg.Contains ("Invalid API-key"))
+                    {
+                        _ui?.AddLog ("🚨 КРИТИЧНО: API ключи невалидны. Остановка торговли.");
+                        _ui?.AddLog ("   Проверьте API Key, Secret и IP Whitelist в настройках Binance.");
+                        StopTrading ();
+                        return;
+                    }
+                    if (msg.Contains ("-2010") || msg.Contains ("Order would trigger"))
+                    {
+                        _ui?.AddLog ("🚨 КРИТИЧНО: Ордер вызовет немедленное исполнение (ликвидация?). Остановка.");
+                        StopTrading ();
+                        return;
+                    }
+
                     await Task.Delay (10000);
                 }
             }
@@ -1010,6 +1030,27 @@ namespace BinanceBotWpf.Services
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             decimal minQty = 0m;
             var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
+
+            // P0: Защита от ордеров ниже MIN_NOTIONAL (6 USDC на Binance).
+            // Без этой проверки Binance вернёт -1013 "LOT_SIZE" и ордер упадёт молча.
+            decimal notional = qty * price;
+            const decimal MinNotional = 6m;
+            if (notional < MinNotional && qty > 0)
+            {
+                // Пытаемся поднять количество до minNotional
+                decimal minQtyForNotional = Math.Ceiling (MinNotional / price / stepSize) * stepSize;
+                if (minQtyForNotional * price <= riskAmount * 1.5m && minQtyForNotional * price <= currentBalance)
+                {
+                    qty = minQtyForNotional;
+                    notional = qty * price;
+                    _ui?.AddLog ($"🔧 {symbol}: количество поднято до {qty} ({notional:F2} USDC) для покрытия MIN_NOTIONAL");
+                }
+                else
+                {
+                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — {notional:F2} USDC < MIN_NOTIONAL ({MinNotional} USDC), недостаточно средств для увеличения");
+                    return;
+                }
+            }
 
             switch (qtyResult)
             {
@@ -1673,10 +1714,13 @@ namespace BinanceBotWpf.Services
                 "USDCUSDT", "USDTUSDC", "BUSDUSDT", "FDUSDUSDT", "TUSDUSDT", "USDCUSDC", "DAIUSDT"
             };
 
+            bool started = false;
             while (_isRunning)
             {
                 try
                 {
+                    if (started) { await Task.Delay (60000); continue; }
+
                     List<string> pairs;
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
 
@@ -1692,7 +1736,7 @@ namespace BinanceBotWpf.Services
                         };
                         await _whaleMonitor.StartAsync (pairs.ToArray ());
                         _ui?.AddLog ($"🐋 Whale monitor запущен для {pairs.Count} пар (порог: $100k, стейблкоины исключены)");
-                        break;
+                        started = true;
                     }
                     await Task.Delay (10000);
                 }
@@ -1773,16 +1817,5 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task PriceAlertLoop()
-        {
-            while (_isRunning)
-            {
-                try
-                {
-                    await Task.Delay (TimeSpan.FromHours (1));
-                }
-                catch { await Task.Delay (TimeSpan.FromHours (1)); }
-            }
-        }
     }
 }
