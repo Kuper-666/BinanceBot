@@ -600,30 +600,47 @@ namespace BinanceBotWpf.Services
             try
             {
                 decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
+                ui.AddLog ($"🔍 [DEBUG] Баланс: {balance:F2} USDC");
 
-                // Загружаем minNotional с fallback на дефолтные значения
+                // Загружаем minNotional с fallback
                 Dictionary<string, decimal> allMinNotionals;
                 try
                 {
                     allMinNotionals = await _client.GetAllMinNotionalsAsync ();
+                    ui.AddLog ($"🔍 [DEBUG] minNotional загружен: {allMinNotionals.Count} пар");
                 }
-                catch
+                catch (Exception ex)
                 {
                     allMinNotionals = new Dictionary<string, decimal> ();
-                    ui.AddLog ("⚠️ Не удалось загрузить minNotional, используются дефолтные значения");
+                    ui.AddLog ($"⚠️ minNotional ошибка: {ex.Message}");
                 }
 
                 var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", 20);
+                ui.AddLog ($"🔍 [DEBUG] USDC пары: {usdcPairs.Count} ({string.Join (", ", usdcPairs.Take (5))})");
+
                 var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", 20);
-                var pairs = usdcPairs.Concat (usdtPairs)
+                ui.AddLog ($"🔍 [DEBUG] USDT пары: {usdtPairs.Count} ({string.Join (", ", usdtPairs.Take (5))})");
+
+                var allRaw = usdcPairs.Concat (usdtPairs).ToList ();
+                ui.AddLog ($"🔍 [DEBUG] Всего до фильтров: {allRaw.Count}");
+
+                var pairs = allRaw
                     .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
                     .Select (g => g.First ())
                     .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD") && !p.Contains ("EUR"))
+                    .ToList ();
+                ui.AddLog ($"🔍 [DEBUG] После dedup+стейблкоины: {pairs.Count} ({string.Join (", ", pairs)})");
+
+                var filteredPairs = pairs
                     .Where (p =>
                     {
                         if (allMinNotionals.TryGetValue (p, out decimal minNot))
-                            return balance >= minNot * 2m;
-                        return true; // Нет данных — пропускаем фильтр
+                        {
+                            bool pass = balance >= minNot * 2m;
+                            if (!pass) ui.AddLog ($"🔍 [DEBUG] {p} отфильтрован: minNot={minNot}, нужно {minNot * 2}, баланс={balance:F2}");
+                            return pass;
+                        }
+                        return true;
                     })
                     .OrderBy (p =>
                     {
@@ -632,14 +649,29 @@ namespace BinanceBotWpf.Services
                     })
                     .Take (balance < 50 ? 5 : balance < 200 ? 7 : 10)
                     .ToList ();
+                ui.AddLog ($"🔍 [DEBUG] После minNotional фильтра: {filteredPairs.Count} ({string.Join (", ", filteredPairs)})");
 
-                ui.AddLog ($"📊 Найдено {pairs.Count} пар для баланса {balance:F2} USDC (всего кандидатов: {usdcPairs.Count + usdtPairs.Count})");
-
-                if (pairs.Count == 0)
+                if (filteredPairs.Count == 0)
                 {
-                    ui.AddLog ("⚠️ Нет пар, подходящих под баланс. Пополните счёт или уменьшите минимальный notional.");
+                    // Fallback: показываем все пары без фильтрации
+                    ui.AddLog ("⚠️ Ни одна пара не прошла фильтр. Показываем все пары без фильтрации.");
+                    filteredPairs = pairs
+                        .OrderBy (p =>
+                        {
+                            allMinNotionals.TryGetValue (p, out decimal mn);
+                            return mn;
+                        })
+                        .Take (balance < 50 ? 5 : balance < 200 ? 7 : 10)
+                        .ToList ();
+                }
+
+                if (filteredPairs.Count == 0)
+                {
+                    ui.AddLog ("❌ Совсем нет пар для отображения");
                     return;
                 }
+
+                ui.AddLog ($"📊 Загружено {filteredPairs.Count} пар для баланса {balance:F2} USDC");
 
                 foreach (var sym in pairs)
                 {
