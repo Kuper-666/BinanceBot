@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import WebSocketService from '../services/WebSocketService';
 import { MOCK_DATA } from '../data';
 
-const CHANNELS = ['prices', 'positions', 'signals', 'trades', 'grid', 'logs', 'stats'];
+const CHANNELS = ['prices', 'positions', 'trades', 'stats', 'echelons', 'equity', 'feargreed'];
 
 let mountCount = 0;
 
@@ -49,7 +49,18 @@ function mergePositions(realPositions, mockPositions) {
 
 export default function useBotData() {
   const [connected, setConnected] = useState(false);
-  const [data, setData] = useState(MOCK_DATA);
+  const [data, setData] = useState({
+    balance: 0, pnl: 0, pnlPercent: 0, winRate: 0, maxDrawdown: 0,
+    totalTrades: 0, openPositions: 0, maxPositions: 5,
+    winningTrades: 0, losingTrades: 0, bestPnL: 0, worstPnL: 0,
+    fearGreedValue: 50, fearGreedClassification: 'Neutral', leverage: 5,
+    pairs: MOCK_DATA.pairs,
+    echelons: { adaptive: true, validator: true, newsSentinel: true },
+    equity: [],
+    news: [],
+    trades: [],
+    positions: [],
+  });
   const handlersRef = useRef(new Map());
 
   useEffect(() => {
@@ -59,12 +70,6 @@ export default function useBotData() {
     CHANNELS.forEach(channel => {
       const handler = (newData) => {
         setData(prev => {
-          if (channel === 'logs') {
-            return { ...prev, logs: newData };
-          }
-          if (channel === 'grid') {
-            return { ...prev, gridBot: newData };
-          }
           if (channel === 'prices') {
             if (Array.isArray(newData)) {
               return { ...prev, pairs: mergePairs(newData, prev.pairs) };
@@ -85,6 +90,18 @@ export default function useBotData() {
               return { ...prev, trades: newData };
             }
             return { ...prev, [channel]: newData };
+          }
+          if (channel === 'echelons') {
+            return { ...prev, echelons: newData };
+          }
+          if (channel === 'equity') {
+            if (Array.isArray(newData)) {
+              return { ...prev, equity: newData };
+            }
+            return { ...prev, equity: [] };
+          }
+          if (channel === 'feargreed') {
+            return { ...prev, fearGreedValue: newData.value, fearGreedClassification: newData.classification };
           }
           return { ...prev, [channel]: newData };
         });
