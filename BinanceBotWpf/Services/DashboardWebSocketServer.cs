@@ -167,6 +167,16 @@ namespace BinanceBotWpf.Services
             _ = BroadcastAsync ("stats", stats);
         }
 
+        public void BroadcastFearGreed (Dictionary<string, object> data)
+        {
+            _ = BroadcastAsync ("feargreed", data);
+        }
+
+        public void BroadcastPriceAlerts (List<Dictionary<string, object>> alerts)
+        {
+            _ = BroadcastAsync ("pricealerts", alerts);
+        }
+
         private async Task AcceptLoopAsync (CancellationToken ct)
         {
             while (!ct.IsCancellationRequested)

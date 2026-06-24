@@ -41,6 +41,8 @@ namespace BinanceBotWpf.Services
         private SimpleEarnStrategy _earnStrategy;
         private P2PArbitrageMonitor _p2pMonitor;
         private CopyTradingAnalyzer _copyAnalyzer;
+        private FearGreedIndexProvider _fearGreedProvider;
+        private PriceAlertManager _priceAlertManager;
 
         private MainWindowViewModel _ui;
         private bool _isRunning;
@@ -82,24 +84,27 @@ namespace BinanceBotWpf.Services
             string dataDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data");
             string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
 
-            _positionManager = new PositionManager (Path.Combine (dataDir, "open_positions.json"), null);
-            _mlManager = new MlModelManager (Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip"), null);
-            _strategy = new TradingStrategy (null);
-            _signalFilter = new SignalFilter (null);
-            _positionProtector = new PositionProtector (client, _positionManager, null);
-            _volumeBreakout = new VolumeBreakoutStrategy (client, null);
-            _dcaStrategy = new DCAStrategy (client, null);
-            _newsProvider = new NewsProvider (new System.Net.Http.HttpClient (), null);
-            _macroCalendar = new MacroCalendarProvider (new System.Net.Http.HttpClient (), null);
+            // ИСПРАВЛЕНИЕ: Создать dummy logger для инициализации до SetLogger
+            Action<string> dummyLogger = msg => System.Diagnostics.Debug.WriteLine ($"[Init] {msg}");
+
+            _positionManager = new PositionManager (Path.Combine (dataDir, "open_positions.json"), dummyLogger);
+            _mlManager = new MlModelManager (Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip"), dummyLogger);
+            _strategy = new TradingStrategy (dummyLogger);
+            _signalFilter = new SignalFilter (dummyLogger);
+            _positionProtector = new PositionProtector (client, _positionManager, dummyLogger);
+            _volumeBreakout = new VolumeBreakoutStrategy (client, dummyLogger);
+            _dcaStrategy = new DCAStrategy (client, dummyLogger);
+            _newsProvider = new NewsProvider (new System.Net.Http.HttpClient (), dummyLogger);
+            _macroCalendar = new MacroCalendarProvider (new System.Net.Http.HttpClient (), dummyLogger);
             _tradingSettings = new TradingSettings ();
-            _backupService = new BackupService (null);
-            _aiRiskEngine = new AiRiskEngine (_mlManager, client, null);
+            _backupService = new BackupService (dummyLogger);
+            _aiRiskEngine = new AiRiskEngine (_mlManager, client, dummyLogger);
 
             // ✅ Дашборд WebSocket сервер
             _dashboardServer = new DashboardWebSocketServer (ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ());
 
             // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
-            _webSocketManager = new WebSocketPriceManager (null);
+            _webSocketManager = new WebSocketPriceManager (dummyLogger);
         }
 
         private bool _loggerSet = false;
@@ -208,20 +213,20 @@ namespace BinanceBotWpf.Services
             }
 
             // Инициализация UpdateChecker для проверки обновлений на GitHub
+            Func<string, System.Threading.Tasks.Task> notifyTelegram = async (msg) =>
+            {
+                if (_telegram != null && !string.IsNullOrEmpty (tgToken) && !string.IsNullOrEmpty (tgChatId))
+                    await _telegram.SendMessageAsync (msg);
+            };
+
             try
             {
                 var httpClient = new System.Net.Http.HttpClient ();
-                Func<string, System.Threading.Tasks.Task> notifyTelegram = async (msg) =>
-                {
-                    if (_telegram != null && !string.IsNullOrEmpty (tgToken) && !string.IsNullOrEmpty (tgChatId))
-                        await _telegram.SendMessageAsync (msg);
-                };
                 
                 _updateChecker = new UpdateChecker (httpClient, logger, notifyTelegram);
                 _updateChecker.OnNewVersionAvailable += (version, url) =>
                 {
                     _ui?.AddLog ($"🎉 Новая версия {version} доступна!");
-                    // Может отправить уведомление в UI (например, выделить кнопку в главном окне)
                 };
                 
                 logger ("✅ Проверка обновлений инициализирована");
@@ -229,6 +234,32 @@ namespace BinanceBotWpf.Services
             catch (Exception ex)
             {
                 logger ($"⚠️ Ошибка инициализации UpdateChecker: {ex.Message}");
+            }
+
+            // Инициализация Fear & Greed Index
+            try
+            {
+                _fearGreedProvider = new FearGreedIndexProvider (logger);
+                logger ("✅ Fear & Greed Index инициализирован");
+            }
+            catch (Exception ex)
+            {
+                logger ($"⚠️ Ошибка инициализации FearGreedIndex: {ex.Message}");
+            }
+
+            // Инициализация Price Alert Manager
+            try
+            {
+                _priceAlertManager = new PriceAlertManager (GetCurrentPrice, notifyTelegram, logger);
+                _priceAlertManager.OnAlertTriggered += alert =>
+                {
+                    _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} triggered!");
+                };
+                logger ("✅ Price Alert Manager инициализирован");
+            }
+            catch (Exception ex)
+            {
+                logger ($"⚠️ Ошибка инициализации PriceAlertManager: {ex.Message}");
             }
         }
 
@@ -251,16 +282,32 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (EarnOptimizeLoop);
             _ = Task.Run (P2PCheckLoop);
             _ = Task.Run (CopyTradeAnalysisLoop);
+            _ = Task.Run (FearGreedLoop);
+            _ = Task.Run (PriceAlertLoop);
         }
 
         public void StopTrading()
         {
             _isRunning = false;
             if (_ui != null) _ui.IsRunning = false;
-            _webSocketManager?.Dispose ();
-            _webSocketManager = null;
-            _gridBot?.Dispose ();
-            try { _dashboardServer?.Stop (); } catch { }
+
+            // ИСПРАВЛЕНИЕ: Правильная обработка ошибок при остановке ресурсов
+            try { _webSocketManager?.Dispose (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки WebSocket: {ex.Message}"); }
+            finally { _webSocketManager = null; }
+
+            try { _gridBot?.Dispose (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки GridBot: {ex.Message}"); }
+            finally { _gridBot = null; }
+
+            try { _fearGreedProvider?.Dispose (); }
+            catch { }
+
+            try { _priceAlertManager?.Dispose (); }
+            catch { }
+
+            try { _dashboardServer?.Stop (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки DashboardServer: {ex.Message}"); }
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
@@ -762,6 +809,11 @@ namespace BinanceBotWpf.Services
                             {
                                 _ui?.AddLog ($"🚫 {sym}: позиция заблокирована высокорисковыми новостями");
                             }
+                        else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
+                        {
+                            var fgCached = await _fearGreedProvider.GetCurrentAsync ();
+                            _ui?.AddLog ($"😱 {sym}: пропуск покупки — Fear & Greed Index = {fgCached?.Value} (Extreme Greed)");
+                        }
                             else
                             {
                                 await ExecuteBuy (sym, analysis.Indicators, spotBalance);
@@ -1248,6 +1300,50 @@ namespace BinanceBotWpf.Services
                     else
                         await _telegram.SendMessageAsync ("⚠️ Нет доступных бэкапов", chatId);
                     break;
+                case "/feargreed":
+                case "/fg":
+                    var fgData = await _fearGreedProvider?.GetCurrentAsync ();
+                    if (fgData != null)
+                    {
+                        string emoji = fgData.Value >= 75 ? "🔴" : fgData.Value <= 25 ? "🟢" : "🟡";
+                        await _telegram.SendMessageAsync ($"{emoji} *Fear & Greed Index*\nValue: {fgData.Value}\nClassification: {fgData.Classification}", chatId);
+                    }
+                    else
+                        await _telegram.SendMessageAsync ("⚠️ Не удалось получить Fear & Greed Index", chatId);
+                    break;
+                case "/alert":
+                    string[] alertParts = cmd.Split (' ');
+                    if (alertParts.Length >= 3)
+                    {
+                        string alertSymbol = alertParts[1].ToUpper ();
+                        if (decimal.TryParse (alertParts[2], System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out decimal alertPrice))
+                        {
+                            PriceAlertDirection dir = alertPrice > 0 ? PriceAlertDirection.Above : PriceAlertDirection.Below;
+                            alertPrice = Math.Abs (alertPrice);
+                            string alertId = _priceAlertManager.AddAlert (alertSymbol, alertPrice, dir);
+                            await _telegram.SendMessageAsync ($"🔔 Alert set: {alertSymbol} {dir} {alertPrice} (id={alertId})", chatId);
+                        }
+                        else
+                            await _telegram.SendMessageAsync ("⚠️ Формат: /alert BTCUSDT 110000", chatId);
+                    }
+                    else
+                        await _telegram.SendMessageAsync ("⚠️ Формат: /alert <SYMBOL> <PRICE>\nПример: /alert BTCUSDT 110000", chatId);
+                    break;
+                case "/alerts":
+                    var alerts = _priceAlertManager.GetAllAlerts ();
+                    if (alerts.Count == 0)
+                        await _telegram.SendMessageAsync ("📋 Нет активных алертов", chatId);
+                    else
+                    {
+                        string alertList = "📋 *Price Alerts:*\n";
+                        foreach (var a in alerts)
+                        {
+                            string status = a.Triggered ? "✅" : "⏳";
+                            alertList += $"{status} {a.Symbol} {a.Direction} {a.TargetPrice} (id={a.Id})\n";
+                        }
+                        await _telegram.SendMessageAsync (alertList, chatId);
+                    }
+                    break;
                 case "/set":
                     string[] parts = cmd.Split (' ');
                     if (parts.Length >= 3)
@@ -1296,6 +1392,9 @@ namespace BinanceBotWpf.Services
                         "/update – проверить обновления\n" +
                         "/errors – ошибки\n" +
                         "/performance – детальная статистика\n" +
+                        "/feargreed /fg – Fear & Greed Index\n" +
+                        "/alert SYMBOL PRICE – установить ценовой алерт\n" +
+                        "/alerts – список алертов\n" +
                         "/help – помощь";
                     await _telegram.SendMessageAsync (help, chatId);
                     break;
@@ -1596,6 +1695,39 @@ namespace BinanceBotWpf.Services
                     await _copyAnalyzer.AnalyzeTopTradersAsync ();
                 }
                 catch { }
+            }
+        }
+
+        private async Task FearGreedLoop()
+        {
+            while (_isRunning)
+            {
+                try
+                {
+                    if (_fearGreedProvider != null)
+                    {
+                        var data = await _fearGreedProvider.GetCurrentAsync ();
+                        if (data != null && _ui != null)
+                        {
+                            _ui.FearGreedValue = data.Value;
+                            _ui.FearGreedClassification = data.Classification;
+                        }
+                    }
+                    await Task.Delay (TimeSpan.FromMinutes (15));
+                }
+                catch { await Task.Delay (TimeSpan.FromMinutes (15)); }
+            }
+        }
+
+        private async Task PriceAlertLoop()
+        {
+            while (_isRunning)
+            {
+                try
+                {
+                    await Task.Delay (TimeSpan.FromHours (1));
+                }
+                catch { await Task.Delay (TimeSpan.FromHours (1)); }
             }
         }
     }

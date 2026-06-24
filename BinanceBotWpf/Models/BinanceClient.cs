@@ -48,10 +48,24 @@ namespace BinanceBotWpf.Models
             _apiSecret = apiSecret;
             _useTestnet = useTestnet;
 
-            // Настройка HttpClient
+            // ИСПРАВЛЕНИЕ: Правильная SSL валидация
             var handler = new HttpClientHandler
             {
-                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) => true, // Для тестов
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) =>
+                {
+                    #if DEBUG
+                    if (sslPolicyErrors != System.Net.Security.SslPolicyErrors.None)
+                    {
+                        Log($"⚠️ SSL Warning (DEBUG): {sslPolicyErrors}");
+                    }
+                    return true;
+                    #else
+                    if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
+                        return true;
+                    Log($"⚠️ SSL Error: {sslPolicyErrors}");
+                    return false;
+                    #endif
+                },
                 AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
             };
 
@@ -65,6 +79,7 @@ namespace BinanceBotWpf.Models
 
         private long GetTimestamp() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds () + _serverTimeOffset;
 
+        // ИСПРАВЛЕНИЕ: SyncTimeAsync с правильной обработкой ошибок
         public async Task SyncTimeAsync()
         {
             try
@@ -72,27 +87,84 @@ namespace BinanceBotWpf.Models
                 var response = await _httpClient.GetStringAsync ("/api/v3/time");
                 long serverTime = JObject.Parse (response)["serverTime"].Value<long> ();
                 _serverTimeOffset = serverTime - DateTimeOffset.UtcNow.ToUnixTimeMilliseconds ();
+                Log ($"✅ Время синхронизировано. Смещение: {_serverTimeOffset}ms");
             }
-            catch { _serverTimeOffset = 0; }
+            catch (HttpRequestException ex)
+            {
+                Log ($"⚠️ Ошибка синхронизации времени (HTTP): {ex.Message}. Используется локальное время.");
+                _serverTimeOffset = 0;
+            }
+            catch (Exception ex)
+            {
+                Log ($"⚠️ Неожиданная ошибка при синхронизации времени: {ex.Message}");
+                _serverTimeOffset = 0;
+            }
         }
 
+        // ИСПРАВЛЕНИЕ: SendWithRetryAsync - правильная retry логика с обработкой POST
         private async Task<HttpResponseMessage> SendWithRetryAsync(HttpRequestMessage request, int maxRetries = 3)
         {
             int retryCount = 0;
             int delayMs = 1000;
             while (true)
             {
-                var response = await _httpClient.SendAsync (request);
-                if (response.IsSuccessStatusCode) return response;
-                if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
+                try
+                {
+                    var response = await _httpClient.SendAsync (request);
+                    if (response.IsSuccessStatusCode) return response;
+                    
+                    if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
+                    {
+                        retryCount++;
+                        if (retryCount > maxRetries) 
+                        {
+                            Log ($"❌ Rate limit превышен после {maxRetries} попыток");
+                            throw new Exception ($"Rate limit exceeded after {maxRetries} retries");
+                        }
+                        Log ($"⚠️ Rate limit (статус {response.StatusCode}). Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
+                        await Task.Delay (delayMs);
+                        delayMs = Math.Min (delayMs * 2, 32000);
+                        
+                        // Для POST запросов нужно создать новый request (content stream уже прочитан)
+                        if (request.Method == HttpMethod.Post)
+                        {
+                            var newRequest = new HttpRequestMessage (request.Method, request.RequestUri)
+                            {
+                                Content = request.Content,
+                                Version = request.Version
+                            };
+                            foreach (var header in request.Headers)
+                                newRequest.Headers.Add (header.Key, header.Value);
+                            request = newRequest;
+                        }
+                        continue;
+                    }
+                    return response;
+                }
+                catch (HttpRequestException ex)
                 {
                     retryCount++;
-                    if (retryCount > maxRetries) throw new Exception ($"Rate limit превышен после {maxRetries} попыток");
+                    if (retryCount > maxRetries)
+                    {
+                        Log ($"❌ HTTP ошибка после {maxRetries} попыток: {ex.Message}");
+                        throw new Exception ($"HTTP request failed after {maxRetries} retries", ex);
+                    }
+                    Log ($"⚠️ HTTP ошибка (сетевая). Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
                     await Task.Delay (delayMs);
-                    delayMs *= 2;
-                    continue;
+                    delayMs = Math.Min (delayMs * 2, 32000);
                 }
-                return response;
+                catch (TaskCanceledException ex)
+                {
+                    retryCount++;
+                    if (retryCount > maxRetries)
+                    {
+                        Log ($"❌ Timeout после {maxRetries} попыток");
+                        throw new Exception ($"Request timeout after {maxRetries} retries", ex);
+                    }
+                    Log ($"⚠️ Timeout запроса. Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
+                    await Task.Delay (delayMs);
+                    delayMs = Math.Min (delayMs * 2, 32000);
+                }
             }
         }
 

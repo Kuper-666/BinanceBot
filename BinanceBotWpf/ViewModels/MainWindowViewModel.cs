@@ -113,6 +113,10 @@ namespace BinanceBotWpf.ViewModels
         private string _telegramStatus = "⚙️ Настройка...";
         private bool _requestLogsScroll;
 
+        // Fear & Greed
+        private int _fearGreedValue = 50;
+        private string _fearGreedClassification = "Neutral";
+
         // График
         private PlotModel _plotModel;
 
@@ -190,6 +194,18 @@ namespace BinanceBotWpf.ViewModels
         {
             get => _telegramStatus;
             set { _telegramStatus = value; OnPropertyChanged (); }
+        }
+
+        public int FearGreedValue
+        {
+            get => _fearGreedValue;
+            set { _fearGreedValue = value; OnPropertyChanged (); }
+        }
+
+        public string FearGreedClassification
+        {
+            get => _fearGreedClassification;
+            set { _fearGreedClassification = value; OnPropertyChanged (); }
         }
 
         public bool RequestLogsScroll
