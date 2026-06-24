@@ -34,7 +34,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Запуск оптимизации на истории топ-пар
         /// </summary>
-        public async Task<bool> RunOptimizationAsync()
+        public async Task<bool> RunOptimizationAsync(decimal balanceUsdc = 0m)
         {
             _logger?.Invoke ("🚀 Запуск оптимизации параметров стратегии...");
 
@@ -103,7 +103,7 @@ namespace BinanceBotWpf.Services
                                         var perPairResults = new List<BacktestEngine.BacktestResult> ();
                                         foreach (var pairKlines in klinesByPair.Values)
                                         {
-                                            var r = _backtest.Run (pairKlines, fast, slow, rsiP, sl, tp);
+                                            var r = _backtest.Run (pairKlines, fast, slow, rsiP, sl, tp, balanceUsdc > 0 ? balanceUsdc : 1000m);
                                             if (r != null) perPairResults.Add (r);
                                         }
 

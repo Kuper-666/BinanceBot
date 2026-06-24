@@ -44,13 +44,15 @@ namespace BinanceBotWpf.Services
             int rsiPeriod,
             decimal stopLossPercent,
             decimal takeProfitPercent,
-            decimal initialCapital = 1000m)
+            decimal initialCapital = 0m)
         {
             if (klines == null || klines.Count < slowSmaPeriod + 10)
             {
                 _logger?.Invoke ("⚠️ Недостаточно данных для бэктеста");
                 return null;
             }
+
+            if (initialCapital <= 0) initialCapital = 1000m;
 
             var closes = klines.Select (k => k.Close).ToList ();
             var highs = klines.Select (k => k.High).ToList ();

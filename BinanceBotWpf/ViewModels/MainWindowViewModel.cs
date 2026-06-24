@@ -686,8 +686,11 @@ namespace BinanceBotWpf.ViewModels
             AddLog ("🧠 Запуск автоматической оптимизации стратегии...");
             AddLog ("⏳ Это может занять 2-3 минуты...");
 
+            decimal balance = _tradingService?.GetBinanceClient () != null
+                ? await _tradingService.GetBinanceClient ().GetAccountBalanceAsync ("USDC")
+                : 0;
             var optimizer = new StrategyOptimizer (_tradingService.GetBinanceClient (), this, AddLog);
-            bool success = await optimizer.RunOptimizationAsync ();
+            bool success = await optimizer.RunOptimizationAsync (balance);
 
             if (success)
             {
@@ -771,7 +774,7 @@ namespace BinanceBotWpf.ViewModels
                 if (_pairDict.TryGetValue (pair, out var existing))
                 {
                     existing.Price = price;
-                    existing.Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}";
+                    existing.Analysis = $"{signal} | F:{fastSma:F2} / S:{slowSma:F2}";
                     existing.MarketCap = mcapStr;
                     existing.Sentiment = sentStr;
                     existing.RowColor = bgBrush;
@@ -783,7 +786,7 @@ namespace BinanceBotWpf.ViewModels
                     {
                         Pair = pair,
                         Price = price,
-                        Analysis = $"F:{fastSma:F2} / S:{slowSma:F2}",
+                        Analysis = $"{signal} | F:{fastSma:F2} / S:{slowSma:F2}",
                         MarketCap = mcapStr,
                         Sentiment = sentStr,
                         RowColor = bgBrush,

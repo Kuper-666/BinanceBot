@@ -540,10 +540,15 @@ namespace BinanceBotWpf.Services
                     .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD"))
                     .Where (p =>
                     {
-                        // Фильтрация по minNotional: риск на сделку должен быть >= minNotional
                         if (allMinNotionals.TryGetValue (p, out decimal minNot))
                             return riskAmount >= minNot || balance >= minNot * 2;
-                        return true; // Если нет данных — пропускаем фильтр
+                        return true;
+                    })
+                    // Сортируем по minNotional: для малых балансов приоритет дешёвым парам (DOGE=1, ETH=5, BTC=100)
+                    .OrderBy (p =>
+                    {
+                        allMinNotionals.TryGetValue (p, out decimal mn);
+                        return mn;
                     })
                     .Take (maxPairs)
                     .ToList ();
@@ -1379,8 +1384,9 @@ namespace BinanceBotWpf.Services
                     break;
                 case "/optimize":
                     await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию...", chatId);
+                    decimal optBalance = _wallet?.GetTotalBalance ("USDC") ?? 0;
                     var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
-                    bool optSuccess = await optimizer.RunOptimizationAsync ();
+                    bool optSuccess = await optimizer.RunOptimizationAsync (optBalance);
                     await _telegram.SendMessageAsync (optSuccess ? "✅ Оптимизация завершена" : "⚠️ Оптимизация не дала результатов", chatId);
                     break;
                 case "/rollback":
@@ -1577,8 +1583,9 @@ namespace BinanceBotWpf.Services
 
                     _ui?.AddLog ($"🧠 Запуск оптимизации ({newTrades} новых сделок)...");
 
+                    decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
                     var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
-                    bool success = await optimizer.RunOptimizationAsync ();
+                    bool success = await optimizer.RunOptimizationAsync (balance);
 
                     if (success)
                     {
