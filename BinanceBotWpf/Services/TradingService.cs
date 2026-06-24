@@ -526,29 +526,30 @@ namespace BinanceBotWpf.Services
                 }
 
                 decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
-                int maxPairs = balance < 50 ? 3 : balance < 200 ? 5 : balance < 500 ? 7 : 10;
+                int maxPairs = balance < 50 ? 5 : balance < 200 ? 7 : balance < 500 ? 10 : 15;
 
                 // Загружаем minNotional для всех пар за один запрос
                 var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
 
-                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", maxPairs * 2);
-                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", maxPairs * 2);
+                // Запрашиваем больше пар, чтобы хватило после фильтрации
+                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", maxPairs * 4);
+                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", maxPairs * 4);
 
-                // Объединяем, исключаем стейблкоины, фильтруем по minNotional
-                decimal riskPercent = 0.05m; // 5% риск на сделку
-                decimal riskAmount = balance * riskPercent;
-
+                // Строгий фильтр: пара проходит только если minNotional <= баланс
+                // (для лимитных ордеров) ИЛИ minNotional <= balance * 0.5 (для маркет-ордеров)
                 var allPairs = usdcPairs.Concat (usdtPairs)
                     .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
                     .Select (g => g.First ())
-                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD"))
+                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD") && !p.Contains ("EUR"))
                     .Where (p =>
                     {
                         if (allMinNotionals.TryGetValue (p, out decimal minNot))
-                            return riskAmount >= minNot || balance >= minNot * 2;
+                        {
+                            // Строго: баланс должен покрывать minNotional с запасом 2x
+                            return balance >= minNot * 2m;
+                        }
                         return true;
                     })
-                    // Сортируем по minNotional: для малых балансов приоритет дешёвым парам (DOGE=1, ETH=5, BTC=100)
                     .OrderBy (p =>
                     {
                         allMinNotionals.TryGetValue (p, out decimal mn);
@@ -598,20 +599,35 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", 10);
-                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", 10);
+                decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
+                var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
+
+                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", 20);
+                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", 20);
                 var pairs = usdcPairs.Concat (usdtPairs)
                     .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
                     .Select (g => g.First ())
-                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD"))
+                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD") && !p.Contains ("EUR"))
+                    .Where (p =>
+                    {
+                        if (allMinNotionals.TryGetValue (p, out decimal minNot))
+                            return balance >= minNot * 2m;
+                        return true;
+                    })
+                    .OrderBy (p =>
+                    {
+                        allMinNotionals.TryGetValue (p, out decimal mn);
+                        return mn;
+                    })
+                    .Take (balance < 50 ? 5 : balance < 200 ? 7 : 10)
                     .ToList ();
                 if (pairs.Count == 0)
                 {
-                    ui.AddLog ("⚠️ Не удалось получить список пар");
+                    ui.AddLog ("⚠️ Не удалось получить список пар, подходящих под баланс");
                     return;
                 }
 
-                ui.AddLog ($"📊 Загружено {pairs.Count} пар, анализ индикаторов...");
+                ui.AddLog ($"📊 Загружено {pairs.Count} пар (баланс: {balance:F0} USDC), анализ индикаторов...");
 
                 foreach (var sym in pairs)
                 {
