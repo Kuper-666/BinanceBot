@@ -189,38 +189,47 @@ namespace BinanceBotWpf.Services
                 // ═══════ Дополнительные сигналы (если SMA crossover редок) ═══════
                 if (baseSignal.Action == TradeAction.Hold)
                 {
-                    // RSI extremes + LSMA trend alignment
-                    if (rsi < 30 && lsma > 0 && currentPrice > lsma)
+                    // RSI extremes + LSMA trend alignment (расширенные пороги)
+                    if (rsi < 35 && lsma > 0 && currentPrice > lsma)
                     {
                         baseSignal.Action = TradeAction.Buy;
                         baseSignal.Reason = $"RSI oversold ({rsi:F1}) + LSMA uptrend";
                     }
-                    else if (rsi > 70 && lsma > 0 && currentPrice < lsma)
+                    else if (rsi > 65 && lsma > 0 && currentPrice < lsma)
                     {
                         baseSignal.Action = TradeAction.Sell;
                         baseSignal.Reason = $"RSI overbought ({rsi:F1}) + LSMA downtrend";
                     }
-                    // MACD histogram reversal
-                    else if (macdHist > 0 && prevMacdHist <= 0 && rsi < 45)
+                    // MACD histogram reversal (расширенные пороги RSI)
+                    else if (macdHist > 0 && prevMacdHist <= 0 && rsi < 50)
                     {
                         baseSignal.Action = TradeAction.Buy;
                         baseSignal.Reason = $"MACD cross up + RSI={rsi:F1}";
                     }
-                    else if (macdHist < 0 && prevMacdHist >= 0 && rsi > 55)
+                    else if (macdHist < 0 && prevMacdHist >= 0 && rsi > 50)
                     {
                         baseSignal.Action = TradeAction.Sell;
                         baseSignal.Reason = $"MACD cross down + RSI={rsi:F1}";
                     }
-                    // BB bounce
-                    else if (currentPrice <= bbLower * 1.002m && rsi < 35)
+                    // BB bounce (расширенные пороги)
+                    else if (currentPrice <= bbLower * 1.005m && rsi < 40)
                     {
                         baseSignal.Action = TradeAction.Buy;
                         baseSignal.Reason = $"BB bounce lower + RSI={rsi:F1}";
                     }
-                    else if (currentPrice >= bbUpper * 0.998m && rsi > 65)
+                    else if (currentPrice >= bbUpper * 0.995m && rsi > 60)
                     {
                         baseSignal.Action = TradeAction.Sell;
                         baseSignal.Reason = $"BB bounce upper + RSI={rsi:F1}";
+                    }
+                    // SMA trend direction (всегда показываем направление)
+                    else if (fastSma > slowSma)
+                    {
+                        baseSignal.Reason = $"SMA uptrend F:{fastSma:F2} > S:{slowSma:F2}";
+                    }
+                    else if (fastSma < slowSma)
+                    {
+                        baseSignal.Reason = $"SMA downtrend F:{fastSma:F2} < S:{slowSma:F2}";
                     }
                 }
 
@@ -326,7 +335,7 @@ namespace BinanceBotWpf.Services
         /// </summary>
         public bool CheckEntryConfirmation(List<BinanceKline> entryKlines, TradeAction signal)
         {
-            if (entryKlines == null || entryKlines.Count < 20) return false;
+            if (entryKlines == null || entryKlines.Count < 20) return true; // Нет данных — пропускаем проверку
 
             var closes = entryKlines.Select (k => k.Close).ToList ();
             decimal rsi = CalculateRsi (closes, 14);
@@ -337,13 +346,13 @@ namespace BinanceBotWpf.Services
 
             if (signal == TradeAction.Buy)
             {
-                // Подтверждение BUY: RSI < 35 ИЛИ цена у нижней полосы Боллинджера
-                return rsi < 35 || currentPrice <= bbLower * 1.005m;
+                // Подтверждение BUY: RSI < 40 ИЛИ цена у нижней полосы Боллинджера
+                return rsi < 40 || currentPrice <= bbLower * 1.01m;
             }
             else if (signal == TradeAction.Sell)
             {
-                // Подтверждение SELL: RSI > 65 ИЛИ цена у верхней полосы Боллинджера
-                return rsi > 65 || currentPrice >= bbUpper * 0.995m;
+                // Подтверждение SELL: RSI > 60 ИЛИ цена у верхней полосы Боллинджера
+                return rsi > 60 || currentPrice >= bbUpper * 0.99m;
             }
 
             return false;
