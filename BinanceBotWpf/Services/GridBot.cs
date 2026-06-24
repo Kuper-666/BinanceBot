@@ -85,7 +85,7 @@ namespace BinanceBotWpf.Services
             decimal perLevelUsdc = totalInvestmentUsdc / (gridLevels * 2);
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             decimal tickSize = await _client.GetTickSizeAsync (symbol);
-            decimal minNotional = 6m; // Минимальный нотионал Binance
+            decimal minNotional = await _client.GetMinNotionalAsync (symbol);
 
             // Автоподстройка: уменьшаем уровни пока каждый ордер не будет >= minNotional
             while (perLevelUsdc < minNotional && gridLevels > 1)

@@ -155,7 +155,7 @@ namespace BinanceBotWpf.Services
         private GridParameters CalculateGridParameters(decimal balance, decimal volatility, decimal atr, decimal price, int aiRiskLevel)
         {
             var grid = new GridParameters ();
-            decimal minNotional = 6m; // Минимальный нотионал Binance
+            decimal minNotional = 5m; // Default, будет перезаписан из exchangeInfo
 
             // GridBot требует минимум 500 USDC — иначе сетка из 1-2 уровней бессмысленна,
             // комиссии съедают всю прибыль, и баланс не покрывает minNotional на все уровни.

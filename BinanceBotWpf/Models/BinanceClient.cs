@@ -22,6 +22,7 @@ namespace BinanceBotWpf.Models
         private JObject _exchangeInfo;
         private DateTime _exchangeInfoExpiry = DateTime.MinValue;
         private readonly Dictionary<string, decimal> _stepSizeCache = new ();
+        private readonly Dictionary<string, decimal> _minNotionalCache = new ();
         private readonly Dictionary<string, (decimal Price, DateTime Expiry)> _priceCache = new ();
         private (decimal Balance, DateTime Expiry) _balanceCache;
         private const int PriceCacheSeconds = 5;
@@ -879,6 +880,68 @@ namespace BinanceBotWpf.Models
                 return (step, minQ);
             }
             return (0.00000001m, 0m);
+        }
+
+        /// <summary>
+        /// Возвращает MIN_NOTIONAL для символа из NOTIONAL фильтра.
+        /// По умолчанию 5 USDC для большинства пар, 1 USDC для DOGE/WIF/BOME, ~100 для BTC.
+        /// </summary>
+        public async Task<decimal> GetMinNotionalAsync(string symbol)
+        {
+            if (_minNotionalCache.TryGetValue (symbol, out decimal cached))
+                return cached;
+
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            var notionalFilter = symInfo?["filters"]?.FirstOrDefault (
+                f => f["filterType"]?.ToString () == "NOTIONAL" || f["filterType"]?.ToString () == "MIN_NOTIONAL");
+
+            decimal minNotional = 5m; // Default for USDC pairs
+            if (notionalFilter != null)
+            {
+                if (notionalFilter["minNotional"] != null)
+                    minNotional = decimal.Parse (notionalFilter["minNotional"].ToString (), CultureInfo.InvariantCulture);
+                else if (notionalFilter["notional"] != null)
+                    minNotional = decimal.Parse (notionalFilter["notional"].ToString (), CultureInfo.InvariantCulture);
+            }
+
+            _minNotionalCache[symbol] = minNotional;
+            return minNotional;
+        }
+
+        /// <summary>
+        /// Получить все пары с их minNotional из exchangeInfo (один запрос).
+        /// Возвращает словарь symbol → minNotional.
+        /// </summary>
+        public async Task<Dictionary<string, decimal>> GetAllMinNotionalsAsync()
+        {
+            var result = new Dictionary<string, decimal> ();
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symbols = exchangeInfo["symbols"];
+            if (symbols == null) return result;
+
+            foreach (var sym in symbols)
+            {
+                string symbol = sym["symbol"]?.ToString () ?? "";
+                var filters = sym["filters"];
+                if (filters == null) continue;
+
+                var notionalFilter = filters.FirstOrDefault (
+                    f => f["filterType"]?.ToString () == "NOTIONAL" || f["filterType"]?.ToString () == "MIN_NOTIONAL");
+
+                decimal minNotional = 5m;
+                if (notionalFilter != null)
+                {
+                    if (notionalFilter["minNotional"] != null)
+                        minNotional = decimal.Parse (notionalFilter["minNotional"].ToString (), CultureInfo.InvariantCulture);
+                    else if (notionalFilter["notional"] != null)
+                        minNotional = decimal.Parse (notionalFilter["notional"].ToString (), CultureInfo.InvariantCulture);
+                }
+
+                result[symbol] = minNotional;
+                _minNotionalCache[symbol] = minNotional;
+            }
+            return result;
         }
 
         public async Task<decimal> GetTickSizeAsync(string symbol)

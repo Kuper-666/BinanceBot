@@ -522,24 +522,36 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                // Безопасная проверка инициализации _webSocketManager перед использованием
                 if (_webSocketManager == null)
                 {
                     _ui?.AddLog ("⚠️ WebSocket менеджер не инициализирован, пропускаю обновление пар");
                     return;
                 }
 
-                // Динамическое число пар по балансу
                 decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
                 int maxPairs = balance < 50 ? 3 : balance < 200 ? 5 : balance < 500 ? 7 : 10;
 
-                // Мульти-котировка: USDC + USDT
-                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", maxPairs);
-                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", maxPairs);
+                // Загружаем minNotional для всех пар за один запрос
+                var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
+
+                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", maxPairs * 2);
+                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", maxPairs * 2);
+
+                // Объединяем, исключаем стейблкоины, фильтруем по minNotional
+                decimal riskPercent = 0.05m; // 5% риск на сделку
+                decimal riskAmount = balance * riskPercent;
+
                 var allPairs = usdcPairs.Concat (usdtPairs)
                     .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
                     .Select (g => g.First ())
-                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD"))
+                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD"))
+                    .Where (p =>
+                    {
+                        // Фильтрация по minNotional: риск на сделку должен быть >= minNotional
+                        if (allMinNotionals.TryGetValue (p, out decimal minNot))
+                            return riskAmount >= minNot || balance >= minNot * 2;
+                        return true; // Если нет данных — пропускаем фильтр
+                    })
                     .Take (maxPairs)
                     .ToList ();
 
@@ -547,7 +559,7 @@ namespace BinanceBotWpf.Services
                 {
                     lock (_pairsLock) { _activePairs = allPairs; }
                     var subscribedSymbols = _webSocketManager.GetSubscribedSymbols ();
-                    
+
                     if (subscribedSymbols == null || subscribedSymbols.Length == 0)
                     {
                         await _webSocketManager.SubscribeToSymbolsAsync (allPairs.ToArray ());
@@ -558,7 +570,14 @@ namespace BinanceBotWpf.Services
                         if (newSymbols.Any ())
                             await _webSocketManager.SubscribeToSymbolsAsync (newSymbols);
                     }
-                    _ui?.AddLog ($"📊 Обновлено {_activePairs.Count} пар (баланс: {balance:F0} USDC, лимит: {maxPairs})");
+
+                    // Логируем minNotional для отладки
+                    string minInfo = string.Join (", ", allPairs.Take (5).Select (p =>
+                    {
+                        allMinNotionals.TryGetValue (p, out decimal mn);
+                        return $"{p}={mn:F0}";
+                    }));
+                    _ui?.AddLog ($"📊 {allPairs.Count} пар (баланс: {balance:F0} USDC) | minNotional: {minInfo}");
                 }
             }
             catch (Exception ex) 
@@ -1037,23 +1056,21 @@ namespace BinanceBotWpf.Services
             decimal minQty = 0m;
             var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
-            // P0: Защита от ордеров ниже MIN_NOTIONAL (6 USDC на Binance).
-            // Без этой проверки Binance вернёт -1013 "LOT_SIZE" и ордер упадёт молча.
+            // P0: Защита от ордеров ниже MIN_NOTIONAL (динамический из exchangeInfo).
+            decimal symbolMinNotional = await _client.GetMinNotionalAsync (symbol);
             decimal notional = qty * price;
-            const decimal MinNotional = 6m;
-            if (notional < MinNotional && qty > 0)
+            if (notional < symbolMinNotional && qty > 0)
             {
-                // Пытаемся поднять количество до minNotional
-                decimal minQtyForNotional = Math.Ceiling (MinNotional / price / stepSize) * stepSize;
+                decimal minQtyForNotional = Math.Ceiling (symbolMinNotional / price / stepSize) * stepSize;
                 if (minQtyForNotional * price <= riskAmount * 1.5m && minQtyForNotional * price <= currentBalance)
                 {
                     qty = minQtyForNotional;
                     notional = qty * price;
-                    _ui?.AddLog ($"🔧 {symbol}: количество поднято до {qty} ({notional:F2} USDC) для покрытия MIN_NOTIONAL");
+                    _ui?.AddLog ($"🔧 {symbol}: количество поднято до {qty} ({notional:F2} USDC) для покрытия MIN_NOTIONAL ({symbolMinNotional} USDC)");
                 }
                 else
                 {
-                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — {notional:F2} USDC < MIN_NOTIONAL ({MinNotional} USDC), недостаточно средств для увеличения");
+                    _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — {notional:F2} USDC < MIN_NOTIONAL ({symbolMinNotional} USDC)");
                     return;
                 }
             }
