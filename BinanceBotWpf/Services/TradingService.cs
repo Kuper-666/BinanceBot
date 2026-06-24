@@ -1232,8 +1232,42 @@ namespace BinanceBotWpf.Services
                         await _telegram.SendMessageAsync ($"❌ Ошибка переобучения: {ex.Message}", chatId);
                     }
                     break;
+                case "/chart":
                 case "/pnl":
-                    await _telegram.SendMessageAsync ($"📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {_ui?.WinRate ?? 0:F1}%", chatId);
+                    try
+                    {
+                        var trades = _ui?.TradesHistory;
+                        if (trades == null || trades.Count == 0)
+                        {
+                            await _telegram.SendMessageAsync ("📊 Нет данных о сделках для графика.", chatId);
+                            break;
+                        }
+
+                        // Генерируем текстовый PnL график
+                        int last = Math.Min (trades.Count, 10);
+                        var recentTrades = trades.Skip (Math.Max (0, trades.Count - last)).ToList ();
+                        decimal runningPnL = 0;
+                        string chartText = "📈 <b>PnL по сделкам (последние " + last + "):</b>\n\n";
+
+                        foreach (var trade in recentTrades)
+                        {
+                            runningPnL += trade.PnL;
+                            string bar = "";
+                            int bars = (int)(Math.Abs (trade.PnL) * 5);
+                            bars = Math.Min (bars, 20);
+                            string barChar = trade.PnL >= 0 ? "🟩" : "🟥";
+                            for (int i = 0; i < bars; i++) bar += barChar;
+
+                            chartText += $"{trade.Symbol} {( trade.PnL >= 0 ? "+" : "" )}{trade.PnL:F2} {bar}\n";
+                        }
+
+                        chartText += $"\n💰 <b>Итого: {( runningPnL >= 0 ? "+" : "" )}{runningPnL:F2} USDC</b>";
+                        await _telegram.SendMessageAsync (chartText, chatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        await _telegram.SendMessageAsync ($"❌ Ошибка графика: {ex.Message}", chatId);
+                    }
                     break;
                 case "/update":
                     await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
