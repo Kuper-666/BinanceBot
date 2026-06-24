@@ -129,7 +129,7 @@
                     <TextBlock Text="ДОСТУПНО ОБНОВЛЕНИЕ" Foreground="#f39c12" FontSize="11" FontWeight="Bold"/>
                     <TextBlock Text="{Binding UpdateStatusText}" Foreground="White" FontSize="13"/>
                 </StackPanel>
-                <Button Command="{Binding UpdateNowCommand}" 
+                <Button Command="{Binding CheckForUpdatesCommand}" 
                         Content="⬇ ОБНОВИТЬ СЕЙЧАС" 
                         Width="150" Height="32"
                         Style="{StaticResource ActionButton}" 
@@ -137,12 +137,6 @@
                         Foreground="White"
                         FontSize="12" FontWeight="Bold"
                         Margin="0,0,10,0"/>
-                <Button Command="{Binding CheckForUpdatesCommand}" 
-                        Content="🔄 ПРОВЕРИТЬ" 
-                        Width="100" Height="32"
-                        Style="{StaticResource ActionButton}" 
-                        Background="#3498db"
-                        Margin="0,0,0,0"/>
             </WrapPanel>
         </Border>
 
