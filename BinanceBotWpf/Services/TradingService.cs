@@ -163,8 +163,8 @@ namespace BinanceBotWpf.Services
             // У новых сервисов логгер уже установлен в конструкторе
             if (_webSocketManager == null)
             {
-                _webSocketManager = new WebSocketPriceManager (logger);
-                logger ("✅ WebSocket менеджер инициализирован");
+                _webSocketManager = new WebSocketPriceManager (logger, _ui?.FuturesEnabled == true);
+                logger ($"✅ WebSocket менеджер инициализирован");
             }
 
             // Инициализация Telegram
@@ -412,19 +412,23 @@ namespace BinanceBotWpf.Services
 
         private async Task InitAsync()
         {
-            // Гарантируем инициализацию WebSocket менеджера
-            if (_webSocketManager == null)
+            // Загружаем TradingSettings ДО подписок, чтобы знать FuturesEnabled
+            _tradingSettings = await TradingSettings.LoadAsync ();
+
+            // Гарантируем инициализацию WebSocket менеджера (фьючерсный эндпоинт если Futures включены)
+            bool useFutures = _ui?.FuturesEnabled == true || _tradingSettings?.FuturesEnabled == true;
+            if (_webSocketManager != null)
             {
-                _webSocketManager = new WebSocketPriceManager (msg => _ui?.AddLog (msg));
+                _webSocketManager.Dispose ();
+                _webSocketManager = null;
             }
+            _webSocketManager = new WebSocketPriceManager (msg => _ui?.AddLog (msg), useFutures);
+            _ui?.AddLog ($"🔌 WebSocket эндпоинт: {(useFutures ? "фьючерсы (fstream.binance.com)" : "спот (stream.binance.com)")}");
 
             await _wallet.UpdateBalance ();
             await UpdatePairs ();
             await LoadPositions ();
             _ui?.AddLog (_client.IsTestnet ? "⚠️ ТЕСТОВАЯ СЕТЬ" : "✅ РЕАЛЬНАЯ СЕТЬ");
-
-            // Загружаем TradingSettings
-            _tradingSettings = await TradingSettings.LoadAsync ();
 
             // Загружаем настройки фьючерсов из BotConfig
             try
@@ -499,8 +503,13 @@ namespace BinanceBotWpf.Services
                     {
                         await Task.Delay (3000);
                         decimal price = GetCurrentPrice (gridSymbol);
+                        if (price <= 0)
+                        {
+                            try { price = await _client.GetPriceAsync (gridSymbol); } catch { }
+                        }
                         if (price > 0)
                         {
+                            _webSocketManager?.UpdatePrice (gridSymbol, price);
                             _ui?.AddLog ($"💰 Цена {gridSymbol}: {price:F6} — запуск сетки");
                             await StartAutoGridAsync (gridSymbol);
                             return;

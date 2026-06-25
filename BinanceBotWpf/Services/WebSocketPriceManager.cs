@@ -15,11 +15,15 @@ namespace BinanceBotWpf.Services
         private readonly ConcurrentDictionary<string, decimal> _currentPrices = new ();
         private readonly ConcurrentDictionary<string, ClientWebSocket> _sockets = new ();
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _ctsDict = new ();
+        private readonly string _wsBaseUrl;
         private bool _disposed;
 
-        public WebSocketPriceManager(Action<string> logger)
+        public WebSocketPriceManager (Action<string> logger, bool useFuturesEndpoint = false)
         {
             _logger = logger;
+            _wsBaseUrl = useFuturesEndpoint
+                ? "wss://fstream.binance.com/ws"
+                : "wss://stream.binance.com:9443/ws";
         }
 
         public async Task SubscribeToSymbolsAsync(string[] symbols)
@@ -39,7 +43,7 @@ namespace BinanceBotWpf.Services
         private async Task ConnectAndListen(string symbol, CancellationToken cancellationToken)
         {
             string streamName = $"{symbol.ToLowerInvariant ()}@ticker";
-            string url = $"wss://stream.binance.com:9443/ws/{streamName}";
+            string url = $"{_wsBaseUrl}/{streamName}";
 
             int reconnectDelay = 1000;
             const int maxReconnectDelay = 30000;
@@ -111,6 +115,11 @@ namespace BinanceBotWpf.Services
         {
             _currentPrices.TryGetValue (symbol.ToUpperInvariant (), out var price);
             return price;
+        }
+
+        public void UpdatePrice(string symbol, decimal price)
+        {
+            _currentPrices[symbol.ToUpperInvariant ()] = price;
         }
 
         public string[] GetSubscribedSymbols()
