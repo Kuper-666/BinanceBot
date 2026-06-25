@@ -83,7 +83,10 @@ namespace BinanceBotWpf.Models
 
         // Фильтр по рыночным сессиям
         public bool SessionFilterEnabled { get; set; } = false;
-        public bool TradeOnlyEuUs { get; set; } = false;  // Только Европа + Америка
+        public bool TradeOnlyEuUs { get; set; } = false;
+
+        // Валюта котировки
+        public string QuoteCurrency { get; set; } = "USDC"; // USDC, USDT, Both
 
         // Путь к файлу настроек
         private static readonly string SettingsPath = Path.Combine (

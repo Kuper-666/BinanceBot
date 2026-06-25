@@ -531,12 +531,14 @@ namespace BinanceBotWpf.Services
                 // Загружаем minNotional для всех пар за один запрос
                 var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
 
-                // Запрашиваем больше пар, чтобы хватило после фильтрации
-                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", maxPairs * 4);
-                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", maxPairs * 4);
+                string quoteCurrency = _ui?.QuoteCurrency ?? "USDC";
+                bool loadUsdc = quoteCurrency == "USDC" || quoteCurrency == "Both";
+                bool loadUsdt = quoteCurrency == "USDT" || quoteCurrency == "Both";
 
-                // Строгий фильтр: пара проходит только если minNotional <= баланс
-                // (для лимитных ордеров) ИЛИ minNotional <= balance * 0.5 (для маркет-ордеров)
+                // Запрашиваем пары по выбранной котировке
+                var usdcPairs = loadUsdc ? await _client.GetTopVolumePairsAsync ("USDC", maxPairs * 4) : new List<string> ();
+                var usdtPairs = loadUsdt ? await _client.GetTopVolumePairsAsync ("USDT", maxPairs * 4) : new List<string> ();
+
                 var allPairs = usdcPairs.Concat (usdtPairs)
                     .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
                     .Select (g => g.First ())
@@ -624,10 +626,14 @@ namespace BinanceBotWpf.Services
                     ui.AddLog ($"⚠️ minNotional ошибка: {ex.Message}");
                 }
 
-                var usdcPairs = await _client.GetTopVolumePairsAsync ("USDC", 20);
+                string quoteCurrency = ui?.QuoteCurrency ?? "USDC";
+                bool loadUsdc = quoteCurrency == "USDC" || quoteCurrency == "Both";
+                bool loadUsdt = quoteCurrency == "USDT" || quoteCurrency == "Both";
+
+                var usdcPairs = loadUsdc ? await _client.GetTopVolumePairsAsync ("USDC", 20) : new List<string> ();
                 ui.AddLog ($"🔍 [DEBUG] USDC пары: {usdcPairs.Count} ({string.Join (", ", usdcPairs.Take (5))})");
 
-                var usdtPairs = await _client.GetTopVolumePairsAsync ("USDT", 20);
+                var usdtPairs = loadUsdt ? await _client.GetTopVolumePairsAsync ("USDT", 20) : new List<string> ();
                 ui.AddLog ($"🔍 [DEBUG] USDT пары: {usdtPairs.Count} ({string.Join (", ", usdtPairs.Take (5))})");
 
                 var allRaw = usdcPairs.Concat (usdtPairs).ToList ();

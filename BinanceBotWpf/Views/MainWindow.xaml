@@ -529,6 +529,25 @@
                             </StackPanel>
                         </Border>
 
+                        <!-- Сессии и Котировки -->
+                        <Border Background="#252525" CornerRadius="5" Padding="10" Margin="0,0,0,10">
+                            <StackPanel>
+                                <TextBlock Text="Сессии и Котировки" Foreground="#9b59b6" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
+                                <WrapPanel Margin="0,0,0,6">
+                                    <CheckBox Content="Фильтр сессий" IsChecked="{Binding SessionFilterEnabled}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Только EU+US" IsChecked="{Binding TradeOnlyEuUs}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                </WrapPanel>
+                                <WrapPanel>
+                                    <TextBlock Text="Котировка:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <ComboBox Width="80" SelectedValue="{Binding QuoteCurrency}" SelectedValuePath="Content" Foreground="#bdc3c7" Background="#1e1e1e" BorderBrush="#34495e">
+                                        <ComboBoxItem Content="USDC" Foreground="#bdc3c7"/>
+                                        <ComboBoxItem Content="USDT" Foreground="#bdc3c7"/>
+                                        <ComboBoxItem Content="Both" Foreground="#bdc3c7"/>
+                                    </ComboBox>
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+
                         <!-- Grid Bot -->
                         <Border Background="#252525" CornerRadius="5" Padding="10" Margin="0,0,0,10">
                             <StackPanel>

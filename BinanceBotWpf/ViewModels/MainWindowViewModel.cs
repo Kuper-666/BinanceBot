@@ -1195,6 +1195,24 @@ namespace BinanceBotWpf.ViewModels
             set { if (_tradingSettings != null) { _tradingSettings.NewsSentinelBlockMinutes = value; OnPropertyChanged (); SaveTradingSettings (); } }
         }
 
+        public bool SessionFilterEnabled
+        {
+            get => _tradingSettings?.SessionFilterEnabled ?? false;
+            set { if (_tradingSettings != null) { _tradingSettings.SessionFilterEnabled = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public bool TradeOnlyEuUs
+        {
+            get => _tradingSettings?.TradeOnlyEuUs ?? false;
+            set { if (_tradingSettings != null) { _tradingSettings.TradeOnlyEuUs = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
+        public string QuoteCurrency
+        {
+            get => _tradingSettings?.QuoteCurrency ?? "USDC";
+            set { if (_tradingSettings != null) { _tradingSettings.QuoteCurrency = value; OnPropertyChanged (); SaveTradingSettings (); } }
+        }
+
         private async void SaveTradingSettings()
         {
             if (_tradingSettings != null)
