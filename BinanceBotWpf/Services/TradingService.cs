@@ -694,9 +694,13 @@ namespace BinanceBotWpf.Services
                         decimal fastSma = closes.Skip (closes.Count - 9).Average ();
                         decimal slowSma = closes.Skip (closes.Count - 21).Average ();
 
+                        decimal rsi = TechnicalAnalysis.RSI (closes, 14).LastOrDefault () ?? 50;
+                        var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
+                        decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
+
                         var signal = new StrategyEngine ().AnalyzePairWithWallet (sym, closes, 9, 21, price);
 
-                        ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma);
+                        ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist);
                         await Task.Delay (150);
                     }
                     catch (Exception ex)
@@ -885,7 +889,10 @@ namespace BinanceBotWpf.Services
                             _ui.UpdateMarketTable (sym, analysis.Indicators["price"].ToString ("F4"),
                                 hasPosition, analysis.Action,
                                 analysis.Indicators.ContainsKey ("fastSma") ? analysis.Indicators["fastSma"] : 0,
-                                analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0);
+                                analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0,
+                                null, null,
+                                analysis.Indicators.ContainsKey ("rsi") ? analysis.Indicators["rsi"] : 50,
+                                analysis.Indicators.ContainsKey ("macdHist") ? analysis.Indicators["macdHist"] : 0);
                         }
 
                         // Cache analysis for dashboard

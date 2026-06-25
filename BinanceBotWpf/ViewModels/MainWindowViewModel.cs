@@ -742,7 +742,7 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma, decimal? marketCap = null, decimal? sentiment = null)
+        public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma, decimal? marketCap = null, decimal? sentiment = null, decimal rsi = 50, decimal macdHist = 0)
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
@@ -771,10 +771,14 @@ namespace BinanceBotWpf.ViewModels
                     sentStr = s > 0.3m ? $"🟢 {s:F2}" : s < -0.3m ? $"🔴 {s:F2}" : $"⚪ {s:F2}";
                 }
 
+                string rsiStr = rsi < 30 ? $"RSI:{rsi:F0}↓" : rsi > 70 ? $"RSI:{rsi:F0}↑" : $"RSI:{rsi:F0}";
+                string macdStr = macdHist > 0 ? $"MACD:+{macdHist:F4}" : $"MACD:{macdHist:F4}";
+                string analysisText = $"{signal} | F:{fastSma:F2} / S:{slowSma:F2} | {rsiStr} {macdStr}";
+
                 if (_pairDict.TryGetValue (pair, out var existing))
                 {
                     existing.Price = price;
-                    existing.Analysis = $"{signal} | F:{fastSma:F2} / S:{slowSma:F2}";
+                    existing.Analysis = analysisText;
                     existing.MarketCap = mcapStr;
                     existing.Sentiment = sentStr;
                     existing.RowColor = bgBrush;
@@ -786,7 +790,7 @@ namespace BinanceBotWpf.ViewModels
                     {
                         Pair = pair,
                         Price = price,
-                        Analysis = $"{signal} | F:{fastSma:F2} / S:{slowSma:F2}",
+                        Analysis = analysisText,
                         MarketCap = mcapStr,
                         Sentiment = sentStr,
                         RowColor = bgBrush,

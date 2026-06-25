@@ -346,13 +346,11 @@ namespace BinanceBotWpf.Services
 
             if (signal == TradeAction.Buy)
             {
-                // Подтверждение BUY: RSI < 40 ИЛИ цена у нижней полосы Боллинджера
-                return rsi < 40 || currentPrice <= bbLower * 1.01m;
+                return rsi < 50 || currentPrice <= bbLower * 1.02m;
             }
             else if (signal == TradeAction.Sell)
             {
-                // Подтверждение SELL: RSI > 60 ИЛИ цена у верхней полосы Боллинджера
-                return rsi > 60 || currentPrice >= bbUpper * 0.99m;
+                return rsi > 50 || currentPrice >= bbUpper * 0.98m;
             }
 
             return false;

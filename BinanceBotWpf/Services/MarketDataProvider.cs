@@ -1,4 +1,4 @@
-﻿using BinanceBotWpf.Models;
+using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Generic;
@@ -75,7 +75,7 @@ namespace BinanceBotWpf.Services
                     else
                         signal.Action = TradeAction.Hold;
 
-                    _ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma);
+                    _ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist);
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth));
                 }
                 catch (Exception ex) { _logger?.Invoke ($"❌ Ошибка анализа {sym}: {ex.Message}"); }
