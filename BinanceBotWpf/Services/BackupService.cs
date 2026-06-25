@@ -8,7 +8,7 @@ namespace BinanceBotWpf.Services
     /// Сервис резервного копирования конфигурации и настроек.
     /// Создаёт бэкапы каждые 24 часа в папку Backup.
     /// </summary>
-    public class BackupService
+    public class BackupService : IBackupService
     {
         private readonly Action<string> _logger;
         private readonly string _backupDir;

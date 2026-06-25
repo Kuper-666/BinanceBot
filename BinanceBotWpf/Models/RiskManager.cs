@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Risk
 {
-    public class RiskManager
+    public class RiskManager : IRiskManager
     {
         // === КОНСТАНТЫ ===
         private const decimal MIN_BALANCE_LEVERAGE = 500m;

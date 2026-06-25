@@ -7,7 +7,7 @@ using System.Globalization;
 namespace BinanceBotWpf.Models
 {
     /// <summary>Автоматическая конвертация активов в USDC для поддержания баланса.</summary>
-    public class BalanceRebalancer
+    public class BalanceRebalancer : IBalanceRebalancer
     {
         private decimal _targetUsdcBalance = 5.50m;
         public event Action<string> OnLogGenerated;
