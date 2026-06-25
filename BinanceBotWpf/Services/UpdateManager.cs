@@ -16,7 +16,7 @@ namespace BinanceBotWpf.Services
         private const string GitHubOwner = "Kuper-666";
         private const string GitHubRepo = "BinanceBot";
         private static readonly Version CurrentVersion = Assembly.GetExecutingAssembly ().GetName ().Version ?? new Version ("1.0.0");
-        private readonly HttpClient _httpClient = new HttpClient ();
+        private readonly HttpClient _httpClient = SharedHttpClient.Instance;
         private readonly Action<string> _logger;
         private DateTime _lastUpdateCheckDate = DateTime.MinValue;
 

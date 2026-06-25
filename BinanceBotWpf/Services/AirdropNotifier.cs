@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
@@ -22,7 +22,7 @@ namespace BinanceBotWpf.Services
         {
             _telegram = telegram;
             _logger = logger;
-            _httpClient = new HttpClient ();
+            _httpClient = SharedHttpClient.Instance;
             _processedIds = new HashSet<string> ();
             _timer = new Timer (CheckForUpdates, null, TimeSpan.Zero, TimeSpan.FromHours (6));
         }

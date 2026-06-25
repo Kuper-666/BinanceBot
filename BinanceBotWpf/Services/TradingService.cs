@@ -241,7 +241,7 @@ namespace BinanceBotWpf.Services
 
             try
             {
-                var httpClient = new System.Net.Http.HttpClient ();
+                var httpClient = SharedHttpClient.Instance;
                 
                 _updateChecker = new UpdateChecker (httpClient, logger, notifyTelegram);
                 _updateChecker.OnNewVersionAvailable += (version, url) =>
@@ -1502,7 +1502,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    await Task.Delay (TimeSpan.FromHours (24));
+                    await Task.Delay (TimeSpan.FromHours (24), _shutdownCts?.Token ?? CancellationToken.None);
 
                     if (!_isRunning) break;
 
@@ -1547,7 +1547,7 @@ namespace BinanceBotWpf.Services
         private async Task PeriodicUpdateCheckLoop()
         {
             // Первая проверка через 5 минут после запуска
-            await Task.Delay (TimeSpan.FromMinutes (5));
+            await Task.Delay (TimeSpan.FromMinutes (5), _shutdownCts?.Token ?? CancellationToken.None);
 
             while (_isRunning)
             {
@@ -1563,7 +1563,7 @@ namespace BinanceBotWpf.Services
                 catch { }
 
                 // Ждём 30 минут до следующей проверки
-                await Task.Delay (TimeSpan.FromMinutes (30));
+                await Task.Delay (TimeSpan.FromMinutes (30), _shutdownCts?.Token ?? CancellationToken.None);
             }
         }
 
@@ -1579,7 +1579,7 @@ namespace BinanceBotWpf.Services
                     var nextRun = now.Date.AddDays (1).AddHours (9);
                     var delay = nextRun - now;
                     if (delay.TotalMilliseconds > 0)
-                        await Task.Delay (delay);
+                        await Task.Delay (delay, _shutdownCts?.Token ?? CancellationToken.None);
 
                     if (!_isRunning || _telegram == null) continue;
 
@@ -1617,7 +1617,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    if (started) { await Task.Delay (60000); continue; }
+                    if (started) { await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
 
                     List<string> pairs;
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
@@ -1654,7 +1654,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    await Task.Delay (TimeSpan.FromHours (6));
+                    await Task.Delay (TimeSpan.FromHours (6), _shutdownCts?.Token ?? CancellationToken.None);
                     if (!_isRunning) break;
                     await _earnStrategy.OptimizeEarnAsync ();
                 }
@@ -1677,9 +1677,9 @@ namespace BinanceBotWpf.Services
                             _ui.FearGreedClassification = data.Classification;
                         }
                     }
-                    await Task.Delay (TimeSpan.FromMinutes (15));
+                    await Task.Delay (TimeSpan.FromMinutes (15), _shutdownCts?.Token ?? CancellationToken.None);
                 }
-                catch { await Task.Delay (TimeSpan.FromMinutes (15)); }
+                catch { await Task.Delay (TimeSpan.FromMinutes (15), _shutdownCts?.Token ?? CancellationToken.None); }
             }
         }
 

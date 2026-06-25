@@ -23,7 +23,7 @@ namespace BinanceBotWpf.Services
         public void Log (string level, string source, string message)
         {
             if (_disposed) return;
-            if (level != "ERROR") return;
+            if (level != "ERROR" && level != "CRIT") return;
             lock (_lock)
             {
                 try
