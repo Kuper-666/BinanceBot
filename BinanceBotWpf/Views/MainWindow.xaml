@@ -300,8 +300,8 @@
                         </Style>
                     </DataGrid.Resources>
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="ПАРА" Binding="{Binding Pair}" Width="120"/>
-                        <DataGridTextColumn Header="ЦЕНА" Binding="{Binding Price}" Width="140">
+                        <DataGridTextColumn Header="ПАРА" Binding="{Binding Pair}" Width="110"/>
+                        <DataGridTextColumn Header="ЦЕНА" Binding="{Binding Price}" Width="130">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="Foreground" Value="#f39c12"/>
@@ -313,7 +313,14 @@
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
                                     <Setter Property="FontWeight" Value="Bold"/>
-                                    <Setter Property="Foreground" Value="#2ecc71"/>
+                                </Style>
+                            </DataGridTextColumn.ElementStyle>
+                        </DataGridTextColumn>
+                        <DataGridTextColumn Header="СЕССИЯ" Binding="{Binding Session}" Width="80">
+                            <DataGridTextColumn.ElementStyle>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Foreground" Value="#9b59b6"/>
+                                    <Setter Property="FontWeight" Value="Bold"/>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>

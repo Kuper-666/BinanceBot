@@ -26,12 +26,14 @@ namespace BinanceBotWpf.ViewModels
         private SolidColorBrush _foregroundBrush = Brushes.White;
         private string _marketCap = "—";
         private string _sentiment = "⚪ —";
+        private string _session = "";
 
         public string Pair { get; set; }
         public string Price { get => _price; set { _price = value; OnPropertyChanged (); } }
         public string Analysis { get => _analysis; set { _analysis = value; OnPropertyChanged (); } }
         public string MarketCap { get => _marketCap; set { _marketCap = value; OnPropertyChanged (); } }
         public string Sentiment { get => _sentiment; set { _sentiment = value; OnPropertyChanged (); } }
+        public string Session { get => _session; set { _session = value; OnPropertyChanged (); } }
         public SolidColorBrush RowColor { get => _rowColor; set { _rowColor = value; OnPropertyChanged (); } }
         public SolidColorBrush ForegroundBrush { get => _foregroundBrush; set { _foregroundBrush = value; OnPropertyChanged (); } }
 
@@ -742,18 +744,48 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma, decimal? marketCap = null, decimal? sentiment = null, decimal rsi = 50, decimal macdHist = 0)
+        public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma, decimal? marketCap = null, decimal? sentiment = null, decimal rsi = 50, decimal macdHist = 0, string session = "")
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
-                SolidColorBrush bgBrush = Brushes.Transparent;
-                SolidColorBrush fgBrush = Brushes.White;
-                if (hasPosition) bgBrush = new SolidColorBrush (Color.FromRgb (0, 80, 0));
-                else if (signal == TradeAction.Buy) bgBrush = new SolidColorBrush (Color.FromRgb (0, 70, 150));
-                else if (signal == TradeAction.Sell) bgBrush = new SolidColorBrush (Color.FromRgb (150, 40, 40));
-                else fgBrush = new SolidColorBrush (Color.FromRgb (200, 200, 200));
+                bool rsiConfirmsBuy = signal == TradeAction.Buy && rsi < 50;
+                bool rsiConfirmsSell = signal == TradeAction.Sell && rsi > 50;
+                bool macdConfirmsBuy = signal == TradeAction.Buy && macdHist > 0;
+                bool macdConfirmsSell = signal == TradeAction.Sell && macdHist < 0;
+                bool strongBuy = rsiConfirmsBuy || macdConfirmsBuy;
+                bool strongSell = rsiConfirmsSell || macdConfirmsSell;
 
-                // Форматирование MCAP
+                SolidColorBrush bgBrush;
+                SolidColorBrush fgBrush;
+                if (hasPosition)
+                {
+                    bgBrush = new SolidColorBrush (Color.FromRgb (0, 100, 0));
+                    fgBrush = new SolidColorBrush (Color.FromRgb (144, 238, 144));
+                }
+                else if (signal == TradeAction.Buy)
+                {
+                    bgBrush = strongBuy
+                        ? new SolidColorBrush (Color.FromRgb (0, 120, 0))
+                        : new SolidColorBrush (Color.FromRgb (0, 50, 120));
+                    fgBrush = strongBuy
+                        ? new SolidColorBrush (Color.FromRgb (100, 255, 100))
+                        : new SolidColorBrush (Color.FromRgb (100, 200, 255));
+                }
+                else if (signal == TradeAction.Sell)
+                {
+                    bgBrush = strongSell
+                        ? new SolidColorBrush (Color.FromRgb (160, 0, 0))
+                        : new SolidColorBrush (Color.FromRgb (130, 50, 0));
+                    fgBrush = strongSell
+                        ? new SolidColorBrush (Color.FromRgb (255, 120, 120))
+                        : new SolidColorBrush (Color.FromRgb (255, 180, 100));
+                }
+                else
+                {
+                    bgBrush = new SolidColorBrush (Color.FromRgb (25, 25, 25));
+                    fgBrush = new SolidColorBrush (Color.FromRgb (160, 160, 160));
+                }
+
                 string mcapStr = "—";
                 if (marketCap.HasValue && marketCap.Value > 0)
                 {
@@ -763,7 +795,6 @@ namespace BinanceBotWpf.ViewModels
                     else mcapStr = $"{marketCap.Value / 1_000m:F1}K";
                 }
 
-                // Форматирование настроения
                 string sentStr = "⚪ —";
                 if (sentiment.HasValue)
                 {
@@ -771,9 +802,21 @@ namespace BinanceBotWpf.ViewModels
                     sentStr = s > 0.3m ? $"🟢 {s:F2}" : s < -0.3m ? $"🔴 {s:F2}" : $"⚪ {s:F2}";
                 }
 
-                string rsiStr = rsi < 30 ? $"RSI:{rsi:F0}↓" : rsi > 70 ? $"RSI:{rsi:F0}↑" : $"RSI:{rsi:F0}";
+                string rsiTag = strongBuy ? "RSI:BUY" : strongSell ? "RSI:SELL" : "";
+                string macdTag = macdConfirmsBuy ? "MACD+" : macdConfirmsSell ? "MACD-" : "";
+                string strengthTag = "";
+                if (signal == TradeAction.Buy && (strongBuy || strongSell) && !strongSell)
+                    strengthTag = "STRONG ";
+                else if (signal == TradeAction.Sell && strongSell)
+                    strengthTag = "STRONG ";
+
+                string signalLabel = $"{strengthTag}{signal}";
+                string rsiStr = rsi < 30 ? $"RSI:{rsi:F0}\u2193" : rsi > 70 ? $"RSI:{rsi:F0}\u2191" : $"RSI:{rsi:F0}";
                 string macdStr = macdHist > 0 ? $"MACD:+{macdHist:F4}" : $"MACD:{macdHist:F4}";
-                string analysisText = $"{signal} | F:{fastSma:F2} / S:{slowSma:F2} | {rsiStr} {macdStr}";
+                string confirmStr = "";
+                if (strongBuy) confirmStr = " \u2705";
+                else if (strongSell) confirmStr = " \u274C";
+                string analysisText = $"{signalLabel} | F:{fastSma:F2} / S:{slowSma:F2} | {rsiStr} {macdStr}{confirmStr}";
 
                 if (_pairDict.TryGetValue (pair, out var existing))
                 {
@@ -781,6 +824,7 @@ namespace BinanceBotWpf.ViewModels
                     existing.Analysis = analysisText;
                     existing.MarketCap = mcapStr;
                     existing.Sentiment = sentStr;
+                    existing.Session = session;
                     existing.RowColor = bgBrush;
                     existing.ForegroundBrush = fgBrush;
                 }
@@ -793,6 +837,7 @@ namespace BinanceBotWpf.ViewModels
                         Analysis = analysisText,
                         MarketCap = mcapStr,
                         Sentiment = sentStr,
+                        Session = session,
                         RowColor = bgBrush,
                         ForegroundBrush = fgBrush
                     };

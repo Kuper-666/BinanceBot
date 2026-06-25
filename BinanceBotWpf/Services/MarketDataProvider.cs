@@ -75,7 +75,7 @@ namespace BinanceBotWpf.Services
                     else
                         signal.Action = TradeAction.Hold;
 
-                    _ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist);
+                    _ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist, MarketSessionService.GetSessionLabel ());
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth));
                 }
                 catch (Exception ex) { _logger?.Invoke ($"❌ Ошибка анализа {sym}: {ex.Message}"); }

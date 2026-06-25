@@ -81,6 +81,10 @@ namespace BinanceBotWpf.Models
         public int TradingStartHour { get; set; } = 9;   // МСК
         public int TradingEndHour { get; set; } = 23;    // МСК
 
+        // Фильтр по рыночным сессиям
+        public bool SessionFilterEnabled { get; set; } = false;
+        public bool TradeOnlyEuUs { get; set; } = false;  // Только Европа + Америка
+
         // Путь к файлу настроек
         private static readonly string SettingsPath = Path.Combine (
             AppDomain.CurrentDomain.BaseDirectory, "Data", "trading_settings.json");

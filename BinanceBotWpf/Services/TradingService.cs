@@ -700,7 +700,7 @@ namespace BinanceBotWpf.Services
 
                         var signal = new StrategyEngine ().AnalyzePairWithWallet (sym, closes, 9, 21, price);
 
-                        ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist);
+                        ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist, MarketSessionService.GetSessionLabel ());
                         await Task.Delay (150);
                     }
                     catch (Exception ex)
@@ -892,7 +892,8 @@ namespace BinanceBotWpf.Services
                                 analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0,
                                 null, null,
                                 analysis.Indicators.ContainsKey ("rsi") ? analysis.Indicators["rsi"] : 50,
-                                analysis.Indicators.ContainsKey ("macdHist") ? analysis.Indicators["macdHist"] : 0);
+                                analysis.Indicators.ContainsKey ("macdHist") ? analysis.Indicators["macdHist"] : 0,
+                                MarketSessionService.GetSessionLabel ());
                         }
 
                         // Cache analysis for dashboard
@@ -907,7 +908,20 @@ namespace BinanceBotWpf.Services
 
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         bool traded = false;
-                        if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+
+                        // Фильтр по рыночным сессиям
+                        var currentSession = MarketSessionService.GetCurrentSession ();
+                        bool sessionAllowed = !_tradingSettings?.SessionFilterEnabled ?? true
+                            || MarketSessionService.ShouldTrade (currentSession, _tradingSettings?.TradeOnlyEuUs ?? false);
+
+                        if (!sessionAllowed)
+                        {
+                            if (analysis.Action != TradeAction.Hold)
+                            {
+                                _ui?.AddLog ($"🕐 {sym}: {analysis.Action} пропущен — сессия {MarketSessionService.GetSessionLabel (currentSession)}");
+                            }
+                        }
+                        else if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             if (!_strategy.CheckNewsBeforePosition (sym))
                             {
@@ -970,13 +984,15 @@ namespace BinanceBotWpf.Services
                             List<string> activePairList;
                             lock (_pairsLock) { activePairList = new List<string> (_activePairs); }
 
+                            var sessionLabel = MarketSessionService.GetSessionLabel ();
                             var pricesData = activePairList.Select (sym =>
                             {
                                 var pairData = new Dictionary<string, object>
                                 {
                                     ["pair"] = sym,
                                     ["price"] = _webSocketManager?.GetCurrentPrice (sym) ?? 0m,
-                                    ["hasPosition"] = _positionManager.TryGet (sym, out _)
+                                    ["hasPosition"] = _positionManager.TryGet (sym, out _),
+                                    ["session"] = sessionLabel
                                 };
                                 if (_lastAnalysis.TryGetValue (sym, out var indicators))
                                 {
@@ -1065,7 +1081,6 @@ namespace BinanceBotWpf.Services
                                 ["openPositions"] = openPosCount,
                                 ["maxPositions"] = maxPos,
                                 ["leverage"] = _tradingSettings?.FuturesLeverage ?? 5,
-                                // Новые поля для дашборда
                                 ["winningTrades"] = _ui?.WinningTrades ?? 0,
                                 ["losingTrades"] = _ui?.LosingTrades ?? 0,
                                 ["bestPnL"] = _ui?.BestPnL ?? 0,
@@ -1076,6 +1091,9 @@ namespace BinanceBotWpf.Services
                                 ["futuresEnabled"] = _tradingSettings?.FuturesEnabled ?? false,
                                 ["gridBotRunning"] = _gridBot?.IsRunning ?? false,
                                 ["telegramStatus"] = _telegram?.IsEnabled == true ? "connected" : "disconnected",
+                                ["session"] = MarketSessionService.GetSessionLabel (),
+                                ["sessionFilterEnabled"] = _tradingSettings?.SessionFilterEnabled ?? false,
+                                ["tradeOnlyEuUs"] = _tradingSettings?.TradeOnlyEuUs ?? false,
                             });
 
                             // Trades — last 50 from history
