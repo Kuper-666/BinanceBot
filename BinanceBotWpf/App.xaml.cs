@@ -208,7 +208,7 @@ namespace BinanceBotWpf
                 return wallet;
             });
             services.AddSingleton (sp => new EarnManager ());
-            services.AddSingleton (sp => new BalanceRebalancer (0.1m));
+            services.AddSingleton (sp => new BalanceRebalancer ());
             services.AddSingleton<IPositionManager> (sp => new PositionManager (
                 Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "open_positions.json"),
                 msg => _fileLogger?.Info ("Position", msg)));

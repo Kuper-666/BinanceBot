@@ -33,8 +33,6 @@ namespace BinanceBotWpf.Models
         public event Action<string> OnLogGenerated;
         public string LastOrderError { get; private set; }
         public bool IsTestnet => _useTestnet;
-        public string GetApiKey () => _apiKey;
-        public string GetApiSecret () => _apiSecret;
 
         private void Log(string message) => OnLogGenerated?.Invoke (message);
 

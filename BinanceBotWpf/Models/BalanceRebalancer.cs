@@ -13,7 +13,7 @@ namespace BinanceBotWpf.Models
         public event Action<string> OnLogGenerated;
         private static readonly HashSet<string> BlacklistedAssets = new () { "RDNT", "NTRN", "LDBNB", "LDAIGENSYN", "BETH", "WBETH" };
 
-        public BalanceRebalancer (decimal tradePercent, decimal targetUsdcBalance = 5.50m)
+        public BalanceRebalancer (decimal targetUsdcBalance = 5.50m)
         {
             _targetUsdcBalance = Math.Max (targetUsdcBalance, 5.10m);
         }

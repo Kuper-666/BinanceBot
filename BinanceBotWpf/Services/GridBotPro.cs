@@ -45,10 +45,9 @@ namespace BinanceBotWpf.Services
 
         public bool IsRunning => _isRunning;
         public string Symbol => _symbol;
+        public event Action<TradeLog> OnTrade;
         public decimal CenterPrice => _centerPrice;
         public int ActiveOrdersCount => _activeBuyOrders.Count + _activeSellOrders.Count;
-        public decimal TotalProfit => _totalProfit;
-        public int TotalCycles => _totalCycles;
 
         public GridBotPro (IBinanceClient client, Action<string> logger)
         {
@@ -229,6 +228,19 @@ namespace BinanceBotWpf.Services
                                 _totalCycles++;
                                 _filledBuyPrices.Remove (orderId);
                                 _logger?.Invoke ($"📕 Sell исполнен @ {fillPrice:F6} | Профит: +{profit:F4} USDC (всего: {_totalProfit:F4}, циклов: {_totalCycles})");
+                                OnTrade?.Invoke (new TradeLog
+                                {
+                                    Symbol = _symbol,
+                                    EntryPrice = buyPrice,
+                                    ExitPrice = fillPrice,
+                                    Quantity = qty,
+                                    PnL = profit,
+                                    PnLPercent = (fillPrice / buyPrice - 1) * 100,
+                                    OpenTime = DateTime.UtcNow,
+                                    CloseTime = DateTime.UtcNow,
+                                    Reason = "GridPro Cycle",
+                                    Action = "GRID_SELL"
+                                });
                             }
 
                             decimal targetBuy = AlignToTick (fillPrice * (1 - _stepPercent));

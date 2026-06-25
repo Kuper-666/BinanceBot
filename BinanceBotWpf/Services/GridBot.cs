@@ -25,11 +25,13 @@ namespace BinanceBotWpf.Services
         private decimal[] _sellLevels;
         private readonly Dictionary<decimal, string> _activeOrderIds = new ();
         private readonly object _lock = new ();
+        private decimal _lastBuyPrice;
 
         public bool IsRunning => _isRunning;
         public string Symbol => _symbol;
         public decimal CenterPrice => _centerPrice;
         public int ActiveOrdersCount => _activeOrderIds.Count;
+        public event Action<TradeLog> OnTrade;
 
         public GridBot(BinanceClient client, PositionManager positionManager, Action<string> logger)
         {
@@ -241,14 +243,12 @@ namespace BinanceBotWpf.Services
                         decimal currentPrice = await _client.GetPriceAsync (_symbol);
                         if (currentPrice <= 0) continue;
 
-                        // Вычисляем на каком уровне была покупка
                         decimal closestBuyLevel = _buyLevels?
                             .OrderBy (l => Math.Abs (l - pos.EntryPrice))
                             .FirstOrDefault () ?? 0;
 
                         if (closestBuyLevel > 0)
                         {
-                            // Выставляем встречный sell-ордера на уровень выше
                             decimal targetSellPrice = pos.EntryPrice * (1 + Math.Abs (_buyLevels[0] - _sellLevels[0]) / _centerPrice);
                             decimal stepSize = await _client.GetStepSizeAsync (_symbol);
                             decimal sellQty = Math.Floor (pos.Quantity / stepSize) * stepSize;
@@ -262,6 +262,43 @@ namespace BinanceBotWpf.Services
                                     lock (_lock) { _activeOrderIds[targetSellPrice] = orderId; }
                                     _logger?.Invoke ($"🔲 GridBot: встречный sell {sellQty} @ {targetSellPrice:F4}");
                                 }
+                            }
+
+                            _lastBuyPrice = pos.EntryPrice;
+                        }
+                    }
+
+                    // Проверяем исполненные sell-ордера через активные ордера
+                    var openOrders = await _client.GetAllOrdersAsync (_symbol, limit: 50);
+                    if (openOrders != null)
+                    {
+                        var filledSells = openOrders
+                            .Where (o => o["status"]?.ToString () == "FILLED" && o["side"]?.ToString () == "SELL")
+                            .ToList ();
+
+                        foreach (var sell in filledSells)
+                        {
+                            decimal sellPrice = decimal.Parse (sell["price"]?.ToString () ?? "0");
+                            decimal sellQty = decimal.Parse (sell["executedQty"]?.ToString () ?? "0");
+
+                            if (_lastBuyPrice > 0 && sellPrice > 0 && sellQty > 0)
+                            {
+                                decimal profit = (sellPrice - _lastBuyPrice) * sellQty;
+                                decimal profitPct = (sellPrice / _lastBuyPrice - 1) * 100;
+                                OnTrade?.Invoke (new TradeLog
+                                {
+                                    Symbol = _symbol,
+                                    EntryPrice = _lastBuyPrice,
+                                    ExitPrice = sellPrice,
+                                    Quantity = sellQty,
+                                    PnL = profit,
+                                    PnLPercent = profitPct,
+                                    OpenTime = DateTime.UtcNow,
+                                    CloseTime = DateTime.UtcNow,
+                                    Reason = "Grid Cycle",
+                                    Action = "GRID_SELL"
+                                });
+                                _lastBuyPrice = 0;
                             }
                         }
                     }

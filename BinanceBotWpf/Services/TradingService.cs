@@ -41,6 +41,7 @@ namespace BinanceBotWpf.Services
         private SimpleEarnStrategy _earnStrategy;
         private FearGreedIndexProvider _fearGreedProvider;
         private PriceAlertManager _priceAlertManager;
+        private readonly Risk.RiskManager _riskManager = new ();
 
         private MainWindowViewModel _ui;
         private bool _isRunning;
@@ -51,6 +52,7 @@ namespace BinanceBotWpf.Services
         private List<string> _activePairs = new ();
         private readonly object _pairsLock = new ();
         private readonly Dictionary<string, DateTime> _lastBuyTime = new ();
+        private readonly List<DateTime> _recentTradeTimes = new ();
         private readonly List<string> _recentErrors = new ();
         private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
         private readonly object _klinesCacheLock = new ();
@@ -79,7 +81,7 @@ namespace BinanceBotWpf.Services
             _client = client;
             _wallet = wallet;
             _earn = earn;
-            _rebalancer = rebalancer ?? new BalanceRebalancer (0.1m);
+            _rebalancer = rebalancer ?? new BalanceRebalancer ();
             _telegramBotToken = telegramBotToken;
             _telegramChatId = telegramChatId;
 
@@ -338,6 +340,7 @@ namespace BinanceBotWpf.Services
             decimal investmentUsdc = balance * investmentPercent;
 
             _gridBot = new GridBot (_client, _positionManager, msg => _ui?.AddLog (msg));
+            _gridBot.OnTrade += trade => _ui?.AddTradeToHistory (trade);
             await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
         }
 
@@ -394,6 +397,7 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
 
             _gridBot = new GridBot (_client, _positionManager, msg => _ui?.AddLog (msg));
+            _gridBot.OnTrade += trade => _ui?.AddTradeToHistory (trade);
             await _gridBot.StartAsync (symbol, currentPrice, grid.RangePercent, grid.Levels, investmentUsdc, grid.UseDynamicStep);
         }
 
@@ -447,19 +451,22 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    // Используем отдельные фьючерсные ключи из BotConfig
-                    string futuresKey = _client.GetApiKey ();
-                    string futuresSecret = _client.GetApiSecret ();
+                    // Читаем ключи напрямую из BotConfig
+                    string futuresKey = "";
+                    string futuresSecret = "";
 
                     try
                     {
                         var cfg = BotConfig.LoadOrMigrate (out _);
                         if (cfg != null)
                         {
-                            if (!string.IsNullOrEmpty (cfg.FuturesApiKey))
-                                futuresKey = cfg.FuturesApiKey;
-                            if (!string.IsNullOrEmpty (cfg.FuturesApiSecret))
-                                futuresSecret = cfg.FuturesApiSecret;
+                            futuresKey = cfg.FuturesApiKey ?? "";
+                            futuresSecret = cfg.FuturesApiSecret ?? "";
+                            // Фоллбэк на спот-ключи если фьючерсные не заданы
+                            if (string.IsNullOrEmpty (futuresKey))
+                                futuresKey = cfg.ApiKey ?? "";
+                            if (string.IsNullOrEmpty (futuresSecret))
+                                futuresSecret = cfg.ApiSecret ?? "";
                         }
                     }
                     catch { }
@@ -535,6 +542,12 @@ namespace BinanceBotWpf.Services
             }
         }
 
+        private static readonly string[] _whitelistSymbols = new[]
+        {
+            "BTC", "ETH", "BNB", "SOL", "XRP",
+            "DOGE", "ADA", "SUI", "NEAR", "LINK"
+        };
+
         private async Task UpdatePairs()
         {
             try
@@ -546,39 +559,26 @@ namespace BinanceBotWpf.Services
                 }
 
                 decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
-                int maxPairs = balance < 50 ? 5 : balance < 200 ? 7 : balance < 500 ? 10 : 15;
-
-                // Загружаем minNotional для всех пар за один запрос
-                var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
-
                 string quoteCurrency = _ui?.QuoteCurrency ?? "USDC";
-                bool loadUsdc = quoteCurrency == "USDC" || quoteCurrency == "Both";
-                bool loadUsdt = quoteCurrency == "USDT" || quoteCurrency == "Both";
+                string quote = quoteCurrency == "USDT" ? "USDT" : "USDC";
 
-                // Запрашиваем пары по выбранной котировке
-                var usdcPairs = loadUsdc ? await _client.GetTopVolumePairsAsync ("USDC", maxPairs * 4) : new List<string> ();
-                var usdtPairs = loadUsdt ? await _client.GetTopVolumePairsAsync ("USDT", maxPairs * 4) : new List<string> ();
+                // Белый список ликвидных пар
+                var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
+                var allPairs = new List<string> ();
 
-                var allPairs = usdcPairs.Concat (usdtPairs)
-                    .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
-                    .Select (g => g.First ())
-                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD") && !p.Contains ("EUR"))
-                    .Where (p =>
+                foreach (string asset in _whitelistSymbols)
+                {
+                    string pair = asset + quote;
+                    if (allMinNotionals.TryGetValue (pair, out decimal minNot))
                     {
-                        if (allMinNotionals.TryGetValue (p, out decimal minNot))
-                        {
-                            // Строго: баланс должен покрывать minNotional с запасом 2x
-                            return balance >= minNot * 2m;
-                        }
-                        return true;
-                    })
-                    .OrderBy (p =>
+                        if (balance >= minNot * 2m)
+                            allPairs.Add (pair);
+                    }
+                    else
                     {
-                        allMinNotionals.TryGetValue (p, out decimal mn);
-                        return mn;
-                    })
-                    .Take (maxPairs)
-                    .ToList ();
+                        allPairs.Add (pair);
+                    }
+                }
 
                 if (allPairs.Count > 0)
                 {
@@ -756,25 +756,33 @@ namespace BinanceBotWpf.Services
         {
             while (_isRunning)
             {
-                if (!_balanceLoopEnabled) { await Task.Delay (5000); continue; }
-                await Task.Delay (60000);
-                if (!_isRunning) break;
-
-                await _wallet.UpdateBalance ();
-                decimal bal = _wallet.GetTotalBalance ("USDC");
-                _ui?.UpdateWalletDisplay (bal.ToString ("F2"));
-                _ui?.UpdateDrawdown (bal);
-                _ui?.AddBalancePoint (DateTime.Now, bal);
-
-                // Проверка и создание бэкапа (раз в сутки)
-                await _backupService.CheckAndBackupAsync ();
-
-                // Ребаланс при низком балансе
-                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
-                if (spotBalance < 10)
+                try
                 {
-                    var openSymbols = new HashSet<string> (_positionManager.GetSymbols ());
-                    await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning, openSymbols);
+                    if (!_balanceLoopEnabled) { await Task.Delay (5000); continue; }
+                    await Task.Delay (60000);
+                    if (!_isRunning) break;
+
+                    await _wallet.UpdateBalance ();
+                    decimal bal = _wallet.GetTotalBalance ("USDC");
+                    _ui?.UpdateWalletDisplay (bal.ToString ("F2"));
+                    _ui?.UpdateDrawdown (bal);
+                    _ui?.AddBalancePoint (DateTime.Now, bal);
+
+                    // Проверка и создание бэкапа (раз в сутки)
+                    await _backupService.CheckAndBackupAsync ();
+
+                    // Ребаланс при низком балансе
+                    decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                    if (spotBalance < 10)
+                    {
+                        var openSymbols = new HashSet<string> (_positionManager.GetSymbols ());
+                        await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning, openSymbols);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _ui?.AddLog ($"❌ BalanceLoop ошибка: {ex.Message}");
+                    await Task.Delay (5000);
                 }
             }
         }
@@ -841,6 +849,9 @@ namespace BinanceBotWpf.Services
                         await Task.Delay (15000);
                         continue;
                     }
+
+                    // Обновляем RiskManager с текущим балансом
+                    _riskManager.BalanceUSDC = spotBalance;
 
                     // 3. Получение списка пар
                     List<string> pairs;
@@ -949,7 +960,13 @@ namespace BinanceBotWpf.Services
                         }
                         else if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
-                            if (!_strategy.CheckNewsBeforePosition (sym))
+                            // Проверка лимитов RiskManager
+                            var riskCheck = _riskManager.CanOpenPosition (_positionManager.Count, spotBalance * 0.02m);
+                            if (!riskCheck.Allowed)
+                            {
+                                _ui?.AddLog ($"🛡️ {sym}: покупка заблокирована — {riskCheck.Reason}");
+                            }
+                            else if (!_strategy.CheckNewsBeforePosition (sym))
                             {
                                 _ui?.AddLog ($"🚫 {sym}: позиция заблокирована высокорисковыми новостями");
                             }
@@ -1236,12 +1253,28 @@ namespace BinanceBotWpf.Services
             if (qty * price > riskAmount * 1.01m)
                 _ui?.AddLog ($"ℹ️ {symbol}: риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
 
-            // Кулдаун
-            if (_lastBuyTime.TryGetValue (symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (2))
+            // Проверка минимальной прибыли: если TP < 0.6% — сделка неприбыльна даже с лимитными ордерами
+            if (aiRisk.TakeProfitPercent < 0.006m)
             {
-                _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — кулдаун ({(TimeSpan.FromMinutes (2) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)");
+                _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — TP {aiRisk.TakeProfitPercent:P2} < минимального 0.6%");
                 return;
             }
+
+            // Кулдаун на пару — 15 минут
+            if (_lastBuyTime.TryGetValue (symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (15))
+            {
+                _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — кулдаун ({(TimeSpan.FromMinutes (15) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)");
+                return;
+            }
+
+            // Глобальный кулдаун: не более 3 сделок в час
+            _recentTradeTimes.RemoveAll (t => DateTime.UtcNow - t > TimeSpan.FromHours (1));
+            if (_recentTradeTimes.Count >= 3)
+            {
+                _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — глобальный лимит 3 сделки/час");
+                return;
+            }
+
             _lastBuyTime[symbol] = DateTime.UtcNow;
 
             // === SL/TP от ИИ с адаптивным множителем ===
@@ -1252,9 +1285,14 @@ namespace BinanceBotWpf.Services
 
             _ui?.AddLog ($"📐 {symbol}: Risk={riskAmount:F2} ({riskPerTrade:P2}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2}), R/R 1:{riskRewardRatio:F1}");
 
-            // Исполнение ордера
-            _ui?.AddLog ($"💵 Покупка {qty} {symbol} по {price:F4}");
-            var order = await _client.PlaceOrder (symbol, "BUY", "MARKET", qty);
+            // Исполнение ордера — лимитный на 0.2% ниже рынка (maker fee)
+            decimal tickSize = await _client.GetTickSizeAsync (symbol);
+            decimal limitPrice = price * 0.998m;
+            if (tickSize > 0)
+                limitPrice = Math.Floor (limitPrice / tickSize) * tickSize;
+
+            _ui?.AddLog ($"💵 Покупка {qty} {symbol} | лимит {limitPrice:F4} ( рынок {price:F4}, -0.2%)");
+            var order = await _client.PlaceLimitOrder (symbol, "BUY", qty, limitPrice);
 
             if (order != null)
             {
@@ -1262,16 +1300,17 @@ namespace BinanceBotWpf.Services
                 {
                     Symbol = symbol,
                     Quantity = qty,
-                    EntryPrice = price,
+                    EntryPrice = limitPrice,
                     OpenTime = DateTime.UtcNow,
                     StopLossPrice = slPrice,
                     TakeProfitPrice = tpPrice,
-                    HighestPrice = price,
-                    HighestPriceSinceOpen = price,
+                    HighestPrice = limitPrice,
+                    HighestPriceSinceOpen = limitPrice,
                     OcoOrderListId = 0
                 };
 
                 _positionManager.AddOrUpdate (symbol, pos);
+                _recentTradeTimes.Add (DateTime.UtcNow);
                 _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4} | R/R 1:{riskRewardRatio:F1}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
@@ -1347,13 +1386,18 @@ namespace BinanceBotWpf.Services
                 await _client.CancelOcoOrder (symbol, pos.OcoOrderListId);
             }
 
-            // Продажа
-            _ui?.AddLog ($"💵 Продажа {qtyToSell} {symbol} по {price:F4}");
-            var order = await _client.PlaceOrder (symbol, "SELL", "MARKET", qtyToSell);
+            // Продажа — лимитный на 0.2% выше рынка (maker fee)
+            decimal tickSize = await _client.GetTickSizeAsync (symbol);
+            decimal limitPrice = price * 1.002m;
+            if (tickSize > 0)
+                limitPrice = Math.Ceiling (limitPrice / tickSize) * tickSize;
+
+            _ui?.AddLog ($"💵 Продажа {qtyToSell} {symbol} | лимит {limitPrice:F4} ( рынок {price:F4}, +0.2%)");
+            var order = await _client.PlaceLimitOrder (symbol, "SELL", qtyToSell, limitPrice);
             if (order != null)
             {
-                decimal pnl = ( price - pos.EntryPrice ) * qtyToSell;
-                decimal pnlPct = ( price / pos.EntryPrice - 1 ) * 100;
+                decimal pnl = ( limitPrice - pos.EntryPrice ) * qtyToSell;
+                decimal pnlPct = ( limitPrice / pos.EntryPrice - 1 ) * 100;
 
                 _ui?.AddLog ($"🔒 Закрыта {symbol}: PnL {pnl:F2} ({pnlPct:F2}%)");
 
@@ -1361,7 +1405,7 @@ namespace BinanceBotWpf.Services
                 {
                     Symbol = symbol,
                     EntryPrice = pos.EntryPrice,
-                    ExitPrice = price,
+                    ExitPrice = limitPrice,
                     Quantity = qtyToSell,
                     PnL = pnl,
                     PnLPercent = pnlPct,

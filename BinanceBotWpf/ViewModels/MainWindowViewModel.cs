@@ -71,15 +71,15 @@ namespace BinanceBotWpf.ViewModels
         private bool _isRunning = false;
 
         // Параметры стратегии
-        private int _fastSma = 9;
-        private int _slowSma = 21;
-        private int _rsiBuyThreshold = 30;
-        private int _rsiSellThreshold = 70;
-        private decimal _stopLossPercent = 0.02m;
-        private decimal _takeProfitPercent = 0.04m;
-        private decimal _trailingStopPercent = 0.02m;
-        private decimal _minBalanceForTrading = 20m;
-        private decimal _maxRiskPercent = 0.25m;
+        private int _fastSma = 12;
+        private int _slowSma = 26;
+        private int _rsiBuyThreshold = 25;
+        private int _rsiSellThreshold = 75;
+        private decimal _stopLossPercent = 0.005m;
+        private decimal _takeProfitPercent = 0.008m;
+        private decimal _trailingStopPercent = 0.01m;
+        private decimal _minBalanceForTrading = 10m;
+        private decimal _maxRiskPercent = 0.10m;
 
         // История и статистика
         private ObservableCollection<TradeLog> _tradesHistory = new ();
@@ -97,8 +97,8 @@ namespace BinanceBotWpf.ViewModels
         private decimal _totalLossSum = 0;
         private string _avgProfitLossDisplay = "Ср. приб/убыток: 0 / 0";
         private int _currentPositionsCount = 0;
-        private int _maxPositions = 3;
-        private string _positionsStatusText = "0/3 нет открытых";
+        private int _maxPositions = 2;
+        private string _positionsStatusText = "0/2 нет открытых";
         private string _riskPercentDisplay = "Риск: 0%";
         private TradingSettings _tradingSettings;
 
@@ -132,15 +132,15 @@ namespace BinanceBotWpf.ViewModels
         public string WalletBalance { get => _walletBalance; set { _walletBalance = value; OnPropertyChanged (); } }
         public bool IsRunning { get => _isRunning; set { _isRunning = value; OnPropertyChanged (); } }
 
-        public int FastSma { get => _fastSma; set { _fastSma = value; OnPropertyChanged (); SaveSettings (); } }
-        public int SlowSma { get => _slowSma; set { _slowSma = value; OnPropertyChanged (); SaveSettings (); } }
-        public int RsiBuyThreshold { get => _rsiBuyThreshold; set { _rsiBuyThreshold = value; OnPropertyChanged (); SaveSettings (); } }
-        public int RsiSellThreshold { get => _rsiSellThreshold; set { _rsiSellThreshold = value; OnPropertyChanged (); SaveSettings (); } }
+        public int FastSma { get => _fastSma; set { _fastSma = Math.Clamp (value, 3, 50); OnPropertyChanged (); SaveSettings (); } }
+        public int SlowSma { get => _slowSma; set { _slowSma = Math.Clamp (value, 10, 200); OnPropertyChanged (); SaveSettings (); } }
+        public int RsiBuyThreshold { get => _rsiBuyThreshold; set { _rsiBuyThreshold = Math.Clamp (value, 5, 45); OnPropertyChanged (); SaveSettings (); } }
+        public int RsiSellThreshold { get => _rsiSellThreshold; set { _rsiSellThreshold = Math.Clamp (value, 55, 95); OnPropertyChanged (); SaveSettings (); } }
         public decimal StopLossPercent { get => _stopLossPercent; set { _stopLossPercent = Math.Clamp (value, 0.005m, 0.10m); OnPropertyChanged (); SaveSettings (); } }
-        public decimal TakeProfitPercent { get => _takeProfitPercent; set { _takeProfitPercent = Math.Clamp (value, 0.01m, 0.20m); OnPropertyChanged (); SaveSettings (); } }
-        public decimal TrailingStopPercent { get => _trailingStopPercent; set { _trailingStopPercent = value; OnPropertyChanged (); SaveSettings (); } }
-        public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { _minBalanceForTrading = value; OnPropertyChanged (); SaveSettings (); } }
-        public decimal MaxRiskPercent { get => _maxRiskPercent; set { _maxRiskPercent = value; OnPropertyChanged (); SaveSettings (); } }
+        public decimal TakeProfitPercent { get => _takeProfitPercent; set { _takeProfitPercent = Math.Clamp (value, 0.006m, 0.20m); OnPropertyChanged (); SaveSettings (); } }
+        public decimal TrailingStopPercent { get => _trailingStopPercent; set { _trailingStopPercent = Math.Clamp (value, 0.005m, 0.10m); OnPropertyChanged (); SaveSettings (); } }
+        public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { _minBalanceForTrading = Math.Clamp (value, 5m, 100m); OnPropertyChanged (); SaveSettings (); } }
+        public decimal MaxRiskPercent { get => _maxRiskPercent; set { _maxRiskPercent = Math.Clamp (value, 0.01m, 0.25m); OnPropertyChanged (); SaveSettings (); } }
 
         // Свойства обновлений
         public bool IsUpdateAvailable

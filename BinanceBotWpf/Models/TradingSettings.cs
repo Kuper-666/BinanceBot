@@ -27,8 +27,8 @@ namespace BinanceBotWpf.Models
         public int MaxConcurrentTrades { get; set; } = 2;         // Максимум открытых позиций
 
         // Настройки защиты (StopLossPercent вычисляется динамически через ATR или RiskAmount)
-        public decimal StopLossPercent { get; set; } = 0.015m;     // 1.5% — fallback если ATR недоступен
-        public decimal TakeProfitPercent { get; set; } = 0.045m;   // 4.5% = 1.5% * 3 (R/R 1:3)
+        public decimal StopLossPercent { get; set; } = 0.005m;     // 0.5% — tighter for 50 USDC
+        public decimal TakeProfitPercent { get; set; } = 0.008m;   // 0.8% — min profitable with maker fees
         public decimal TrailingStopPercent { get; set; } = 0.01m;  // 1%
         public decimal PartialCloseProfit { get; set; } = 0.05m;   // 5% - частичная фиксация
 
