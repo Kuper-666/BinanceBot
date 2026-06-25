@@ -346,11 +346,11 @@ namespace BinanceBotWpf.Services
 
             if (signal == TradeAction.Buy)
             {
-                return rsi < 50 || currentPrice <= bbLower * 1.02m;
+                return rsi < 70 && currentPrice < bbUpper;
             }
             else if (signal == TradeAction.Sell)
             {
-                return rsi > 50 || currentPrice >= bbUpper * 0.98m;
+                return rsi > 30 && currentPrice > bbLower;
             }
 
             return false;

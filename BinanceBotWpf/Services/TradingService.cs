@@ -79,7 +79,7 @@ namespace BinanceBotWpf.Services
             _client = client;
             _wallet = wallet;
             _earn = earn;
-            _rebalancer = rebalancer ?? new BalanceRebalancer (new object (), 0.1m);
+            _rebalancer = rebalancer ?? new BalanceRebalancer (0.1m);
             _telegramBotToken = telegramBotToken;
             _telegramChatId = telegramChatId;
 

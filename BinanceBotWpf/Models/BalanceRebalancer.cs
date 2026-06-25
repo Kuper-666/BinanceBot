@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,14 +9,12 @@ namespace BinanceBotWpf.Models
     /// <summary>Автоматическая конвертация активов в USDC для поддержания баланса.</summary>
     public class BalanceRebalancer
     {
-        private readonly object _consoleLock;
         private decimal _targetUsdcBalance = 5.50m;
         public event Action<string> OnLogGenerated;
         private static readonly HashSet<string> BlacklistedAssets = new () { "RDNT", "NTRN", "LDBNB", "LDAIGENSYN", "BETH", "WBETH" };
 
-        public BalanceRebalancer(object consoleLock, decimal tradePercent, decimal targetUsdcBalance = 5.50m)
+        public BalanceRebalancer (decimal tradePercent, decimal targetUsdcBalance = 5.50m)
         {
-            _consoleLock = consoleLock;
             _targetUsdcBalance = Math.Max (targetUsdcBalance, 5.10m);
         }
 

@@ -149,10 +149,9 @@ namespace BinanceBotWpf
             }
 
             // Создаём сервисы
-            object consoleLock = new object ();
             var walletManager = new WalletManager (binanceClient);
-            var earnManager = new EarnManager (consoleLock);
-            var rebalancer = new BalanceRebalancer (consoleLock, 0.1m);
+            var earnManager = new EarnManager ();
+            var rebalancer = new BalanceRebalancer (0.1m);
 
             walletManager.OnLogGenerated += (msg) => _fileLogger?.Info ("Wallet", msg);
             earnManager.OnLogGenerated += (msg) => _fileLogger?.Info ("Earn", msg);

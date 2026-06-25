@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -8,16 +8,14 @@ namespace BinanceBotWpf.Models
     /// <summary>Управление Earn: выкуп активов на спот.</summary>
     public class EarnManager
     {
-        private readonly object _consoleLock;
         private readonly HashSet<string> _pendingRedemptions = new ();
         private readonly object _pendingLock = new ();
         private DateTime _lastNoFundsLog = DateTime.MinValue;
 
         public event Action<string> OnLogGenerated;
 
-        public EarnManager(object consoleLock)
+        public EarnManager ()
         {
-            _consoleLock = consoleLock ?? new object ();
         }
 
         /// <summary>Обеспечивает наличие requiredAmount актива на споте, выкупая из Earn при необходимости.</summary>
