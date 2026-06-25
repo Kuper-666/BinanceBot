@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
+using BinanceBotWpf.Services;
 using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Models
@@ -13,7 +14,7 @@ namespace BinanceBotWpf.Models
         public decimal Total => Spot + Earn;
     }
 
-    public class WalletManager
+    public class WalletManager : IWalletManager
     {
         private readonly BinanceClient _client;
         private readonly Dictionary<string, AssetBalance> _balances;

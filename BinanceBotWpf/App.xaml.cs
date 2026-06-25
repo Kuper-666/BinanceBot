@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.ViewModels;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace BinanceBotWpf
 {
@@ -15,7 +16,7 @@ namespace BinanceBotWpf
     {
         private static Mutex? _appMutex;
         private static string LogDir => Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
-        private static ServiceProvider? _serviceProvider;
+        private static IServiceProvider? _serviceProvider;
         private static FileLogger? _fileLogger;
 
         protected override async void OnStartup (StartupEventArgs e)
@@ -25,7 +26,6 @@ namespace BinanceBotWpf
             _fileLogger = new FileLogger ();
             _fileLogger.Info ("App", "Запуск приложения");
 
-            // #27: Глобальный обработчик исключений UI
             DispatcherUnhandledException += (sender, args) =>
             {
                 string msg = $"[UI Exception] {args.Exception}";
@@ -34,7 +34,6 @@ namespace BinanceBotWpf
                 args.Handled = true;
             };
 
-            // #1: Глобальный обработчик неотслеживаемых исключений Task
             TaskScheduler.UnobservedTaskException += (sender, args) =>
             {
                 string msg = $"[UnobservedTask] {args.Exception?.InnerException?.Message ?? args.Exception?.Message}";
@@ -43,7 +42,6 @@ namespace BinanceBotWpf
                 args.SetObserved ();
             };
 
-            // #3: Защита от запуска нескольких копий + гарантированное освобождение Mutex
             const string mutexName = "Global\\{B9E8F2A1-5C7D-4A3E-8F2C-9D7E5B4A3C2F}";
             bool createdNew;
             _appMutex = new Mutex (true, mutexName, out createdNew);
@@ -60,7 +58,6 @@ namespace BinanceBotWpf
             }
             catch (Exception ex)
             {
-                // #7: Логируем полный стек исключения
                 string fullError = $"[FATAL] {ex}";
                 System.Diagnostics.Debug.WriteLine (fullError);
                 WriteCrashLog (fullError);
@@ -74,7 +71,6 @@ namespace BinanceBotWpf
 
         private async Task StartBotAsync ()
         {
-            // #2: Загрузка конфигурации
             BotConfig? config;
             try
             {
@@ -119,10 +115,8 @@ namespace BinanceBotWpf
             string telegramBotToken = config.TelegramBotToken;
             string telegramChatId = config.TelegramChatId;
 
-            // #6: Валидация Telegram-токена и ChatId
             bool telegramConfigured = !string.IsNullOrEmpty (telegramBotToken) && !string.IsNullOrEmpty (telegramChatId);
 
-            // Валидация API ключей
             if (string.IsNullOrEmpty (apiKey) || string.IsNullOrEmpty (apiSecret) ||
                 apiKey == "YOUR_API_KEY_HERE" || apiSecret == "YOUR_API_SECRET_HERE")
             {
@@ -133,49 +127,29 @@ namespace BinanceBotWpf
                 return;
             }
 
-            // Инициализация бота
-            var binanceClient = new BinanceClient (apiKey, apiSecret, isTestnet);
+            var services = new ServiceCollection ();
+            ConfigureServices (services, apiKey, apiSecret, isTestnet, minUsdcBalance, telegramBotToken, telegramChatId);
+            _serviceProvider = services.BuildServiceProvider ();
+
+            var binanceClient = _serviceProvider.GetRequiredService<IBinanceClient> ();
             await binanceClient.SyncTimeAsync ();
 
-            // #8: Проверка serverInfo
             string serverInfo;
             try
             {
-                serverInfo = await binanceClient.GetServerInfo ();
+                serverInfo = await ((BinanceClient)binanceClient).GetServerInfo ();
             }
             catch
             {
                 serverInfo = "Не удалось подключиться к серверу";
             }
 
-            // Создаём сервисы
-            var walletManager = new WalletManager (binanceClient);
-            var earnManager = new EarnManager ();
-            var rebalancer = new BalanceRebalancer (0.1m);
-
-            walletManager.OnLogGenerated += (msg) => _fileLogger?.Info ("Wallet", msg);
-            earnManager.OnLogGenerated += (msg) => _fileLogger?.Info ("Earn", msg);
-            rebalancer.OnLogGenerated += (msg) => _fileLogger?.Info ("Rebalancer", msg);
-            binanceClient.OnLogGenerated += (msg) => _fileLogger?.Info ("Binance", msg);
-
-            var tradingService = new TradingService (
-                binanceClient, walletManager, earnManager, rebalancer,
-                minUsdcBalance, telegramBotToken, telegramChatId);
-
-            // #22: Регистрация сервисов через DI
-            _serviceProvider = new ServiceProvider ();
-            _serviceProvider.Register (binanceClient);
-            _serviceProvider.Register<ITradingService> (tradingService);
-            _serviceProvider.Register (walletManager);
-            _serviceProvider.Register (earnManager);
-            _serviceProvider.Register (rebalancer);
-
-            var viewModel = new MainWindowViewModel (tradingService, isTestnet);
+            var viewModel = _serviceProvider.GetRequiredService<MainWindowViewModel> ();
+            var tradingService = _serviceProvider.GetRequiredService<TradingService> ();
             tradingService.SetLogger (viewModel.AddLog);
 
             var mainWindow = new MainWindow (viewModel);
 
-            // #17: Использование встроенного ресурса для иконки
             try
             {
                 var iconUri = new Uri ("pack://application:,,,/Resources/favicon.ico", UriKind.Absolute);
@@ -183,7 +157,6 @@ namespace BinanceBotWpf
             }
             catch
             {
-                // Fallback: ищем на диске
                 try
                 {
                     string iconPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "binance_bot.ico");
@@ -196,7 +169,6 @@ namespace BinanceBotWpf
             mainWindow.Title = $"Торговый помощник v{AppConstants.AppVersion}";
             mainWindow.Show ();
 
-            // #5: Маскировка API ключа в логе
             string maskedKey = apiKey.Length > 4
                 ? new string ('*', apiKey.Length - 4) + apiKey[^4..]
                 : "****";
@@ -208,7 +180,6 @@ namespace BinanceBotWpf
                 viewModel.AddLog ("⚠️ Telegram не настроен — уведомления отключены");
             }
 
-            // #4: Task.Run с обработкой ошибок
             _ = Task.Run (async () =>
             {
                 try
@@ -223,9 +194,41 @@ namespace BinanceBotWpf
             });
         }
 
+        private static void ConfigureServices (ServiceCollection services,
+            string apiKey, string apiSecret, bool isTestnet,
+            decimal minUsdcBalance, string telegramBotToken, string telegramChatId)
+        {
+            services.AddSingleton<IEventBus, EventBus> ();
+            services.AddSingleton<IBinanceClient> (sp => new BinanceClient (apiKey, apiSecret, isTestnet));
+            services.AddSingleton<IWalletManager> (sp =>
+            {
+                var client = sp.GetRequiredService<IBinanceClient> ();
+                var wallet = new WalletManager ((BinanceClient)client);
+                wallet.OnLogGenerated += msg => _fileLogger?.Info ("Wallet", msg);
+                return wallet;
+            });
+            services.AddSingleton (sp => new EarnManager ());
+            services.AddSingleton (sp => new BalanceRebalancer (0.1m));
+            services.AddSingleton<IPositionManager> (sp => new PositionManager (
+                Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "open_positions.json"),
+                msg => _fileLogger?.Info ("Position", msg)));
+            services.AddSingleton (sp => new TradingService (
+                (BinanceClient)sp.GetRequiredService<IBinanceClient> (),
+                (WalletManager)sp.GetRequiredService<IWalletManager> (),
+                sp.GetRequiredService<EarnManager> (),
+                sp.GetRequiredService<BalanceRebalancer> (),
+                minUsdcBalance, telegramBotToken, telegramChatId));
+            services.AddSingleton (sp => new MainWindowViewModel (
+                sp.GetRequiredService<TradingService> (), isTestnet));
+        }
+
         protected override void OnExit (ExitEventArgs e)
         {
             _fileLogger?.Info ("App", "Завершение приложения");
+
+            if (_serviceProvider is IDisposable disposable)
+                disposable.Dispose ();
+
             _fileLogger?.Dispose ();
             _fileLogger = null;
 

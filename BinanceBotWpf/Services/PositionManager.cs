@@ -13,7 +13,7 @@ using System.Threading.Tasks;
 namespace BinanceBotWpf.Services
 {
     /// <summary>Управление открытыми позициями (загрузка, сохранение, добавление, удаление).</summary>
-    public class PositionManager
+    public class PositionManager : IPositionManager
     {
         private readonly string _positionsFilePath;
         private readonly Action<string> _logger;
@@ -30,7 +30,7 @@ namespace BinanceBotWpf.Services
         }
  
         /// <summary>Загружает позиции из файла, проверяет балансы на споте и в Earn.</summary>
-        public async Task LoadAsync(BinanceClient client, Func<string, Task<decimal>> getPrice, Func<decimal, decimal> getStopLossPercent, Func<decimal, decimal> getTakeProfitPercent)
+        public async Task LoadAsync(IBinanceClient client, Func<string, Task<decimal>> getPrice, Func<decimal, decimal> getStopLossPercent, Func<decimal, decimal> getTakeProfitPercent)
         {
             if (!File.Exists (_positionsFilePath)) return;
             try

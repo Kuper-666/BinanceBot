@@ -24,7 +24,7 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public void Register_ThenGet_ReturnsSameInstance ()
         {
-            var sp = new ServiceProvider ();
+            var sp = new ServiceRegistry ();
             var svc = new TestServiceA ();
             sp.Register<ITestService> (svc);
 
@@ -35,14 +35,14 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public void Get_Unregistered_ThrowsInvalidOperation ()
         {
-            var sp = new ServiceProvider ();
+            var sp = new ServiceRegistry ();
             Assert.Throws<InvalidOperationException> (() => sp.Get<ITestService> ());
         }
 
         [Fact]
         public void TryGet_Unregistered_ReturnsFalse ()
         {
-            var sp = new ServiceProvider ();
+            var sp = new ServiceRegistry ();
             bool found = sp.TryGet<ITestService> (out var svc);
 
             Assert.False (found);
@@ -52,7 +52,7 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public void TryGet_Registered_ReturnsTrue ()
         {
-            var sp = new ServiceProvider ();
+            var sp = new ServiceRegistry ();
             var svc = new TestServiceA ();
             sp.Register<ITestService> (svc);
 
@@ -65,7 +65,7 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public void RegisterFactory_CreatesInstanceOnFirstGet ()
         {
-            var sp = new ServiceProvider ();
+            var sp = new ServiceRegistry ();
             int callCount = 0;
             sp.RegisterFactory<ITestService> (() =>
             {
@@ -79,14 +79,14 @@ namespace BinanceBotWpf.Tests
             Assert.Equal (1, callCount);
 
             var result2 = sp.Get<ITestService> ();
-            Assert.Equal (1, callCount); // Factory called only once, cached
+            Assert.Equal (1, callCount);
             Assert.Same (result1, result2);
         }
 
         [Fact]
         public void Register_OverwritesPrevious ()
         {
-            var sp = new ServiceProvider ();
+            var sp = new ServiceRegistry ();
             var svc1 = new TestServiceA ();
             var svc2 = new TestServiceB ();
             sp.Register<ITestService> (svc1);

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 namespace BinanceBotWpf.Services
 {
-    public class ServiceProvider
+    public class ServiceRegistry
     {
         private readonly Dictionary<Type, object> _services = new ();
         private readonly Dictionary<Type, Func<object>> _factories = new ();
