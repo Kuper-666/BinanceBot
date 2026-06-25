@@ -31,7 +31,7 @@ namespace BinanceBotWpf.Tests
         public void Log_CreatesLogFile ()
         {
             var logger = new FileLogger (_testDir);
-            logger.Info ("Test", "Hello");
+            logger.Error ("Test", "Hello");
             logger.Dispose ();
 
             string[] files = Directory.GetFiles (_testDir, "bot_*.log");
@@ -42,12 +42,12 @@ namespace BinanceBotWpf.Tests
         public void Log_WritesContentToFile ()
         {
             var logger = new FileLogger (_testDir);
-            logger.Info ("Test", "Message123");
+            logger.Error ("Test", "Message123");
             logger.Dispose ();
 
             string content = ReadLogFile ();
             Assert.Contains ("Message123", content);
-            Assert.Contains ("INFO", content);
+            Assert.Contains ("ERROR", content);
             Assert.Contains ("Test", content);
         }
 
@@ -55,7 +55,7 @@ namespace BinanceBotWpf.Tests
         public void Log_WritesTimestamp ()
         {
             var logger = new FileLogger (_testDir);
-            logger.Warn ("Src", "Warning");
+            logger.Error ("Src", "Warning");
             logger.Dispose ();
 
             string content = ReadLogFile ();
@@ -77,9 +77,9 @@ namespace BinanceBotWpf.Tests
         public void Log_MultipleCalls_AllWritten ()
         {
             var logger = new FileLogger (_testDir);
-            logger.Info ("A", "First");
-            logger.Info ("B", "Second");
-            logger.Warn ("C", "Third");
+            logger.Error ("A", "First");
+            logger.Error ("B", "Second");
+            logger.Error ("C", "Third");
             logger.Dispose ();
 
             string content = ReadLogFile ();
@@ -89,10 +89,27 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
+        public void Log_InfoAndWarn_NotWritten ()
+        {
+            var logger = new FileLogger (_testDir);
+            logger.Info ("Test", "info message");
+            logger.Warn ("Test", "warn message");
+            logger.Dispose ();
+
+            string[] files = Directory.GetFiles (_testDir, "bot_*.log");
+            if (files.Length > 0)
+            {
+                string content = File.ReadAllText (files[0]);
+                Assert.DoesNotContain ("info message", content);
+                Assert.DoesNotContain ("warn message", content);
+            }
+        }
+
+        [Fact]
         public void Dispose_CanBeCalledMultipleTimes ()
         {
             var logger = new FileLogger (_testDir);
-            logger.Info ("Test", "data");
+            logger.Error ("Test", "data");
             logger.Dispose ();
             logger.Dispose ();
         }
@@ -102,7 +119,7 @@ namespace BinanceBotWpf.Tests
         {
             var logger = new FileLogger (_testDir);
             logger.Dispose ();
-            logger.Info ("Test", "should not throw");
+            logger.Error ("Test", "should not throw");
         }
     }
 }
