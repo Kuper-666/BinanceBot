@@ -491,12 +491,23 @@ namespace BinanceBotWpf.Services
             // Авто-запуск сетки с параметрами от ИИ (если включена)
             if (_tradingSettings?.GridBotEnabled == true)
             {
-                string gridSymbol = _tradingSettings.GridSymbol ?? "BTCUSDC";
+                string gridSymbol = _tradingSettings.GridSymbol ?? "DOGEUSDC";
                 _ui?.AddLog ($"🤖 Автозапуск ИИ-сетки для {gridSymbol}...");
                 _ = Task.Run (async () =>
                 {
-                    await Task.Delay (3000); // Даём время на загрузку цен
-                    await StartAutoGridAsync (gridSymbol);
+                    for (int attempt = 0; attempt < 10; attempt++)
+                    {
+                        await Task.Delay (3000);
+                        decimal price = GetCurrentPrice (gridSymbol);
+                        if (price > 0)
+                        {
+                            _ui?.AddLog ($"💰 Цена {gridSymbol}: {price:F6} — запуск сетки");
+                            await StartAutoGridAsync (gridSymbol);
+                            return;
+                        }
+                        _ui?.AddLog ($"⏳ Ожидание цены {gridSymbol}... (попытка {attempt + 1}/10)");
+                    }
+                    _ui?.AddLog ($"❌ Не удалось получить цену {gridSymbol} за 30 сек. Запустите сетку вручную.");
                 });
             }
 
