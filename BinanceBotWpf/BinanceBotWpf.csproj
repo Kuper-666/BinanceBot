@@ -19,6 +19,7 @@
     <PackageReference Include="CsvHelper" Version="33.1.0" />
     <PackageReference Include="LiveChartsCore" Version="2.0.4" />
     <PackageReference Include="LiveChartsCore.SkiaSharpView.WPF" Version="2.0.4" />
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9" />
     <PackageReference Include="Microsoft.ML" Version="5.0.0" />
     <PackageReference Include="Microsoft.ML.FastTree" Version="5.0.0" />
@@ -47,6 +48,6 @@
     <ItemGroup>
       <DashboardFiles Include="$(MSBuildProjectDirectory)\..\binance-dashboard\dist\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles-&gt;'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles->'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 </Project>

@@ -10,9 +10,11 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
+using BinanceBotWpf.Services;
+
 namespace BinanceBotWpf.Models
 {
-    public class BinanceClient : IDisposable
+    public class BinanceClient : IDisposable, IBinanceClient
     {
         private readonly string _apiKey;
         private readonly string _apiSecret;
@@ -84,7 +86,30 @@ namespace BinanceBotWpf.Models
 
         private long GetTimestamp() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds () + _serverTimeOffset;
 
-        // ИСПРАВЛЕНИЕ: SyncTimeAsync с правильной обработкой ошибок
+        private DateTime _lastSyncTime = DateTime.MinValue;
+        private readonly SemaphoreSlim _syncLock = new (1, 1);
+
+        private async Task EnsureTimeSyncedAsync ()
+        {
+            if (( DateTime.UtcNow - _lastSyncTime ).TotalMinutes < 5) return;
+            await _syncLock.WaitAsync ();
+            try
+            {
+                if (( DateTime.UtcNow - _lastSyncTime ).TotalMinutes < 5) return;
+                await SyncTimeAsync ();
+                _lastSyncTime = DateTime.UtcNow;
+            }
+            finally { _syncLock.Release (); }
+        }
+
+        private async Task ResyncAndRetryAsync ()
+        {
+            Log ("🔄 Пересинхронизация времени из-за -1021 ошибки...");
+            _serverTimeOffset = 0;
+            await SyncTimeAsync ();
+            _lastSyncTime = DateTime.UtcNow;
+        }
+
         public async Task SyncTimeAsync()
         {
             try
@@ -115,13 +140,14 @@ namespace BinanceBotWpf.Models
             {
                 try
                 {
+                    await EnsureTimeSyncedAsync ();
                     var response = await _httpClient.SendAsync (request);
                     if (response.IsSuccessStatusCode) return response;
-                    
+
                     if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
                     {
                         retryCount++;
-                        if (retryCount > maxRetries) 
+                        if (retryCount > maxRetries)
                         {
                             Log ($"❌ Rate limit превышен после {maxRetries} попыток");
                             throw new Exception ($"Rate limit exceeded after {maxRetries} retries");
@@ -129,8 +155,7 @@ namespace BinanceBotWpf.Models
                         Log ($"⚠️ Rate limit (статус {response.StatusCode}). Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
                         await Task.Delay (delayMs);
                         delayMs = Math.Min (delayMs * 2, 32000);
-                        
-                        // Для POST запросов нужно создать новый request (content stream уже прочитан)
+
                         if (request.Method == HttpMethod.Post)
                         {
                             var newRequest = new HttpRequestMessage (request.Method, request.RequestUri)
@@ -144,6 +169,29 @@ namespace BinanceBotWpf.Models
                         }
                         continue;
                     }
+
+                    string body = await response.Content.ReadAsStringAsync ();
+                    if (body.Contains ("-1021") && retryCount < maxRetries)
+                    {
+                        retryCount++;
+                        Log ($"⚠️ Timestamp -1021. Пересинхронизация и повтор ({retryCount}/{maxRetries})");
+                        await ResyncAndRetryAsync ();
+                        delayMs = Math.Min (delayMs * 2, 32000);
+
+                        if (request.Method == HttpMethod.Post)
+                        {
+                            var newRequest = new HttpRequestMessage (request.Method, request.RequestUri)
+                            {
+                                Content = request.Content,
+                                Version = request.Version
+                            };
+                            foreach (var header in request.Headers)
+                                newRequest.Headers.Add (header.Key, header.Value);
+                            request = newRequest;
+                        }
+                        continue;
+                    }
+
                     return response;
                 }
                 catch (HttpRequestException ex)
@@ -630,19 +678,17 @@ namespace BinanceBotWpf.Models
                 var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/account?{query}&signature={signature}");
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
 
-                var response = await _httpClient.SendAsync (request);
+                var response = await SendWithRetryAsync (request);
                 string body = await response.Content.ReadAsStringAsync ();
 
                 if (response.IsSuccessStatusCode)
                 {
                     return JObject.Parse (body);
                 }
-                else
-                {
-                    string errorMsg = ParseBinanceError (body, response.StatusCode);
-                    Log ($"GetAccountInfoAsync ошибка: {response.StatusCode} - {errorMsg}");
-                    return null;
-                }
+
+                string errorMsg = ParseBinanceError (body, response.StatusCode);
+                Log ($"GetAccountInfoAsync ошибка: {response.StatusCode} - {errorMsg}");
+                return null;
             }
             catch (Exception ex)
             {
