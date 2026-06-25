@@ -692,4 +692,183 @@ namespace BinanceBotWpf.Tests
             Assert.True (strategy.CheckEntryConfirmation (new List<BinanceKline> (), TradeAction.Sell));
         }
     }
+
+    public class MarketSessionService_Tests
+    {
+        [Fact]
+        public void AsiaSession_ReturnsAsia ()
+        {
+            var session = MarketSessionService.GetCurrentSession (new DateTime (2024, 1, 15, 3, 0, 0, DateTimeKind.Utc));
+            Assert.Equal (MarketSession.Asia, session);
+        }
+
+        [Fact]
+        public void EuropeSession_ReturnsEurope ()
+        {
+            var session = MarketSessionService.GetCurrentSession (new DateTime (2024, 1, 15, 10, 0, 0, DateTimeKind.Utc));
+            Assert.Equal (MarketSession.Europe, session);
+        }
+
+        [Fact]
+        public void UsSession_ReturnsUs ()
+        {
+            var session = MarketSessionService.GetCurrentSession (new DateTime (2024, 1, 15, 18, 0, 0, DateTimeKind.Utc));
+            Assert.Equal (MarketSession.Us, session);
+        }
+
+        [Fact]
+        public void OverlapSession_ReturnsOverlap ()
+        {
+            var session = MarketSessionService.GetCurrentSession (new DateTime (2024, 1, 15, 14, 0, 0, DateTimeKind.Utc));
+            Assert.Equal (MarketSession.EuropeUsOverlap, session);
+        }
+
+        [Fact]
+        public void Weekend_ReturnsWeekend ()
+        {
+            var session = MarketSessionService.GetCurrentSession (new DateTime (2024, 1, 13, 14, 0, 0, DateTimeKind.Utc));
+            Assert.Equal (MarketSession.Weekend, session);
+        }
+
+        [Fact]
+        public void HighVolumeSession_EuropeUsOverlap ()
+        {
+            Assert.True (MarketSessionService.IsHighVolumeSession (MarketSession.EuropeUsOverlap));
+            Assert.True (MarketSessionService.IsHighVolumeSession (MarketSession.Europe));
+            Assert.True (MarketSessionService.IsHighVolumeSession (MarketSession.Us));
+        }
+
+        [Fact]
+        public void LowVolumeSession_Asia ()
+        {
+            Assert.False (MarketSessionService.IsHighVolumeSession (MarketSession.Asia));
+            Assert.False (MarketSessionService.IsHighVolumeSession (MarketSession.Weekend));
+        }
+
+        [Fact]
+        public void ShouldTrade_Weekend_ReturnsFalse ()
+        {
+            Assert.False (MarketSessionService.ShouldTrade (MarketSession.Weekend));
+        }
+
+        [Fact]
+        public void ShouldTrade_EuUsRestricted_Asia_ReturnsFalse ()
+        {
+            Assert.False (MarketSessionService.ShouldTrade (MarketSession.Asia, restrictToEuUs: true));
+        }
+
+        [Fact]
+        public void ShouldTrade_EuUsRestricted_Europe_ReturnsTrue ()
+        {
+            Assert.True (MarketSessionService.ShouldTrade (MarketSession.Europe, restrictToEuUs: true));
+        }
+
+        [Fact]
+        public void ShouldTrade_NoRestrictions_WeekdaysTrue ()
+        {
+            Assert.True (MarketSessionService.ShouldTrade (MarketSession.Asia, restrictToEuUs: false));
+            Assert.True (MarketSessionService.ShouldTrade (MarketSession.Europe, restrictToEuUs: false));
+            Assert.True (MarketSessionService.ShouldTrade (MarketSession.Us, restrictToEuUs: false));
+        }
+
+        [Fact]
+        public void SessionLabel_ContainsEmoji ()
+        {
+            string eu = MarketSessionService.GetSessionLabel (MarketSession.Europe);
+            string us = MarketSessionService.GetSessionLabel (MarketSession.Us);
+            string overlap = MarketSessionService.GetSessionLabel (MarketSession.EuropeUsOverlap);
+
+            Assert.Contains ("EU", eu);
+            Assert.Contains ("US", us);
+            Assert.Contains ("EU+US", overlap);
+        }
+    }
+
+    public class BotConfig_EdgeCases_Tests
+    {
+        [Fact]
+        public void TradingSettings_DefaultValues_AreCorrect ()
+        {
+            var settings = new TradingSettings ();
+            Assert.Equal (13, settings.FastSmaPeriod);
+            Assert.Equal (34, settings.SlowSmaPeriod);
+            Assert.Equal (14, settings.RsiPeriod);
+            Assert.Equal (2, settings.MaxConcurrentTrades);
+            Assert.False (settings.SessionFilterEnabled);
+            Assert.False (settings.TradeOnlyEuUs);
+            Assert.Equal ("USDC", settings.QuoteCurrency);
+        }
+
+        [Fact]
+        public void TradingSettings_CanTradeNow_NoRestrictions ()
+        {
+            var settings = new TradingSettings ();
+            settings.RestrictTradingHours = false;
+            Assert.True (settings.CanTradeNow ());
+        }
+
+        [Fact]
+        public void TradingSettings_SessionFilter_DefaultOff ()
+        {
+            var settings = new TradingSettings ();
+            Assert.False (settings.SessionFilterEnabled);
+            Assert.False (settings.TradeOnlyEuUs);
+        }
+    }
+
+    public class CheckEntryConfirmation_Tests
+    {
+        private TradingStrategy CreateStrategy ()
+        {
+            return new TradingStrategy (msg => { });
+        }
+
+        [Fact]
+        public void Buy_RsiBelow70_ReturnsTrue ()
+        {
+            var strategy = CreateStrategy ();
+            var klines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 - i * 0.1m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool result = strategy.CheckEntryConfirmation (klines, TradeAction.Buy);
+            Assert.True (result, "Buy with RSI < 70 should be confirmed");
+        }
+
+        [Fact]
+        public void Buy_RsiAbove70_ReturnsFalse ()
+        {
+            var strategy = CreateStrategy ();
+            var klines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 + i * 2m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool result = strategy.CheckEntryConfirmation (klines, TradeAction.Buy);
+            Assert.False (result, "Buy with RSI > 70 (overbought) should be rejected");
+        }
+
+        [Fact]
+        public void Sell_RsiAbove30_ReturnsTrue ()
+        {
+            var strategy = CreateStrategy ();
+            var klines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 + i * 0.1m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool result = strategy.CheckEntryConfirmation (klines, TradeAction.Sell);
+            Assert.True (result, "Sell with RSI > 30 should be confirmed");
+        }
+
+        [Fact]
+        public void Sell_RsiBelow30_ReturnsFalse ()
+        {
+            var strategy = CreateStrategy ();
+            var klines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 - i * 2m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool result = strategy.CheckEntryConfirmation (klines, TradeAction.Sell);
+            Assert.False (result, "Sell with RSI < 30 (oversold) should be rejected");
+        }
+    }
 }
