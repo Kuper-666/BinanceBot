@@ -24,6 +24,7 @@ namespace BinanceBotWpf
             base.OnStartup (e);
 
             _fileLogger = new FileLogger ();
+            ServiceLogger.Instance.SetFileLogger (_fileLogger);
             _fileLogger.Info ("App", "Запуск приложения");
 
             DispatcherUnhandledException += (sender, args) =>

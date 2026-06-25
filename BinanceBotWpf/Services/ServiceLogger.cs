@@ -7,6 +7,7 @@ namespace BinanceBotWpf.Services
     public class ServiceLogger : ILoggerFactory
     {
         private Action<string> _rootLogger;
+        private FileLogger _fileLogger;
         private readonly ConcurrentDictionary<string, Action<string>> _loggers = new ();
 
         public static ServiceLogger Instance { get; } = new ();
@@ -16,14 +17,19 @@ namespace BinanceBotWpf.Services
             _rootLogger = logger;
         }
 
+        public void SetFileLogger (FileLogger fileLogger)
+        {
+            _fileLogger = fileLogger;
+        }
+
         public ILogger<T> CreateLogger<T> ()
         {
-            return new WrappedLogger<T> (_rootLogger);
+            return new WrappedLogger<T> (_rootLogger, _fileLogger);
         }
 
         public ILogger CreateLogger (string categoryName)
         {
-            return new WrappedLogger (categoryName, _rootLogger);
+            return new WrappedLogger (categoryName, _rootLogger, _fileLogger);
         }
 
         public void AddProvider (ILoggerProvider provider) { }
@@ -33,11 +39,13 @@ namespace BinanceBotWpf.Services
         {
             private readonly string _category;
             private readonly Action<string> _log;
+            private readonly FileLogger _fileLogger;
 
-            public WrappedLogger (string category, Action<string> log)
+            public WrappedLogger (string category, Action<string> log, FileLogger fileLogger = null)
             {
                 _category = category;
                 _log = log;
+                _fileLogger = fileLogger;
             }
 
             public IDisposable BeginScope<TState> (TState state) => null;
@@ -71,12 +79,17 @@ namespace BinanceBotWpf.Services
                 }
 
                 _log?.Invoke (formatted);
+
+                if (_fileLogger != null && logLevel >= LogLevel.Error)
+                {
+                    _fileLogger.Log (level, shortCategory, exception != null ? $"{message}\n{exception}" : message);
+                }
             }
         }
 
         private class WrappedLogger<T> : WrappedLogger, ILogger<T>
         {
-            public WrappedLogger (Action<string> log) : base (typeof (T).FullName, log) { }
+            public WrappedLogger (Action<string> log, FileLogger fileLogger = null) : base (typeof (T).FullName, log, fileLogger) { }
         }
     }
 }
