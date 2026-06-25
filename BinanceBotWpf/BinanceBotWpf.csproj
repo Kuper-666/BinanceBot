@@ -4,7 +4,7 @@
     <TargetFramework>net8.0-windows</TargetFramework>
     <UseWPF>true</UseWPF>
     <StartupUri>/Views/MainWindow.xaml</StartupUri>
-    <VersionPrefix>1.20.22</VersionPrefix>
+    <VersionPrefix>1.20.23</VersionPrefix>
     <VersionSuffix>$(VersionSuffix)</VersionSuffix>
     <Version Condition=" '$(VersionSuffix)' != '' ">$(VersionPrefix)-$(VersionSuffix)</Version>
     <Version Condition=" '$(VersionSuffix)' == '' ">$(VersionPrefix)</Version>
@@ -48,6 +48,6 @@
     <ItemGroup>
       <DashboardFiles Include="$(MSBuildProjectDirectory)\..\binance-dashboard\dist\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles->'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles-&gt;'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 </Project>
