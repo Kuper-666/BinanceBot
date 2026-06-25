@@ -531,7 +531,7 @@ namespace BinanceBotWpf.Services
                 {
                     for (int attempt = 0; attempt < 10; attempt++)
                     {
-                        await Task.Delay (3000);
+                        await Task.Delay (3000, _shutdownCts?.Token ?? CancellationToken.None);
                         decimal price = GetCurrentPrice (gridSymbol);
                         if (price <= 0)
                         {
@@ -734,7 +734,7 @@ namespace BinanceBotWpf.Services
                         var signal = new StrategyEngine ().AnalyzePairWithWallet (sym, closes, 9, 21, price);
 
                         ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist, MarketSessionService.GetSessionLabel ());
-                        await Task.Delay (150);
+                        await Task.Delay (150, _shutdownCts?.Token ?? CancellationToken.None);
                     }
                     catch (Exception ex)
                     {
@@ -765,8 +765,8 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    if (!_balanceLoopEnabled) { await Task.Delay (5000); continue; }
-                    await Task.Delay (60000);
+                    if (!_balanceLoopEnabled) { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
+                    await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None);
                     if (!_isRunning) break;
 
                     await _wallet.UpdateBalance ();
@@ -789,7 +789,7 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ BalanceLoop ошибка: {ex.Message}");
-                    await Task.Delay (5000);
+                    await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
             }
         }
@@ -826,7 +826,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    if (!_tradingLoopEnabled) { await Task.Delay (5000); continue; }
+                    if (!_tradingLoopEnabled) { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
 
                     // 0. Проверка новостей и макро-событий
                     if (_tradingSettings?.AvoidNewsTime == true
@@ -837,7 +837,7 @@ namespace BinanceBotWpf.Services
                         if (newsNear || macroNear)
                         {
                             _ui?.AddLog ("📰 Торговля приостановлена: обнаружены значимые события");
-                            await Task.Delay (300000); // Ждём 5 минут
+                            await Task.Delay (300000, _shutdownCts?.Token ?? CancellationToken.None);
                             continue;
                         }
                     }
@@ -853,7 +853,7 @@ namespace BinanceBotWpf.Services
                     decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
                     if (spotBalance < 10)
                     {
-                        await Task.Delay (15000);
+                        await Task.Delay (15000, _shutdownCts?.Token ?? CancellationToken.None);
                         continue;
                     }
 
@@ -863,7 +863,7 @@ namespace BinanceBotWpf.Services
                     // 3. Получение списка пар
                     List<string> pairs;
                     lock (_pairsLock) { pairs = new List<string> (_activePairs); }
-                    if (pairs.Count == 0) { await Task.Delay (5000); continue; }
+                    if (pairs.Count == 0) { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
 
                     // Читаем интервал из BotConfig один раз на итерацию, не на каждую пару
                     string candleInterval = "1h";
@@ -1171,7 +1171,7 @@ namespace BinanceBotWpf.Services
                         catch { }
                     }
 
-                    await Task.Delay (30000);
+                    await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
@@ -1195,7 +1195,7 @@ namespace BinanceBotWpf.Services
                         return;
                     }
 
-                    await Task.Delay (10000);
+                    await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
             }
         }
@@ -1354,7 +1354,7 @@ namespace BinanceBotWpf.Services
                             bool redeemed = await _client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
                             if (redeemed)
                             {
-                                await Task.Delay (2000); // Ждём зачисления
+                                await Task.Delay (2000, _shutdownCts?.Token ?? CancellationToken.None); // Ждём зачисления
                                 spotBalance = await _client.GetAccountBalanceAsync (asset);
                                 _ui?.AddLog ($"   ✅ После выкупа на споте: {spotBalance:F8} {asset}");
                             }
@@ -1799,7 +1799,7 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ Ошибка оптимизации: {ex.Message}");
-                    await Task.Delay (60000);
+                    await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
             }
         }
@@ -1965,12 +1965,12 @@ namespace BinanceBotWpf.Services
                         _ui?.AddLog ($"🐋 Whale monitor запущен для {pairs.Count} пар (порог: $100k, стейблкоины исключены)");
                         started = true;
                     }
-                    await Task.Delay (10000);
+                    await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ Whale monitor ошибка: {ex.Message}");
-                    await Task.Delay (30000);
+                    await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
             }
         }

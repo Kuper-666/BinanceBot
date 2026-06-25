@@ -169,11 +169,7 @@ namespace BinanceBotWpf
             mainWindow.Title = $"Торговый помощник v{AppConstants.AppVersion}";
             mainWindow.Show ();
 
-            string maskedKey = apiKey.Length > 4
-                ? new string ('*', apiKey.Length - 4) + apiKey[^4..]
-                : "****";
             viewModel.AddLog ($"🚀 Бот запущен: {(isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ")}");
-            viewModel.AddLog ($"🔌 API Key: {maskedKey}");
             viewModel.AddLog ($"📡 Сервер: {serverInfo}");
             if (!telegramConfigured)
             {
