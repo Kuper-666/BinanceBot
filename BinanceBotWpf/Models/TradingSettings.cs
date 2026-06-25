@@ -34,10 +34,10 @@ namespace BinanceBotWpf.Models
 
         // Настройки сетки (Grid Bot)
         public bool GridBotEnabled { get; set; } = false;
-        public string GridSymbol { get; set; } = "BTCUSDC";       // Пара для сетки
-        public decimal GridRangePercent { get; set; } = 0.10m;     // ±10% от текущей цены
-        public int GridLevels { get; set; } = 10;                 // Количество уровней в каждую сторону
-        public decimal TotalInvestmentPercent { get; set; } = 0.20m; // 20% капитала на сетку
+        public string GridSymbol { get; set; } = "DOGEUSDC";      // Пара для сетки (мин. ордер 1 USDC)
+        public decimal GridRangePercent { get; set; } = 0.175m;   // ±17.5% от текущей цены
+        public int GridLevels { get; set; } = 12;                 // Количество уровней в каждую сторону
+        public decimal TotalInvestmentPercent { get; set; } = 0.85m; // 85% капитала на сетку (оставить на комиссии)
         public bool GridDynamicStep { get; set; } = false;        // Динамический шаг на основе ATR
 
         // Мульти-таймфрейм
