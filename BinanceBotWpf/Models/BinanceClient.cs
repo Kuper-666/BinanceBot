@@ -134,6 +134,11 @@ namespace BinanceBotWpf.Models
         {
             int retryCount = 0;
             int delayMs = 1000;
+            string originalBody = null;
+
+            if (request.Content != null)
+                originalBody = await request.Content.ReadAsStringAsync ();
+
             while (true)
             {
                 try
@@ -154,17 +159,7 @@ namespace BinanceBotWpf.Models
                         await Task.Delay (delayMs);
                         delayMs = Math.Min (delayMs * 2, 32000);
 
-                        if (request.Method == HttpMethod.Post)
-                        {
-                            var newRequest = new HttpRequestMessage (request.Method, request.RequestUri)
-                            {
-                                Content = request.Content,
-                                Version = request.Version
-                            };
-                            foreach (var header in request.Headers)
-                                newRequest.Headers.Add (header.Key, header.Value);
-                            request = newRequest;
-                        }
+                        request = CloneRequest (request, originalBody);
                         continue;
                     }
 
@@ -176,17 +171,7 @@ namespace BinanceBotWpf.Models
                         await ResyncAndRetryAsync ();
                         delayMs = Math.Min (delayMs * 2, 32000);
 
-                        if (request.Method == HttpMethod.Post)
-                        {
-                            var newRequest = new HttpRequestMessage (request.Method, request.RequestUri)
-                            {
-                                Content = request.Content,
-                                Version = request.Version
-                            };
-                            foreach (var header in request.Headers)
-                                newRequest.Headers.Add (header.Key, header.Value);
-                            request = newRequest;
-                        }
+                        request = CloneRequest (request, originalBody);
                         continue;
                     }
 
@@ -203,6 +188,7 @@ namespace BinanceBotWpf.Models
                     Log ($"⚠️ HTTP ошибка (сетевая). Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
                     await Task.Delay (delayMs);
                     delayMs = Math.Min (delayMs * 2, 32000);
+                    request = CloneRequest (request, originalBody);
                 }
                 catch (TaskCanceledException ex)
                 {
@@ -215,8 +201,20 @@ namespace BinanceBotWpf.Models
                     Log ($"⚠️ Timeout запроса. Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
                     await Task.Delay (delayMs);
                     delayMs = Math.Min (delayMs * 2, 32000);
+                    request = CloneRequest (request, originalBody);
                 }
             }
+        }
+
+        private HttpRequestMessage CloneRequest (HttpRequestMessage original, string body)
+        {
+            var clone = new HttpRequestMessage (original.Method, original.RequestUri);
+            if (body != null)
+                clone.Content = new StringContent (body, Encoding.UTF8, "application/x-www-form-urlencoded");
+            clone.Version = original.Version;
+            foreach (var header in original.Headers)
+                clone.Headers.Add (header.Key, header.Value);
+            return clone;
         }
 
         public async Task<JObject> PlaceOrder(string symbol, string side, string type, decimal quantity)

@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Net.Http;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -16,6 +17,8 @@ namespace BinanceBotWpf.Services
     /// </summary>
     public class TradingService : ITradingService
     {
+        private static readonly HttpClient _sharedHttpClient = new () { Timeout = TimeSpan.FromSeconds (30) };
+
         // Основные компоненты
         private readonly BinanceClient _client;
         private readonly WalletManager _wallet;
@@ -98,8 +101,8 @@ namespace BinanceBotWpf.Services
             _positionProtector = new PositionProtector (client, _positionManager, dummyLogger);
             _volumeBreakout = new VolumeBreakoutStrategy (client, dummyLogger);
             _dcaStrategy = new DCAStrategy (client, dummyLogger);
-            _newsProvider = new NewsProvider (new System.Net.Http.HttpClient (), dummyLogger);
-            _macroCalendar = new MacroCalendarProvider (new System.Net.Http.HttpClient (), dummyLogger);
+            _newsProvider = new NewsProvider (_sharedHttpClient, dummyLogger);
+            _macroCalendar = new MacroCalendarProvider (_sharedHttpClient, dummyLogger);
             _tradingSettings = new TradingSettings ();
             _backupService = new BackupService (dummyLogger);
             _aiRiskEngine = new AiRiskEngine (_mlManager, client, dummyLogger);
@@ -278,14 +281,34 @@ namespace BinanceBotWpf.Services
             SetLogger (vm.AddLog);
             await InitAsync ();
 
-            _ = Task.Run (BalanceLoop);
-            _ = Task.Run (TradingLoop);
-            _ = Task.Run (AutoOptimizeLoop);
-            _ = Task.Run (PeriodicUpdateCheckLoop);
-            _ = Task.Run (DailyReportLoop);
-            _ = Task.Run (WhaleLoop);
-            _ = Task.Run (EarnOptimizeLoop);
-            _ = Task.Run (FearGreedLoop);
+            _ = Task.Run (() => RunLoopWithRestart (BalanceLoop, "BalanceLoop"));
+            _ = Task.Run (() => RunLoopWithRestart (TradingLoop, "TradingLoop"));
+            _ = Task.Run (() => RunLoopWithRestart (AutoOptimizeLoop, "AutoOptimizeLoop"));
+            _ = Task.Run (() => RunLoopWithRestart (PeriodicUpdateCheckLoop, "PeriodicUpdateCheck"));
+            _ = Task.Run (() => RunLoopWithRestart (DailyReportLoop, "DailyReport"));
+            _ = Task.Run (() => RunLoopWithRestart (WhaleLoop, "WhaleLoop"));
+            _ = Task.Run (() => RunLoopWithRestart (EarnOptimizeLoop, "EarnOptimize"));
+            _ = Task.Run (() => RunLoopWithRestart (FearGreedLoop, "FearGreed"));
+        }
+
+        private async Task RunLoopWithRestart (Func<Task> loop, string name)
+        {
+            while (_isRunning)
+            {
+                try
+                {
+                    await loop ();
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _ui?.AddLog ($"❌ {name} упал: {ex.Message}. Перезапуск через 10 сек...");
+                    try { await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
+                }
+            }
         }
 
         public void StopTrading()
