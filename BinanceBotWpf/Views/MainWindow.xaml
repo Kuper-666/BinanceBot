@@ -40,7 +40,7 @@
         </Style>
 
         <Style TargetType="TabItem">
-            <Setter Property="Foreground" Value="#bdc3c7"/>
+            <Setter Property="Foreground" Value="#ecf0f1"/>
             <Setter Property="Background" Value="#1e1e1e"/>
             <Setter Property="FontSize" Value="13"/>
             <Setter Property="FontWeight" Value="Bold"/>
@@ -192,26 +192,26 @@
         <!-- Панель параметров -->
         <Border Grid.Row="1" Background="#1e1e1e" CornerRadius="5" Padding="10" Margin="0,0,0,8">
             <WrapPanel>
-                <TextBlock Text="SMA:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="SMA:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding FastSma}" Width="50" Margin="0,0,5,0"/>
                 <TextBox Text="{Binding SlowSma}" Width="50" Margin="0,0,20,0"/>
 
-                <TextBlock Text="RSI Buy &lt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="RSI Buy &lt;" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding RsiBuyThreshold}" Width="50" Margin="0,0,5,0"/>
-                <TextBlock Text="RSI Sell &gt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="RSI Sell &gt;" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding RsiSellThreshold}" Width="50" Margin="0,0,20,0"/>
 
-                <TextBlock Text="SL" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="SL" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding StopLossPercent, StringFormat=F2}" Width="50" Margin="0,0,5,0"/>
-                <TextBlock Text="TP" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="TP" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding TakeProfitPercent, StringFormat=F2}" Width="50" Margin="0,0,5,0"/>
-                <TextBlock Text="Trail" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Trail" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding TrailingStopPercent, StringFormat=F2}" Width="50" Margin="0,0,20,0"/>
 
-                <TextBlock Text="Риск" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Риск" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding RiskPerTradePercent, StringFormat=F2}" Width="50" Margin="0,0,20,0"/>
 
-                <TextBlock Text="Макс. позиций" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                <TextBlock Text="Макс. позиций" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                 <TextBox Text="{Binding MaxConcurrentTrades}" Width="50" Margin="0,0,5,0"/>
             </WrapPanel>
         </Border>
@@ -327,14 +327,14 @@
                         <DataGridTextColumn Header="MCAP" Binding="{Binding MarketCap}" Width="80">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="#bdc3c7"/>
+                                    <Setter Property="Foreground" Value="#ecf0f1"/>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
                         <DataGridTextColumn Header="САЛЬДО" Binding="{Binding Sentiment}" Width="90">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="#bdc3c7"/>
+                                    <Setter Property="Foreground" Value="#ecf0f1"/>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
@@ -361,43 +361,43 @@
                                 <ColumnDefinition Width="*"/>
                             </Grid.ColumnDefinitions>
                             <StackPanel Grid.Column="0">
-                                <TextBlock Text="Общий PnL" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Общий PnL" Foreground="#ecf0f1" FontSize="11"/>
                                 <TextBlock Text="{Binding TotalPnL, StringFormat=F2}" Foreground="#2ecc71" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
                                 <TextBlock Text="USDC" Foreground="#2ecc71" FontSize="12" Margin="0,2,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="1">
-                                <TextBlock Text="Win Rate" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Win Rate" Foreground="#ecf0f1" FontSize="11"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="{Binding WinRate, StringFormat=F1}" Foreground="#2ecc71" FontSize="18" FontWeight="Bold"/>
                                     <TextBlock Text="%" Foreground="#2ecc71" FontSize="18" FontWeight="Bold"/>
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="2">
-                                <TextBlock Text="Сделок" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Сделок" Foreground="#ecf0f1" FontSize="11"/>
                                 <TextBlock Text="{Binding TotalTrades}" Foreground="#f39c12" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="3">
-                                <TextBlock Text="Выигрышей" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Выигрышей" Foreground="#ecf0f1" FontSize="11"/>
                                 <TextBlock Text="{Binding WinningTrades}" Foreground="#2ecc71" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="4">
-                                <TextBlock Text="Проигрышей" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Проигрышей" Foreground="#ecf0f1" FontSize="11"/>
                                 <TextBlock Text="{Binding LosingTrades}" Foreground="#e74c3c" FontSize="18" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="5">
-                                <TextBlock Text="Лучшая/Худшая" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Лучшая/Худшая" Foreground="#ecf0f1" FontSize="11"/>
                                 <StackPanel Orientation="Horizontal" Margin="0,5,0,0">
                                     <TextBlock Text="{Binding BestPnL, StringFormat=F2}" Foreground="#2ecc71" FontSize="14" FontWeight="Bold"/>
-                                    <TextBlock Text=" / " Foreground="#bdc3c7" FontSize="14"/>
+                                    <TextBlock Text=" / " Foreground="#ecf0f1" FontSize="14"/>
                                     <TextBlock Text="{Binding WorstPnL, StringFormat=F2}" Foreground="#e74c3c" FontSize="14" FontWeight="Bold"/>
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Grid.Column="6">
-                                <TextBlock Text="Макс. просадка" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Макс. просадка" Foreground="#ecf0f1" FontSize="11"/>
                                 <TextBlock Text="{Binding MaxDrawdownDisplay}" Foreground="#e74c3c" FontSize="14" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                             <StackPanel Grid.Column="7">
-                                <TextBlock Text="Ср. приб/убыток" Foreground="#bdc3c7" FontSize="11"/>
+                                <TextBlock Text="Ср. приб/убыток" Foreground="#ecf0f1" FontSize="11"/>
                                 <TextBlock Text="{Binding AvgProfitLossDisplay}" Foreground="#f39c12" FontSize="12" FontWeight="Bold" Margin="0,5,0,0"/>
                             </StackPanel>
                         </Grid>
@@ -476,7 +476,7 @@
                         <DataGridTextColumn Header="Объём" Binding="{Binding Volume, StringFormat=N0}" Width="*">
                             <DataGridTextColumn.ElementStyle>
                                 <Style TargetType="TextBlock">
-                                    <Setter Property="Foreground" Value="#bdc3c7"/>
+                                    <Setter Property="Foreground" Value="#ecf0f1"/>
                                 </Style>
                             </DataGridTextColumn.ElementStyle>
                         </DataGridTextColumn>
@@ -496,11 +496,11 @@
                             <StackPanel>
                                 <TextBlock Text="Риск-менеджмент" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <TextBlock Text="Риск на сделку (%):" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Риск на сделку (%):" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding RiskPerTradePercent, StringFormat=F2}" Width="60" Margin="0,0,15,0"/>
-                                    <TextBlock Text="R/R Ratio:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="R/R Ratio:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding RiskRewardRatio, StringFormat=F1}" Width="60" Margin="0,0,15,0"/>
-                                    <TextBlock Text="Макс. позиций:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Макс. позиций:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding MaxConcurrentTrades}" Width="60"/>
                                 </WrapPanel>
                             </StackPanel>
@@ -511,15 +511,15 @@
                             <StackPanel>
                                 <TextBlock Text="Мульти-таймфрейм анализ" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <TextBlock Text="Основной TF:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                    <ComboBox SelectedItem="{Binding MainTimeframe}" Width="80" Margin="0,0,15,0">
+                                    <TextBlock Text="Основной TF:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <ComboBox SelectedItem="{Binding MainTimeframe}" Width="80" Margin="0,0,15,0" Foreground="#ecf0f1" Background="#1e1e1e" BorderBrush="#34495e">
                                         <sys:String>1h</sys:String>
                                         <sys:String>4h</sys:String>
                                         <sys:String>1d</sys:String>
                                         <sys:String>1w</sys:String>
                                     </ComboBox>
-                                    <TextBlock Text="TF входа:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                    <ComboBox SelectedItem="{Binding EntryTimeframe}" Width="80">
+                                    <TextBlock Text="TF входа:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <ComboBox SelectedItem="{Binding EntryTimeframe}" Width="80" Foreground="#ecf0f1" Background="#1e1e1e" BorderBrush="#34495e">
                                         <sys:String>5m</sys:String>
                                         <sys:String>15m</sys:String>
                                         <sys:String>30m</sys:String>
@@ -534,15 +534,15 @@
                             <StackPanel>
                                 <TextBlock Text="Сессии и Котировки" Foreground="#9b59b6" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel Margin="0,0,0,6">
-                                    <CheckBox Content="Фильтр сессий" IsChecked="{Binding SessionFilterEnabled}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
-                                    <CheckBox Content="Только EU+US" IsChecked="{Binding TradeOnlyEuUs}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Фильтр сессий" IsChecked="{Binding SessionFilterEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Только EU+US" IsChecked="{Binding TradeOnlyEuUs}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                 </WrapPanel>
                                 <WrapPanel>
-                                    <TextBlock Text="Котировка:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
-                                    <ComboBox Width="80" SelectedValue="{Binding QuoteCurrency}" SelectedValuePath="Content" Foreground="#bdc3c7" Background="#1e1e1e" BorderBrush="#34495e">
-                                        <ComboBoxItem Content="USDC" Foreground="#bdc3c7"/>
-                                        <ComboBoxItem Content="USDT" Foreground="#bdc3c7"/>
-                                        <ComboBoxItem Content="Both" Foreground="#bdc3c7"/>
+                                    <TextBlock Text="Котировка:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <ComboBox Width="80" SelectedValue="{Binding QuoteCurrency}" SelectedValuePath="Content" Foreground="#ecf0f1" Background="#1e1e1e" BorderBrush="#34495e">
+                                        <ComboBoxItem Content="USDC" Foreground="#ecf0f1"/>
+                                        <ComboBoxItem Content="USDT" Foreground="#ecf0f1"/>
+                                        <ComboBoxItem Content="Both" Foreground="#ecf0f1"/>
                                     </ComboBox>
                                 </WrapPanel>
                             </StackPanel>
@@ -553,14 +553,14 @@
                             <StackPanel>
                                 <TextBlock Text="Сеточный бот (Grid)" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <CheckBox Content="Включить Grid Bot" IsChecked="{Binding GridBotEnabled}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Пара:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Включить Grid Bot" IsChecked="{Binding GridBotEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Пара:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding GridSymbol}" Width="100" Margin="0,0,15,0"/>
-                                    <TextBlock Text="Диапазон (%):" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Диапазон (%):" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding GridRangePercent, StringFormat=F2}" Width="60" Margin="0,0,15,0"/>
-                                    <TextBlock Text="Уровни:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Уровни:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding GridLevels}" Width="60" Margin="0,0,15,0"/>
-                                    <TextBlock Text="Инвестиции (%):" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Инвестиции (%):" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding TotalInvestmentPercent, StringFormat=F2}" Width="60"/>
                                 </WrapPanel>
                             </StackPanel>
@@ -571,8 +571,8 @@
                             <StackPanel>
                                 <TextBlock Text="Дополнительные стратегии" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <CheckBox Content="Volume Breakout" IsChecked="{Binding VolumeBreakoutEnabled}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
-                                    <CheckBox Content="DCA (усреднение)" IsChecked="{Binding DcaEnabled}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Volume Breakout" IsChecked="{Binding VolumeBreakoutEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="DCA (усреднение)" IsChecked="{Binding DcaEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
@@ -582,8 +582,8 @@
                             <StackPanel>
                                 <TextBlock Text="Фьючерсы" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <CheckBox Content="Включить фьючерсы" IsChecked="{Binding FuturesEnabled}" Foreground="#bdc3c7" Margin="0,0,15,0" VerticalAlignment="Center"/>
-                                    <TextBlock Text="Плечо:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                    <CheckBox Content="Включить фьючерсы" IsChecked="{Binding FuturesEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <TextBlock Text="Плечо:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding FuturesLeverage}" Width="60"/>
                                 </WrapPanel>
                             </StackPanel>
@@ -599,9 +599,9 @@
                                     <StackPanel>
                                         <CheckBox Content="AdaptiveAgent (ATR + Volume + Volatility + ADX)" IsChecked="{Binding AdaptiveAgentEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
                                         <WrapPanel>
-                                            <TextBlock Text="SL множитель:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="SL множитель:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding AdaptiveSlMultiplier, StringFormat=F1}" Width="50" Margin="0,0,15,0"/>
-                                            <TextBlock Text="Период множитель:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Период множитель:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding AdaptivePeriodMultiplier, StringFormat=F1}" Width="50"/>
                                         </WrapPanel>
                                     </StackPanel>
@@ -612,13 +612,13 @@
                                     <StackPanel>
                                         <CheckBox Content="SignalValidator (ONNX / Heuristic)" IsChecked="{Binding SignalValidatorEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
                                         <WrapPanel>
-                                            <TextBlock Text="Volume порог:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Volume порог:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding ValidatorVolumeThreshold, StringFormat=F1}" Width="50" Margin="0,0,15,0"/>
-                                            <TextBlock Text="ATR порог:" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="ATR порог:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding ValidatorAtrThreshold, StringFormat=F2}" Width="50" Margin="0,0,15,0"/>
-                                            <TextBlock Text="RSI Buy &lt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="RSI Buy &lt;" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding ValidatorRsiLow}" Width="40" Margin="0,0,15,0"/>
-                                            <TextBlock Text="RSI Sell &gt;" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="RSI Sell &gt;" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding ValidatorRsiHigh}" Width="40"/>
                                         </WrapPanel>
                                     </StackPanel>
@@ -629,7 +629,7 @@
                                     <StackPanel>
                                         <CheckBox Content="NewsSentinel (SQLite + новостной анализ)" IsChecked="{Binding NewsSentinelEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
                                         <WrapPanel>
-                                            <TextBlock Text="Блокировка (мин):" Foreground="#bdc3c7" Margin="0,0,5,0" VerticalAlignment="Center"/>
+                                            <TextBlock Text="Блокировка (мин):" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding NewsSentinelBlockMinutes}" Width="50"/>
                                         </WrapPanel>
                                     </StackPanel>
@@ -657,7 +657,7 @@
                         Command="{Binding ClearLogsCommand}" 
                         Background="#e74c3c" Foreground="White" 
                         BorderThickness="0" Cursor="Hand"/>
-                            <TextBlock Text="Уровень логов:" Foreground="#bdc3c7" Margin="20,8,10,0"/>
+                            <TextBlock Text="Уровень логов:" Foreground="#ecf0f1" Margin="20,8,10,0"/>
                             <ComboBox ItemsSource="{Binding LogLevels}" 
                           SelectedItem="{Binding SelectedLogLevel}" 
                           Width="100" Height="28"/>
@@ -667,7 +667,7 @@
                     <RichTextBox Grid.Row="1" 
                      x:Name="LogsRichTextBox"
                      Background="#121212"
-                     Foreground="#bdc3c7"
+                     Foreground="#ecf0f1"
                      BorderThickness="0"
                      FontFamily="Consolas"
                      FontSize="11"
