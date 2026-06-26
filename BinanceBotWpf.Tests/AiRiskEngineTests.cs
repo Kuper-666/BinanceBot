@@ -17,10 +17,10 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public async System.Threading.Tasks.Task CalculateRiskAsync_BelowMinBalance_ReturnsMinimalRisk ()
         {
-            // Balance below MinTradableBalance (50 USDC) should block trading
+            // Balance below MinTradableBalance (5 USDC) should block trading
             var result = await _engine.CalculateRiskAsync (
                 symbol: "BTCUSDC",
-                balance: 30m,
+                balance: 3m,
                 price: 100000m,
                 fastSma: 99000m,
                 slowSma: 98000m,

@@ -1234,11 +1234,11 @@ namespace BinanceBotWpf.Services
             if (notional < symbolMinNotional && qty > 0)
             {
                 decimal minQtyForNotional = Math.Ceiling (symbolMinNotional / price / stepSize) * stepSize;
-                if (minQtyForNotional * price <= riskAmount * 1.5m && minQtyForNotional * price <= currentBalance)
+                if (minQtyForNotional * price <= currentBalance)
                 {
                     qty = minQtyForNotional;
                     notional = qty * price;
-                    _ui?.AddLog ($"🔧 {symbol}: количество поднято до {qty} ({notional:F2} USDC) для покрытия MIN_NOTIONAL ({symbolMinNotional} USDC)");
+                    _ui?.AddLog ($"🔧 {symbol}: поднято до {qty} ({notional:F2} USDC) для MIN_NOTIONAL ({symbolMinNotional} USDC)");
                 }
                 else
                 {

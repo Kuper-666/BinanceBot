@@ -32,7 +32,7 @@ namespace BinanceBotWpf.Services
 
             // 0. Hard-stop: недостаточно средств для торговли (защита от слива малого депозита).
             //    При балансе ниже минимума возвращаем минимальный риск — сделка не откроется.
-            const decimal MinTradableBalance = 50m;
+            const decimal MinTradableBalance = 5m;
             if (balance < MinTradableBalance)
             {
                 result.RiskPerTradePercent = 0.003m; // минимум — фактически блокирует сделку
