@@ -964,7 +964,8 @@ namespace BinanceBotWpf.Services
 
                         // Фильтр по рыночным сессиям
                         var currentSession = MarketSessionService.GetCurrentSession ();
-                        bool sessionAllowed = !_tradingSettings?.SessionFilterEnabled ?? true
+                        bool filterEnabled = _tradingSettings?.SessionFilterEnabled ?? false;
+                        bool sessionAllowed = !filterEnabled
                             || MarketSessionService.ShouldTrade (currentSession, _tradingSettings?.TradeOnlyEuUs ?? false);
 
                         if (!sessionAllowed)
