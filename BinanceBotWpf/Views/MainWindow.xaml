@@ -165,6 +165,8 @@
                 <StackPanel Orientation="Horizontal">
                     <Ellipse Width="10" Height="10" Fill="#2ecc71" Margin="0,0,5,0"/>
                     <TextBlock Text="Online" Foreground="#2ecc71" FontSize="11"/>
+                    <TextBlock Text="  ⬆ Есть обновление" Foreground="#f39c12" FontSize="10" FontWeight="Bold" Margin="8,0,0,0"
+                               Visibility="{Binding IsUpdateAvailable, Converter={StaticResource BoolToVisibility}}"/>
                 </StackPanel>
             </Border>
         </WrapPanel>
