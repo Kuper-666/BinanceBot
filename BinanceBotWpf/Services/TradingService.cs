@@ -699,49 +699,27 @@ namespace BinanceBotWpf.Services
                 }
 
                 string quoteCurrency = ui?.QuoteCurrency ?? "USDC";
-                bool loadUsdc = quoteCurrency == "USDC" || quoteCurrency == "Both";
-                bool loadUsdt = quoteCurrency == "USDT" || quoteCurrency == "Both";
+                string quote = quoteCurrency == "USDT" ? "USDT" : "USDC";
 
-                var usdcPairs = loadUsdc ? await _client.GetTopVolumePairsAsync ("USDC", 20) : new List<string> ();
-                var usdtPairs = loadUsdt ? await _client.GetTopVolumePairsAsync ("USDT", 20) : new List<string> ();
+                // Динамический белый список по балансу
+                string[] whitelist = GetWhitelistForBalance (balance);
+                int maxPositions = GetMaxPositionsForBalance (balance);
 
-                var allRaw = usdcPairs.Concat (usdtPairs).ToList ();
+                if (ui != null) ui.MaxConcurrentTrades = maxPositions;
 
-                var pairs = allRaw
-                    .GroupBy (p => p.Replace ("USDC", "").Replace ("USDT", ""))
-                    .Select (g => g.First ())
-                    .Where (p => !p.Contains ("USD1") && !p.Contains ("UUSDC") && !p.Contains ("BUSD") && !p.Contains ("FDUSD") && !p.Contains ("EUR"))
-                    .ToList ();
-
-                var filteredPairs = pairs
-                    .Where (p =>
-                    {
-                        if (allMinNotionals.TryGetValue (p, out decimal minNot))
-                        {
-                            return balance >= minNot * 2m;
-                        }
-                        return true;
-                    })
-                    .OrderBy (p =>
-                    {
-                        allMinNotionals.TryGetValue (p, out decimal mn);
-                        return mn;
-                    })
-                    .Take (balance < 50 ? 5 : balance < 200 ? 7 : 10)
-                    .ToList ();
-
-                if (filteredPairs.Count == 0)
+                var filteredPairs = new List<string> ();
+                foreach (string asset in whitelist)
                 {
-                    // Fallback: показываем все пары без фильтрации
-                    ui.AddLog ("⚠️ Ни одна пара не прошла фильтр. Показываем все пары без фильтрации.");
-                    filteredPairs = pairs
-                        .OrderBy (p =>
-                        {
-                            allMinNotionals.TryGetValue (p, out decimal mn);
-                            return mn;
-                        })
-                        .Take (balance < 50 ? 5 : balance < 200 ? 7 : 10)
-                        .ToList ();
+                    string pair = asset + quote;
+                    if (allMinNotionals.TryGetValue (pair, out decimal minNot))
+                    {
+                        if (balance >= minNot * 2m)
+                            filteredPairs.Add (pair);
+                    }
+                    else
+                    {
+                        filteredPairs.Add (pair);
+                    }
                 }
 
                 if (filteredPairs.Count == 0)
@@ -750,9 +728,9 @@ namespace BinanceBotWpf.Services
                     return;
                 }
 
-                ui.AddLog ($"📊 Загружено {filteredPairs.Count} пар для баланса {balance:F2} USDC");
+                ui.AddLog ($"📊 Загружено {filteredPairs.Count} пар для баланса {balance:F2} USDC (макс. {maxPositions} позиций)");
 
-                foreach (var sym in pairs)
+                foreach (var sym in filteredPairs)
                 {
                     try
                     {
@@ -779,7 +757,7 @@ namespace BinanceBotWpf.Services
                     }
                 }
 
-                ui.AddLog ($"✅ Таблица обновлена: {pairs.Count} пар");
+                ui.AddLog ($"✅ Таблица обновлена: {filteredPairs.Count} пар");
             }
             catch (Exception ex)
             {
