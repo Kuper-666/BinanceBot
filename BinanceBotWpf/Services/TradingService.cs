@@ -906,20 +906,6 @@ namespace BinanceBotWpf.Services
                         var klines = await GetKlinesCachedAsync (sym, candleInterval, 100);
                         if (klines == null || klines.Count < 30) continue;
 
-                        // Дневной тренд-фильтр: проверяем тренд на 1d
-                        var dailyKlines = await GetKlinesCachedAsync (sym, "1d", 30);
-                        bool dailyBullish = true;
-                        if (dailyKlines != null && dailyKlines.Count >= 20)
-                        {
-                            decimal sma20 = dailyKlines.TakeLast (20).Average (k => (k.High + k.Low + k.Close) / 3);
-                            decimal currentClose = dailyKlines.Last ().Close;
-                            dailyBullish = currentClose > sma20;
-                            if (!dailyBullish && !_positionManager.TryGet (sym, out _))
-                            {
-                                continue;
-                            }
-                        }
-
                         if (_ui != null)
                         {
                             _strategy.FastSmaPeriod = _ui.FastSma;
