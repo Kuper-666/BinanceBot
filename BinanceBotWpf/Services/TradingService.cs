@@ -1233,6 +1233,8 @@ namespace BinanceBotWpf.Services
             var aiRisk = await _aiRiskEngine.CalculateRiskAsync (
                 symbol, currentBalance, price, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
 
+            _ui?.AddLog ($"📊 {symbol}: Risk={aiRisk.RiskPerTradePercent:P1} TP={aiRisk.TakeProfitPercent:P2} SL={aiRisk.StopLossPercent:P2} R/R={aiRisk.RiskRewardRatio:F1}");
+
             decimal riskPerTrade = aiRisk.RiskPerTradePercent;
             decimal riskRewardRatio = aiRisk.RiskRewardRatio;
             decimal riskAmount = RiskCalculator.CalculateRiskAmount (currentBalance, riskPerTrade);
@@ -1276,10 +1278,10 @@ namespace BinanceBotWpf.Services
             if (qty * price > riskAmount * 1.01m)
                 _ui?.AddLog ($"ℹ️ {symbol}: риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
 
-            // Проверка минимальной прибыли: если TP < 0.6% — сделка неприбыльна даже с лимитными ордерами
-            if (aiRisk.TakeProfitPercent < 0.006m)
+            // Проверка минимальной прибыли: если TP < 0.4% — сделка неприбыльна даже с лимитными ордерами
+            if (aiRisk.TakeProfitPercent < 0.004m)
             {
-                _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — TP {aiRisk.TakeProfitPercent:P2} < минимального 0.6%");
+                _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — TP {aiRisk.TakeProfitPercent:P2} < минимального 0.4%");
                 return;
             }
 
