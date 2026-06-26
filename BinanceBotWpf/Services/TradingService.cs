@@ -956,6 +956,12 @@ namespace BinanceBotWpf.Services
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         bool traded = false;
 
+                        // Диагностика: почему STRONG Buy не исполняется
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && !confirmed)
+                        {
+                            _ui?.AddLog ($"🔍 {sym}: STRONG Buy ЗАБЛОКИРОВАН — multi-TF подтверждение НЕ пройдено (5m)");
+                        }
+
                         // Фильтр по рыночным сессиям
                         var currentSession = MarketSessionService.GetCurrentSession ();
                         bool sessionAllowed = !_tradingSettings?.SessionFilterEnabled ?? true
@@ -967,6 +973,10 @@ namespace BinanceBotWpf.Services
                             {
                                 _ui?.AddLog ($"🕐 {sym}: {analysis.Action} пропущен — сессия {MarketSessionService.GetSessionLabel (currentSession)}");
                             }
+                        }
+                        else if (analysis.Action == TradeAction.Buy && !hasPosition && !confirmed)
+                        {
+                            // Уже залогировано выше
                         }
                         else if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
