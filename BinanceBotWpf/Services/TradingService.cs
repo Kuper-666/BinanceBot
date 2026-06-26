@@ -803,10 +803,11 @@ namespace BinanceBotWpf.Services
                         await _rebalancer.AutoConvertAssetsToUsdcAsync (_client, _isRunning, openSymbols);
                     }
                 }
+                catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ BalanceLoop ошибка: {ex.Message}");
-                    await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None);
+                    try { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
                 }
             }
         }
@@ -1187,6 +1188,7 @@ namespace BinanceBotWpf.Services
 
                     await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
+                catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
                     string msg = ex.Message;
@@ -1530,10 +1532,11 @@ namespace BinanceBotWpf.Services
 
                     lastTradeCount = currentTradeCount;
                 }
+                catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ Ошибка оптимизации: {ex.Message}");
-                    await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None);
+                    try { await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
                 }
             }
         }
@@ -1635,10 +1638,11 @@ namespace BinanceBotWpf.Services
                     }
                     await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
+                catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ Whale monitor ошибка: {ex.Message}");
-                    await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None);
+                    try { await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
                 }
             }
         }
@@ -1676,7 +1680,8 @@ namespace BinanceBotWpf.Services
                     }
                     await Task.Delay (TimeSpan.FromMinutes (15), _shutdownCts?.Token ?? CancellationToken.None);
                 }
-                catch { await Task.Delay (TimeSpan.FromMinutes (15), _shutdownCts?.Token ?? CancellationToken.None); }
+                catch (OperationCanceledException) { break; }
+                catch { try { await Task.Delay (TimeSpan.FromMinutes (15), _shutdownCts?.Token ?? CancellationToken.None); } catch { } }
             }
         }
 
