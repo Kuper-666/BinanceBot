@@ -582,11 +582,26 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private static readonly string[] _whitelistSymbols = new[]
+        // Тир-лист пар по балансу (приоритет: чем выше — тем раньше в списке)
+        private static readonly string[] _tierLow = new[] { "DOGE", "XRP", "ADA", "SOL" };
+        private static readonly string[] _tierMid = new[] { "ETH", "BNB", "LINK", "NEAR", "SUI" };
+        private static readonly string[] _tierHigh = new[] { "BTC", "PEPE" };
+
+        private static string[] GetWhitelistForBalance (decimal balance)
         {
-            "BTC", "ETH", "BNB", "SOL", "XRP",
-            "DOGE", "ADA", "SUI", "NEAR", "LINK"
-        };
+            var result = new List<string> ();
+            result.AddRange (_tierLow);
+            if (balance >= 100) result.AddRange (_tierMid);
+            if (balance >= 1000) result.AddRange (_tierHigh);
+            return result.ToArray ();
+        }
+
+        private static int GetMaxPositionsForBalance (decimal balance)
+        {
+            if (balance >= 1000) return 10;
+            if (balance >= 100) return 5;
+            return 2;
+        }
 
         private async Task UpdatePairs()
         {
@@ -602,11 +617,16 @@ namespace BinanceBotWpf.Services
                 string quoteCurrency = _ui?.QuoteCurrency ?? "USDC";
                 string quote = quoteCurrency == "USDT" ? "USDT" : "USDC";
 
-                // Белый список ликвидных пар
+                // Динамический белый список по балансу
+                string[] whitelist = GetWhitelistForBalance (balance);
+                int maxPositions = GetMaxPositionsForBalance (balance);
+
+                if (_ui != null) _ui.MaxConcurrentTrades = maxPositions;
+
                 var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
                 var allPairs = new List<string> ();
 
-                foreach (string asset in _whitelistSymbols)
+                foreach (string asset in whitelist)
                 {
                     string pair = asset + quote;
                     if (allMinNotionals.TryGetValue (pair, out decimal minNot))
