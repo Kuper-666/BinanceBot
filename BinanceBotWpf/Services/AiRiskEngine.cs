@@ -67,12 +67,12 @@ namespace BinanceBotWpf.Services
             // 5. Риск от волатильности: высокая волатильность → меньше риска
             decimal volatilityFactor = CalculateVolatilityFactor (volatility);
 
-            // 6. Итоговый риск: 1% * баланс * ИИ * волатильность
-            decimal baseRiskPercent = 0.01m; // 1% базовый
+            // 6. Итоговый риск: 12% базовый (нужно для покрытия MIN_NOTIONAL при малых депозитах)
+            decimal baseRiskPercent = 0.12m; // 12% базовый
             result.RiskPerTradePercent = Math.Clamp (
                 baseRiskPercent * balanceFactor * aiFactor * volatilityFactor,
-                0.003m,  // Минимум 0.3%
-                0.02m    // Максимум 2%
+                0.05m,  // Минимум 5%
+                0.20m   // Максимум 20%
             );
 
             decimal prob = (decimal)prediction.Probability;

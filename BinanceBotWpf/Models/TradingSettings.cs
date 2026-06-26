@@ -20,7 +20,7 @@ namespace BinanceBotWpf.Models
         public int RsiOverbought { get; set; } = 70;
 
         // Настройки управления капиталом
-        public decimal RiskPerTradePercent { get; set; } = 0.01m;  // 1% риска на сделку (жёсткий лимит)
+        public decimal RiskPerTradePercent { get; set; } = 0.12m;  // 12% риска на сделку (MIN_NOTIONAL покрытие)
         public decimal RiskRewardRatio { get; set; } = 3.0m;       // Соотношение риск/прибыль 1:3
         public decimal MinTradeAmount { get; set; } = 10m;        // Минимальная сумма сделки
         public decimal MaxTradeAmount { get; set; } = 50m;        // Максимальная сумма сделки

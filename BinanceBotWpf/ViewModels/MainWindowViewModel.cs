@@ -1042,7 +1042,7 @@ namespace BinanceBotWpf.ViewModels
             {
                 if (_tradingSettings != null)
                 {
-                    _tradingSettings.RiskPerTradePercent = Math.Clamp (value, 0.001m, 0.05m);
+                    _tradingSettings.RiskPerTradePercent = Math.Clamp (value, 0.05m, 0.25m);
                     OnPropertyChanged ();
                     SaveTradingSettings ();
                     UpdateRiskDisplay (_tradingSettings.RiskPerTradePercent);
