@@ -94,6 +94,20 @@ namespace BinanceBotWpf.Services
         }
  
         public bool TryGet(string symbol, out OpenPosition pos) => _positions.TryGetValue (symbol, out pos);
+        public async Task AddOrUpdateAsync(string symbol, OpenPosition pos)
+        {
+            _positions[symbol] = pos;
+            await SaveAsync ();
+        }
+
+        public async Task<bool> RemoveAsync(string symbol)
+        {
+            var removed = _positions.TryRemove (symbol, out _);
+            if (removed) await SaveAsync ();
+            return removed;
+        }
+
+        // Синхронные обёртки для обратной совместимости
         public void AddOrUpdate(string symbol, OpenPosition pos) { _positions[symbol] = pos; _ = SaveAsync (); }
         public bool Remove(string symbol) { var removed = _positions.TryRemove (symbol, out _); if (removed) _ = SaveAsync (); return removed; }
         public int Count => _positions.Count;

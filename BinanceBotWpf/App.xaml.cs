@@ -157,7 +157,7 @@ namespace BinanceBotWpf
             var viewModel = _serviceProvider.GetRequiredService<MainWindowViewModel> ();
             var tradingService = _serviceProvider.GetRequiredService<TradingService> ();
             WriteCrashLog ("[STARTUP] Setting logger...");
-            tradingService.SetLogger (viewModel.AddLog);
+            await tradingService.SetLoggerAsync (viewModel.AddLog);
 
             WriteCrashLog ("[STARTUP] Creating MainWindow...");
             var mainWindow = new MainWindow (viewModel);

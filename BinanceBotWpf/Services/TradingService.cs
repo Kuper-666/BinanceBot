@@ -138,7 +138,7 @@ namespace BinanceBotWpf.Services
 
         private bool _loggerSet = false;
 
-        public void SetLogger(Action<string> logger)
+        public async Task SetLoggerAsync(Action<string> logger)
         {
             if (_loggerSet) return;
             _loggerSet = true;
@@ -283,6 +283,22 @@ namespace BinanceBotWpf.Services
             {
                 _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} triggered!");
             };
+
+            // Запуск Dashboard WebSocket сервера сразу при старте приложения
+            try
+            {
+                _dashboardHandler = new DashboardCommandHandler (
+                    _ui, () => _isRunning,
+                    () => { StopTrading (); return Task.CompletedTask; },
+                    async (vm) => await StartTradingAsync (vm));
+                _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
+                await _dashboardServer.StartAsync (8765);
+                _ui?.AddLog ("📡 Dashboard WebSocket доступен на http://localhost:8765");
+            }
+            catch (Exception ex)
+            {
+                _ui?.AddLog ($"⚠️ Dashboard WS не запущен: {ex.Message}");
+            }
         }
 
         public async Task StartTradingAsync(MainWindowViewModel vm)
@@ -293,7 +309,7 @@ namespace BinanceBotWpf.Services
             _shutdownCts = new CancellationTokenSource ();
             if (_ui != null) _ui.IsRunning = true;
 
-            SetLogger (vm.AddLog);
+            await SetLoggerAsync (vm.AddLog);
             await InitAsync ();
 
             _ = Task.Run (() => RunLoopWithRestart (BalanceLoop, "BalanceLoop"));
@@ -561,21 +577,7 @@ namespace BinanceBotWpf.Services
                 });
             }
 
-            // Запуск Dashboard WebSocket сервера (инициализирован через DI)
-            try
-            {
-                _dashboardHandler = new DashboardCommandHandler (
-                    _ui, () => _isRunning,
-                    () => { StopTrading (); return Task.CompletedTask; },
-                    async (vm) => await StartTradingAsync (vm));
-                _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
-                await _dashboardServer.StartAsync (8765);
-                _ui?.AddLog ("📡 Dashboard WebSocket доступен на http://localhost:8765");
-            }
-            catch (Exception ex)
-            {
-                _ui?.AddLog ($"⚠️ Dashboard WS не запущен: {ex.Message}");
-            }
+            // Dashboard уже запущен в SetLogger — пропускаем
         }
 
         // Тир-лист пар по балансу (приоритет: чем выше — тем раньше в списке)
@@ -1353,7 +1355,7 @@ namespace BinanceBotWpf.Services
                     OcoOrderListId = 0
                 };
 
-                _positionManager.AddOrUpdate (symbol, pos);
+                await _positionManager.AddOrUpdateAsync (symbol, pos);
                 _recentTradeTimes.Add (DateTime.UtcNow);
                 _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4} | R/R 1:{riskRewardRatio:F1}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
@@ -1408,7 +1410,7 @@ namespace BinanceBotWpf.Services
             if (qtyToSell <= 0.000001m)
             {
                 _ui?.AddLog ($"⚠️ {symbol}: нет актива для продажи (ни на споте, ни в Earn)");
-                _positionManager.Remove (symbol);
+                await _positionManager.RemoveAsync (symbol);
                 return;
             }
 
@@ -1462,7 +1464,7 @@ namespace BinanceBotWpf.Services
 
                 _ui.AddTradeToHistory (trade);
                 _riskManager.RecordTrade (pnl);
-                _positionManager.Remove (symbol);
+                await _positionManager.RemoveAsync (symbol);
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
         }
