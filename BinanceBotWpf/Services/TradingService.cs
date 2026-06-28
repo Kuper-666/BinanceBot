@@ -1123,6 +1123,10 @@ namespace BinanceBotWpf.Services
                                 ddStr = Math.Abs (ddParsed);
                             }
 
+                            FearGreedData fearGreedData = _fearGreedProvider != null
+                                ? await _fearGreedProvider.GetCurrentAsync ()
+                                : null;
+
                             _dashboardServer.BroadcastStats (new Dictionary<string, object>
                             {
                                 ["balance"] = realBalance,
@@ -1138,8 +1142,8 @@ namespace BinanceBotWpf.Services
                                 ["losingTrades"] = _ui?.LosingTrades ?? 0,
                                 ["bestPnL"] = _ui?.BestPnL ?? 0,
                                 ["worstPnL"] = _ui?.WorstPnL ?? 0,
-                                ["fearGreedValue"] = _fearGreedProvider?.GetCurrentAsync ()?.Result?.Value ?? 50,
-                                ["fearGreedClassification"] = _fearGreedProvider?.GetCurrentAsync ()?.Result?.Classification ?? "Neutral",
+                                ["fearGreedValue"] = fearGreedData?.Value ?? 50,
+                                ["fearGreedClassification"] = fearGreedData?.Classification ?? "Neutral",
                                 ["dcaEnabled"] = _tradingSettings?.DcaEnabled ?? false,
                                 ["futuresEnabled"] = _tradingSettings?.FuturesEnabled ?? false,
                                 ["gridBotRunning"] = _gridBot?.IsRunning ?? false,
@@ -1234,18 +1238,19 @@ namespace BinanceBotWpf.Services
             // P0: Защита от ордеров ниже MIN_NOTIONAL (динамический из exchangeInfo).
             decimal symbolMinNotional = await _client.GetMinNotionalAsync (symbol);
             decimal notional = qty * price;
-            if (notional < symbolMinNotional && qty > 0)
+            if (notional < symbolMinNotional)
             {
                 decimal minQtyForNotional = Math.Ceiling (symbolMinNotional / price / stepSize) * stepSize;
                 if (minQtyForNotional * price <= currentBalance)
                 {
                     qty = minQtyForNotional;
                     notional = qty * price;
+                    qtyResult = RiskCalculator.QuantityResult.Ok;
                     _ui?.AddLog ($"🔧 {symbol}: поднято до {qty} ({notional:F2} USDC) для MIN_NOTIONAL ({symbolMinNotional} USDC)");
                 }
                 else
                 {
-                    _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — {notional:F2} USDC < MIN_NOTIONAL ({symbolMinNotional} USDC)");
+                    _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — {currentBalance:F2} USDC < MIN_NOTIONAL ({symbolMinNotional} USDC)");
                     return;
                 }
             }
