@@ -980,8 +980,9 @@ namespace BinanceBotWpf.Services
                         }
                         else if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
-                            // Проверка лимитов RiskManager
-                            var riskCheck = _riskManager.CanOpenPosition (_positionManager.Count, spotBalance * 0.02m);
+                            // Проверка лимитов RiskManager — оценка реального размера сделки
+                            decimal estimatedOrderValue = spotBalance * 0.10m;
+                            var riskCheck = _riskManager.CanOpenPosition (_positionManager.Count, estimatedOrderValue);
                             if (!riskCheck.Allowed)
                             {
                                 _ui?.AddLog ($"🛡️ {sym}: покупка заблокирована — {riskCheck.Reason}");
