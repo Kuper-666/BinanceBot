@@ -339,7 +339,7 @@ namespace BinanceBotWpf.Models
         private JArray _dustCache = null;
         private DateTime _dustCacheTime = DateTime.MinValue;
 
-        public async Task<JArray> GetDustAssetsAsync()
+        public async Task<JArray> GetDustAssetsAsync(List<string> assets = null)
         {
             try
             {
@@ -347,12 +347,31 @@ namespace BinanceBotWpf.Models
                 if (_dustCache != null && DateTime.UtcNow - _dustCacheTime < TimeSpan.FromMinutes (5))
                     return _dustCache;
 
+                // Binance требует параметр asset[] — получаем балансы, если активы не переданы
+                if (assets == null || assets.Count == 0)
+                {
+                    var accountInfo = await GetAccountInfoAsync ();
+                    if (accountInfo?["balances"] != null)
+                    {
+                        assets = new List<string> ();
+                        foreach (var b in accountInfo["balances"])
+                        {
+                            string a = b["asset"]?.ToString ();
+                            if (!string.IsNullOrEmpty (a) && a != "USDC" && a != "USDT" && a != "BNB" && a != "FDUSD")
+                                assets.Add (a);
+                        }
+                    }
+                }
+
+                if (assets == null || assets.Count == 0)
+                    return new JArray ();
+
                 long timestamp = GetTimestamp ();
                 string query = $"timestamp={timestamp}";
+                foreach (string asset in assets)
+                    query += $"&asset[]={asset}";
                 string signature = CreateSignature (query);
 
-                // Binance /sapi/v1/asset/dust для ПОЛУЧЕНИЯ списка пыли — это POST, не GET.
-                // GET возвращает -1000 "Request method 'GET' is not supported".
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/asset/dust") { Content = content };
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);

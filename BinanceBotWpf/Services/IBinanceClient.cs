@@ -34,7 +34,7 @@ namespace BinanceBotWpf.Services
         Task<JArray> GetFlexibleProductsAsync (string asset);
         Task<bool> SubscribeFlexibleEarnAsync (string productId, decimal amount);
         Task<bool> RedeemFlexibleEarnWithWaitAsync (string asset, decimal amount, int maxWaitSeconds = 60);
-        Task<JArray> GetDustAssetsAsync ();
+        Task<JArray> GetDustAssetsAsync (List<string> assets = null);
         Task<bool> ConvertDustToBnbAsync (List<string> assetIds);
         Task<bool> ConvertDustToUsdcAsync (List<string> assetIds = null);
     }

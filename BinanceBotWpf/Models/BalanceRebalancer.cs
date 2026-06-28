@@ -11,7 +11,7 @@ namespace BinanceBotWpf.Models
     {
         private decimal _targetUsdcBalance = 5.50m;
         public event Action<string> OnLogGenerated;
-        private static readonly HashSet<string> BlacklistedAssets = new () { "RDNT", "NTRN", "LDBNB", "LDAIGENSYN", "BETH", "WBETH" };
+        private static readonly HashSet<string> BlacklistedAssets = new () { "RDNT", "NTRN", "LDBNB", "LDAIGENSYN", "BETH", "WBETH", "FDUSD" };
 
         public BalanceRebalancer (decimal targetUsdcBalance = 5.50m)
         {
