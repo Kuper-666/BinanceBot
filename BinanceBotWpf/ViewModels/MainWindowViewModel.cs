@@ -235,14 +235,14 @@ namespace BinanceBotWpf.ViewModels
         private readonly object _settingsLock = new ();
         private bool _isLoadingSettings = false;
 
-        public MainWindowViewModel(TradingService tradingService, bool isTestnet = false)
+        public MainWindowViewModel(TradingService tradingService, TradingSettings tradingSettings, bool isTestnet = false)
         {
             _tradingService = tradingService;
             _isTestnet = isTestnet;
             _settingsPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "strategy_settings.json");
 
             LoadSettings ();
-            _tradingSettings = LoadTradingSettingsSync ();
+            _tradingSettings = tradingSettings;
 
             StartCommand = new RelayCommand (async _ => await Start (), _ => !IsRunning);
             StopCommand = new RelayCommand (_ => Stop (), _ => IsRunning);

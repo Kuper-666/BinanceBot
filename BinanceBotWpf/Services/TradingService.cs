@@ -46,6 +46,7 @@ namespace BinanceBotWpf.Services
         private readonly IFearGreedIndexProvider _fearGreedProvider;
         private readonly IPriceAlertManager _priceAlertManager;
         private readonly IRiskManager _riskManager;
+        private readonly BotConfig _config;
         private TelegramCommandHandler _telegramHandler;
         private DashboardCommandHandler _dashboardHandler;
 
@@ -103,6 +104,7 @@ namespace BinanceBotWpf.Services
             IPriceAlertManager priceAlertManager,
             IRiskManager riskManager,
             WebSocketPriceManager webSocketManager,
+            ISimpleEarnStrategy earnStrategy,
             BotConfig config)
         {
             _client = (BinanceClient)client;
@@ -126,6 +128,8 @@ namespace BinanceBotWpf.Services
             _priceAlertManager = priceAlertManager;
             _riskManager = riskManager;
             _webSocketManager = webSocketManager;
+            _earnStrategy = earnStrategy;
+            _config = config;
             _telegramBotToken = config?.TelegramBotToken ?? "";
             _telegramChatId = config?.TelegramChatId ?? "";
         }
@@ -149,7 +153,7 @@ namespace BinanceBotWpf.Services
             // ═══════ Золотая архитектура: 3 эшелона ИИ ═══════
             try
             {
-                var cfg = BotConfig.LoadOrMigrate (out _);
+                var cfg = _config;
                 bool adaptiveEnabled = cfg?.AdaptiveAgentEnabled ?? true;
                 bool validatorEnabled = cfg?.SignalValidatorEnabled ?? true;
                 bool newsEnabled = cfg?.NewsSentinelEnabled ?? true;
@@ -186,7 +190,7 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    var fallbackConfig = BotConfig.LoadOrMigrate (out _);
+                    var fallbackConfig = _config;
                     if (fallbackConfig != null)
                     {
                         if (string.IsNullOrEmpty (tgToken)) tgToken = fallbackConfig.TelegramBotToken;
@@ -314,7 +318,6 @@ namespace BinanceBotWpf.Services
             _shutdownCts?.Cancel ();
             if (_ui != null) _ui.IsRunning = false;
 
-            // ИСПРАВЛЕНИЕ: Правильная обработка ошибок при остановке ресурсов
             try { _webSocketManager?.Dispose (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки WebSocket: {ex.Message}"); }
             finally { _webSocketManager = null; }
@@ -323,11 +326,10 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки GridBot: {ex.Message}"); }
             finally { _gridBot = null; }
 
-            try { _fearGreedProvider?.Dispose (); }
+            try { _whaleMonitor?.Dispose (); }
             catch { }
 
-            try { _priceAlertManager?.Dispose (); }
-            catch { }
+            // Неdisposing DI singletons — контейнер управляет их жизненным циклом
 
             try { _dashboardServer?.Stop (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки DashboardServer: {ex.Message}"); }
@@ -455,7 +457,7 @@ namespace BinanceBotWpf.Services
             // Загружаем настройки фьючерсов из BotConfig
             try
             {
-                var cfg = BotConfig.LoadOrMigrate (out _);
+                var cfg = _config;
                 if (cfg != null)
                 {
                     _tradingSettings.FuturesLeverage = cfg.FuturesLeverage;
@@ -475,7 +477,7 @@ namespace BinanceBotWpf.Services
 
                     try
                     {
-                        var cfg = BotConfig.LoadOrMigrate (out _);
+                        var cfg = _config;
                         if (cfg != null)
                         {
                             futuresKey = cfg.FuturesApiKey ?? "";
@@ -866,7 +868,7 @@ namespace BinanceBotWpf.Services
                     string entryInterval = "5m";
                     try
                     {
-                        var cfg = BotConfig.LoadOrMigrate (out _);
+                        var cfg = _config;
                         if (cfg != null && !string.IsNullOrEmpty (cfg.CandleInterval))
                             candleInterval = cfg.CandleInterval;
                     }
@@ -1415,6 +1417,7 @@ namespace BinanceBotWpf.Services
                 };
 
                 _ui.AddTradeToHistory (trade);
+                _riskManager.RecordTrade (pnl);
                 _positionManager.Remove (symbol);
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
             }
@@ -1624,8 +1627,6 @@ namespace BinanceBotWpf.Services
 
         private async Task EarnOptimizeLoop()
         {
-            Action<string> log = (msg) => _ui?.AddLog (msg);
-            _earnStrategy = new SimpleEarnStrategy (_client, log);
             while (_isRunning)
             {
                 try

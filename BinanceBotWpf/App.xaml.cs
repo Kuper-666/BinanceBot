@@ -301,9 +301,12 @@ namespace BinanceBotWpf
                 sp.GetRequiredService<IPriceAlertManager> (),
                 sp.GetRequiredService<IRiskManager> (),
                 sp.GetRequiredService<WebSocketPriceManager> (),
+                sp.GetRequiredService<ISimpleEarnStrategy> (),
                 sp.GetRequiredService<BotConfig> ()));
             services.AddSingleton<MainWindowViewModel> (sp => new MainWindowViewModel (
-                sp.GetRequiredService<TradingService> (), isTestnet));
+                sp.GetRequiredService<TradingService> (),
+                sp.GetRequiredService<TradingSettings> (),
+                isTestnet));
         }
 
         protected override void OnExit (ExitEventArgs e)
