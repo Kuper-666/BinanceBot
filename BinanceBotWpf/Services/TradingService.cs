@@ -978,7 +978,7 @@ namespace BinanceBotWpf.Services
                         {
                             // Уже залогировано выше
                         }
-                        else if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+                        else if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             // Проверка лимитов RiskManager
                             var riskCheck = _riskManager.CanOpenPosition (_positionManager.Count, spotBalance * 0.02m);
@@ -990,11 +990,13 @@ namespace BinanceBotWpf.Services
                             {
                                 _ui?.AddLog ($"🚫 {sym}: позиция заблокирована высокорисковыми новостями");
                             }
-                        else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
-                        {
-                            var fgCached = await _fearGreedProvider.GetCurrentAsync ();
-                            _ui?.AddLog ($"😱 {sym}: пропуск покупки — Fear & Greed Index = {fgCached?.Value} (Extreme Greed)");
-                        }
+                            else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
+                            {
+                                var fgCached = await _fearGreedProvider.GetCurrentAsync ();
+                                _ui?.AddLog ($"⚠️ {sym}: BUY при Extreme Greed (FG={fgCached?.Value}), повышенный риск!");
+                                await ExecuteBuy (sym, analysis.Indicators, spotBalance);
+                                traded = true;
+                            }
                             else
                             {
                                 await ExecuteBuy (sym, analysis.Indicators, spotBalance);
