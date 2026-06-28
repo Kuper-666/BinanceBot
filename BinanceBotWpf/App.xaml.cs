@@ -24,6 +24,8 @@ namespace BinanceBotWpf
         {
             base.OnStartup (e);
 
+            WriteCrashLog ("[STARTUP] OnStartup entered");
+
             _fileLogger = new FileLogger ();
             ServiceLogger.Instance.SetFileLogger (_fileLogger);
             _fileLogger.Info ("App", "Запуск приложения");
@@ -130,10 +132,15 @@ namespace BinanceBotWpf
             }
 
             var services = new ServiceCollection ();
+            WriteCrashLog ("[STARTUP] Configuring services...");
             ConfigureServices (services, apiKey, apiSecret, isTestnet, minUsdcBalance, telegramBotToken, telegramChatId);
+            WriteCrashLog ("[STARTUP] Building provider...");
             _serviceProvider = services.BuildServiceProvider ();
+            WriteCrashLog ("[STARTUP] Provider built OK");
 
+            WriteCrashLog ("[STARTUP] Resolving services...");
             var binanceClient = _serviceProvider.GetRequiredService<IBinanceClient> ();
+            WriteCrashLog ("[STARTUP] Syncing time...");
             await binanceClient.SyncTimeAsync ();
 
             string serverInfo;
@@ -146,10 +153,13 @@ namespace BinanceBotWpf
                 serverInfo = "Не удалось подключиться к серверу";
             }
 
+            WriteCrashLog ("[STARTUP] Resolving ViewModel and TradingService...");
             var viewModel = _serviceProvider.GetRequiredService<MainWindowViewModel> ();
             var tradingService = _serviceProvider.GetRequiredService<TradingService> ();
+            WriteCrashLog ("[STARTUP] Setting logger...");
             tradingService.SetLogger (viewModel.AddLog);
 
+            WriteCrashLog ("[STARTUP] Creating MainWindow...");
             var mainWindow = new MainWindow (viewModel);
 
             try
