@@ -76,6 +76,8 @@ namespace BinanceBotWpf.Services
         private readonly List<Dictionary<string, object>> _equityHistory = new ();
         private const int MaxEquityHistory = 200;
         private readonly Dictionary<string, Dictionary<string, object>> _lastAnalysis = new ();
+        private readonly List<string> _recentLogs = new ();
+        private const int MaxRecentLogs = 100;
         private decimal _sessionStartBalance;
         private bool _sessionStartBalanceCaptured;
         private readonly List<Dictionary<string, object>> _pnlHistory = new ();
@@ -141,12 +143,24 @@ namespace BinanceBotWpf.Services
             if (_loggerSet) return;
             _loggerSet = true;
 
-            ServiceLogger.Instance.SetRootLogger (logger);
+            // Оборачиваем логгер для сбора логов для дашборда
+            Action<string> wrappedLogger = msg =>
+            {
+                logger (msg);
+                lock (_recentLogs)
+                {
+                    _recentLogs.Add ($"[{DateTime.UtcNow:HH:mm:ss}] {msg}");
+                    if (_recentLogs.Count > MaxRecentLogs)
+                        _recentLogs.RemoveAt (0);
+                }
+            };
 
-            _wallet.OnLogGenerated += logger;
-            _earn.OnLogGenerated += logger;
-            _rebalancer.OnLogGenerated += logger;
-            _client.OnLogGenerated += logger;
+            ServiceLogger.Instance.SetRootLogger (wrappedLogger);
+
+            _wallet.OnLogGenerated += wrappedLogger;
+            _earn.OnLogGenerated += wrappedLogger;
+            _rebalancer.OnLogGenerated += wrappedLogger;
+            _client.OnLogGenerated += wrappedLogger;
 
             _strategy.SetMlManager((MlModelManager)_mlManager);
 
@@ -165,15 +179,15 @@ namespace BinanceBotWpf.Services
                 int rsiLow = cfg?.ValidatorRsiLow ?? 20;
                 int rsiHigh = cfg?.ValidatorRsiHigh ?? 80;
 
-                var adaptiveAgent = new AdaptiveAgent (logger, slMult, periodMult);
+                var adaptiveAgent = new AdaptiveAgent (wrappedLogger, slMult, periodMult);
                 _strategy.SetAdaptiveAgent (adaptiveAgent, adaptiveEnabled);
                 _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {(adaptiveEnabled ? "включён" : "выключен")} SL×{slMult} Period×{periodMult}");
 
-                var signalValidator = new SignalValidator (logger, volThresh, atrThresh, rsiLow, rsiHigh);
+                var signalValidator = new SignalValidator (wrappedLogger, volThresh, atrThresh, rsiLow, rsiHigh);
                 _strategy.SetSignalValidator (signalValidator, validatorEnabled);
                 _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")} Vol>{volThresh} ATR>{atrThresh} RSI {rsiLow}/{rsiHigh}");
 
-                var newsSentinel = new NewsSentinel (logger);
+                var newsSentinel = new NewsSentinel (wrappedLogger);
                 _strategy.SetNewsSentinel (newsSentinel, newsEnabled);
                 _ui?.AddLog ($"📰 Эшелон 3 (NewsSentinel): {(newsEnabled ? "включён" : "выключен")}");
             }
@@ -199,7 +213,7 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    logger ($"⚠️ Не удалось прочитать config.json для Telegram: {ex.Message}");
+                    wrappedLogger ($"⚠️ Не удалось прочитать config.json для Telegram: {ex.Message}");
                 }
             }
 
@@ -212,7 +226,7 @@ namespace BinanceBotWpf.Services
                         _telegram = new TelegramNotifier (tgToken, tgChatId);
                         _telegram.OnStatusChanged += (isEnabled, msg) =>
                         {
-                            logger (isEnabled ? $"✅ Telegram: {msg}" : $"❌ Telegram: {msg}");
+                            wrappedLogger (isEnabled ? $"✅ Telegram: {msg}" : $"❌ Telegram: {msg}");
                             _ui?.RefreshTelegramStatus ();
                         };
                         _telegramHandler = new TelegramCommandHandler (
@@ -227,17 +241,17 @@ namespace BinanceBotWpf.Services
                             () => GetPerformanceStats (),
                             msg => _ui?.AddLog (msg));
                         _telegram.StartListening ((cmd, chatId) => _telegramHandler.HandleAsync (cmd, chatId));
-                        logger ("⏳ Подключение к Telegram...");
+                        wrappedLogger ("⏳ Подключение к Telegram...");
                     }
                 }
                 catch (Exception ex)
                 {
-                    logger ($"❌ Ошибка инициализации Telegram: {ex.Message}");
+                    wrappedLogger ($"❌ Ошибка инициализации Telegram: {ex.Message}");
                 }
             }
             else
             {
-                logger ("⚠️ Telegram не настроен. Уведомления отключены.");
+                wrappedLogger ("⚠️ Telegram не настроен. Уведомления отключены.");
             }
 
             // Инициализация UpdateChecker для проверки обновлений на GitHub
@@ -257,11 +271,11 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ($"🎉 Новая версия {version} доступна!");
                 };
                 
-                logger ("✅ Проверка обновлений инициализирована");
+                wrappedLogger ("✅ Проверка обновлений инициализирована");
             }
             catch (Exception ex)
             {
-                logger ($"⚠️ Ошибка инициализации UpdateChecker: {ex.Message}");
+                wrappedLogger ($"⚠️ Ошибка инициализации UpdateChecker: {ex.Message}");
             }
 
             // FearGreed и PriceAlert инициализированы через DI — привязываем только обработчики
@@ -1040,13 +1054,34 @@ namespace BinanceBotWpf.Services
                             }).ToList ();
                             _dashboardServer.BroadcastPrices (pricesData);
 
-                            var positionsData = _positionManager.Positions.Select (kvp => new Dictionary<string, object>
+                            var positionsData = _positionManager.Positions.Select (kvp =>
                             {
-                                ["pair"] = kvp.Key,
-                                ["entry"] = kvp.Value.EntryPrice,
-                                ["qty"] = kvp.Value.Quantity,
-                                ["sl"] = kvp.Value.StopLossPrice,
-                                ["tp"] = kvp.Value.TakeProfitPrice
+                                var pos = kvp.Value;
+                                decimal currentPrice = _webSocketManager?.GetCurrentPrice (kvp.Key) ?? pos.EntryPrice;
+                                decimal pnl = currentPrice > 0 ? (currentPrice - pos.EntryPrice) * pos.Quantity : 0;
+                                decimal pnlPercent = pos.EntryPrice > 0 ? (currentPrice / pos.EntryPrice - 1) * 100 : 0;
+                                decimal slPercent = pos.EntryPrice > 0 ? (1 - pos.StopLossPrice / pos.EntryPrice) * 100 : 0;
+                                decimal tpPercent = pos.EntryPrice > 0 ? (pos.TakeProfitPrice / pos.EntryPrice - 1) * 100 : 0;
+                                return new Dictionary<string, object>
+                                {
+                                    ["pair"] = kvp.Key,
+                                    ["side"] = "LONG",
+                                    ["entry"] = pos.EntryPrice,
+                                    ["current"] = currentPrice,
+                                    ["qty"] = pos.Quantity,
+                                    ["sl"] = pos.StopLossPrice,
+                                    ["tp"] = pos.TakeProfitPrice,
+                                    ["pnl"] = Math.Round (pnl, 2),
+                                    ["pnlPercent"] = Math.Round (pnlPercent, 2),
+                                    ["slPercent"] = Math.Round (slPercent, 2),
+                                    ["tpPercent"] = Math.Round (tpPercent, 2),
+                                    ["margin"] = Math.Round (pos.EntryPrice * pos.Quantity, 2),
+                                    ["leverage"] = 1,
+                                    ["openTime"] = pos.OpenTime.ToString ("HH:mm"),
+                                    ["duration"] = (DateTime.UtcNow - pos.OpenTime).TotalMinutes >= 60
+                                        ? $"{(int)(DateTime.UtcNow - pos.OpenTime).TotalHours}h {(DateTime.UtcNow - pos.OpenTime).Minutes}m"
+                                        : $"{(int)(DateTime.UtcNow - pos.OpenTime).TotalMinutes}m"
+                                };
                             }).ToList ();
                             _dashboardServer.BroadcastPositions (positionsData);
 
@@ -1060,7 +1095,7 @@ namespace BinanceBotWpf.Services
                             // Equity curve live
                             _equityHistory.Add (new Dictionary<string, object>
                             {
-                                ["time"] = DateTime.UtcNow.ToString ("HH:mm"),
+                                ["time"] = DateTime.UtcNow.ToString ("MM-dd HH:mm"),
                                 ["value"] = spotBalance
                             });
                             if (_equityHistory.Count > MaxEquityHistory)
@@ -1081,7 +1116,7 @@ namespace BinanceBotWpf.Services
                                 decimal sessionPnlPercent = _sessionStartBalance > 0 ? sessionPnl / _sessionStartBalance * 100 : 0;
                                 _pnlHistory.Add (new Dictionary<string, object>
                                 {
-                                    ["time"] = DateTime.UtcNow.ToString ("HH:mm"),
+                                    ["time"] = DateTime.UtcNow.ToString ("MM-dd HH:mm"),
                                     ["pnl"] = Math.Round (sessionPnl, 2),
                                     ["pnlPercent"] = Math.Round (sessionPnlPercent, 2),
                                     ["balance"] = spotBalance,
@@ -1155,6 +1190,15 @@ namespace BinanceBotWpf.Services
                                         ["reason"] = t.Reason
                                     }).ToList ();
                                 _dashboardServer.BroadcastTrades (recentTrades);
+                            }
+
+                            // Logs — last 50
+                            lock (_recentLogs)
+                            {
+                                if (_recentLogs.Count > 0)
+                                {
+                                    _dashboardServer.BroadcastLogs (string.Join ("\n", _recentLogs.TakeLast (50)));
+                                }
                             }
                         }
                         catch { }

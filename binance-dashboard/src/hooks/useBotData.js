@@ -68,6 +68,8 @@ export default function useBotData() {
     const ws = WebSocketService.getInstance();
     mountCount++;
 
+    const handlers = handlersRef.current;
+
     CHANNELS.forEach(channel => {
       const handler = (newData) => {
         setData(prev => {
@@ -113,26 +115,28 @@ export default function useBotData() {
           return { ...prev, [channel]: newData };
         });
       };
-      handlersRef.current.set(channel, handler);
+      handlers.set(channel, handler);
       ws.on(channel, handler);
       ws.subscribe(channel);
     });
 
     const unsub = ws.onStateChange((state) => {
       setConnected(state === 'connected');
+      if (state === 'connected') {
+        clearTimeout(fallbackTimer);
+      }
     });
+
+    ws.connect();
 
     const fallbackTimer = setTimeout(() => {
       if (ws.getState() !== 'connected') {
         ws.disconnect();
       }
-    }, 3000);
-
-    ws.connect();
+    }, 10000);
 
     return () => {
       clearTimeout(fallbackTimer);
-      const handlers = handlersRef.current;
       CHANNELS.forEach(channel => {
         const handler = handlers.get(channel);
         if (handler) {
