@@ -146,13 +146,16 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    if (ws.State == WebSocketState.Open)
+                    if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
                     {
                         ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).Wait (1000);
                     }
-                    ws.Dispose ();
                 }
                 catch { }
+                finally
+                {
+                    try { ws.Dispose (); } catch { }
+                }
             }
 
             _sockets.Clear ();

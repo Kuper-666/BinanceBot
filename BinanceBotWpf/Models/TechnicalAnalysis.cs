@@ -92,7 +92,7 @@ namespace BinanceBotWpf.Models
         public static List<decimal?> ATR(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period)
         {
             var result = Enumerable.Repeat ((decimal?)null, highs.Count).ToList ();
-            if (highs.Count <= 1) return result;
+            if (highs.Count <= 1 || highs.Count < period) return result;
 
             var tr = new List<decimal> { highs[0] - lows[0] };
             for (int i = 1; i < highs.Count; i++)

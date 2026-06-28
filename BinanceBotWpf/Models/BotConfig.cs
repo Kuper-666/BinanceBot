@@ -142,6 +142,7 @@ namespace BinanceBotWpf.Models
             {
                 string json = File.ReadAllText (jsonPath);
                 var config = JsonSerializer.Deserialize<BotConfig> (json);
+                if (config == null) return new BotConfig ();
 
                 // Если пользователь вручную отредактировал config.json и вписал ключи открытым
                 // текстом (без префикса ENC:) — перешифровываем и сохраняем сразу при загрузке,

@@ -140,7 +140,8 @@ namespace BinanceBotWpf.Models
                 {
                     foreach (var b in account["balances"])
                     {
-                        string asset = b["asset"].ToString ();
+                        string asset = b["asset"]?.ToString ();
+                        if (string.IsNullOrEmpty (asset)) continue;
                         decimal free = decimal.Parse (b["free"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                         decimal locked = decimal.Parse (b["locked"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                         decimal total = free + locked;

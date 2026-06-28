@@ -110,7 +110,7 @@ namespace BinanceBotWpf.Services
                         decimal currentPrice = await _client.GetPriceAsync (sym);
                         if (currentPrice <= 0) continue;
 
-                        decimal profitPercent = ( currentPrice - entryPrice ) / entryPrice;
+                        decimal profitPercent = ( currentPrice - entryPrice ) / entryPrice * _leverage;
                         if (profitPercent >= _trailingActivationPercent && profitPercent > _highestProfit.GetValueOrDefault (sym, 0m))
                         {
                             _highestProfit[sym] = profitPercent;

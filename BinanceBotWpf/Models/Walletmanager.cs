@@ -40,7 +40,8 @@ namespace BinanceBotWpf.Models
                     {
                         foreach (var b in account["balances"])
                         {
-                            string asset = b["asset"].ToString ();
+                            string asset = b["asset"]?.ToString ();
+                            if (string.IsNullOrEmpty (asset)) continue;
                             decimal free = decimal.Parse (b["free"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                             if (!_balances.ContainsKey (asset))
                                 _balances[asset] = new AssetBalance ();
@@ -51,7 +52,8 @@ namespace BinanceBotWpf.Models
                     {
                         foreach (var item in earnData)
                         {
-                            string asset = item["asset"].ToString ();
+                            string asset = item["asset"]?.ToString ();
+                            if (string.IsNullOrEmpty (asset)) continue;
                             decimal amount = decimal.Parse (item["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                             if (!_balances.ContainsKey (asset))
                                 _balances[asset] = new AssetBalance ();

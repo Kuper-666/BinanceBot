@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -105,8 +105,7 @@ namespace BinanceBotWpf.Services
                 message.Contains ("network") ||
                 message.Contains ("rate limit") ||
                 message.Contains ("-1021") || // Timestamp
-                message.Contains ("-1003") || // Rate limit
-                message.Contains ("-2015"))    // Invalid API key
+                message.Contains ("-1003"))    // Rate limit
             {
                 return true;
             }

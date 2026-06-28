@@ -179,7 +179,8 @@ namespace BinanceBotWpf.Services
             {
                 foreach (var kvp in _activeOrderIds)
                 {
-                    _ = _client.CancelOrder (_symbol, long.Parse (kvp.Value));
+                    if (long.TryParse (kvp.Value, out long orderId))
+                        _ = _client.CancelOrder (_symbol, orderId);
                 }
                 _activeOrderIds.Clear ();
             }

@@ -83,6 +83,8 @@ namespace BinanceBotWpf.Services
 
         private async Task UpdateTrailingStopAsync(string symbol, OpenPosition pos, decimal currentPrice)
         {
+            bool changed = false;
+
             // Обновляем максимальную цену
             if (currentPrice > pos.HighestPriceSinceOpen)
             {
@@ -94,6 +96,7 @@ namespace BinanceBotWpf.Services
                 if (newStopLoss > pos.StopLossPrice)
                 {
                     pos.StopLossPrice = newStopLoss;
+                    changed = true;
                     _logger?.Invoke ($"📈 Трейлинг-стоп {symbol}: SL повышен до {newStopLoss:F4}");
 
                     // Обновляем OCO ордер
@@ -109,10 +112,14 @@ namespace BinanceBotWpf.Services
                 if (newTakeProfit > pos.TakeProfitPrice)
                 {
                     pos.TakeProfitPrice = newTakeProfit;
+                    changed = true;
                     _logger?.Invoke ($"📈 Трейлинг TP {symbol}: повышен до {newTakeProfit:F4}");
                     await UpdateOcoOrder (symbol, pos);
                 }
             }
+
+            if (changed)
+                await _positionManager.SaveAsync ();
         }
 
         private async Task CheckPartialCloseAsync(string symbol, OpenPosition pos, decimal currentPrice)

@@ -625,7 +625,13 @@ namespace BinanceBotWpf.Models
             }
         }
 
-        public void Dispose() => _httpClient.Dispose ();
+        public void Dispose ()
+        {
+            _rateLimiter.Dispose ();
+            _throttleLock.Dispose ();
+            _syncLock.Dispose ();
+            _httpClient.Dispose ();
+        }
 
         public async Task<string> GetServerInfo()
         {

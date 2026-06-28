@@ -325,9 +325,11 @@ namespace BinanceBotWpf.Services
             lock (_lock)
             {
                 foreach (var kvp in _activeBuyOrders)
-                    _ = _client.CancelOrder (_symbol, long.Parse (kvp.Value));
+                    if (long.TryParse (kvp.Value, out long oid))
+                        _ = _client.CancelOrder (_symbol, oid);
                 foreach (var kvp in _activeSellOrders)
-                    _ = _client.CancelOrder (_symbol, long.Parse (kvp.Value));
+                    if (long.TryParse (kvp.Value, out long oid))
+                        _ = _client.CancelOrder (_symbol, oid);
                 _activeBuyOrders.Clear ();
                 _activeSellOrders.Clear ();
             }

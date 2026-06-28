@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -18,7 +18,7 @@ namespace BinanceBotWpf.Models
             out string reason)
         {
             reason = "Нет сигнала";
-            if (closes.Count < 50) return TradeAction.Hold;
+            if (closes.Count < 50 || highs.Count < 50 || lows.Count < 50 || volumes.Count < 20) return TradeAction.Hold;
 
             // 1. Долгосрочный тренд (50-период SMA) – фильтр направления
             decimal longSma = closes.Skip (closes.Count - 50).Average ();
