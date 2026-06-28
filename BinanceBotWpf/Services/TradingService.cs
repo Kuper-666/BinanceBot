@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BinanceBotWpf.Models;
+using BinanceBotWpf.Risk;
 using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
@@ -19,32 +20,32 @@ namespace BinanceBotWpf.Services
     {
         private static readonly HttpClient _sharedHttpClient = new () { Timeout = TimeSpan.FromSeconds (30) };
 
-        // Основные компоненты
+        // Основные компоненты (интерфейсы — все зависимости через DI)
         private readonly BinanceClient _client;
-        private readonly WalletManager _wallet;
-        private readonly EarnManager _earn;
-        private readonly BalanceRebalancer _rebalancer;
-        private readonly PositionManager _positionManager;
-        private MlModelManager _mlManager;
-        private readonly TradingStrategy _strategy;
-        private readonly SignalFilter _signalFilter;
-        private readonly PositionProtector _positionProtector;
+        private readonly IWalletManager _wallet;
+        private readonly IEarnManager _earn;
+        private readonly IBalanceRebalancer _rebalancer;
+        private readonly IPositionManager _positionManager;
+        private IMlModelManager _mlManager;
+        private readonly ITradingStrategy _strategy;
+        private readonly ISignalFilter _signalFilter;
+        private readonly IPositionProtector _positionProtector;
         private WebSocketPriceManager _webSocketManager;
         private UpdateChecker _updateChecker;
         private GridBot _gridBot;
-        private VolumeBreakoutStrategy _volumeBreakout;
-        private DCAStrategy _dcaStrategy;
-        private NewsProvider _newsProvider;
-        private MacroCalendarProvider _macroCalendar;
+        private readonly IVolumeBreakoutStrategy _volumeBreakout;
+        private readonly IDcaStrategy _dcaStrategy;
+        private readonly INewsProvider _newsProvider;
+        private readonly IMacroCalendarProvider _macroCalendar;
         private TradingSettings _tradingSettings;
-        private BackupService _backupService;
-        private AiRiskEngine _aiRiskEngine;
-        private DashboardWebSocketServer _dashboardServer;
+        private readonly IBackupService _backupService;
+        private readonly IAiRiskEngine _aiRiskEngine;
+        private readonly IDashboardWebSocketServer _dashboardServer;
         private WhaleMonitor _whaleMonitor;
-        private SimpleEarnStrategy _earnStrategy;
-        private FearGreedIndexProvider _fearGreedProvider;
-        private PriceAlertManager _priceAlertManager;
-        private readonly Risk.RiskManager _riskManager = new ();
+        private ISimpleEarnStrategy _earnStrategy;
+        private readonly IFearGreedIndexProvider _fearGreedProvider;
+        private readonly IPriceAlertManager _priceAlertManager;
+        private readonly IRiskManager _riskManager;
         private TelegramCommandHandler _telegramHandler;
         private DashboardCommandHandler _dashboardHandler;
 
@@ -79,41 +80,54 @@ namespace BinanceBotWpf.Services
         private readonly List<Dictionary<string, object>> _pnlHistory = new ();
         private const int MaxPnlHistory = 200;
 
-        // TradingService.cs, конструктор:
-        public TradingService(BinanceClient client, WalletManager wallet, EarnManager earn, BalanceRebalancer rebalancer = null,
-                      decimal minUsdcBalance = 5.50m, string telegramBotToken = "", string telegramChatId = "")
+        // TradingService.cs, конструктор — все зависимости через DI:
+        public TradingService (
+            IBinanceClient client,
+            IWalletManager wallet,
+            IEarnManager earn,
+            IBalanceRebalancer rebalancer,
+            IPositionManager positionManager,
+            IMlModelManager mlManager,
+            ITradingStrategy strategy,
+            ISignalFilter signalFilter,
+            IPositionProtector positionProtector,
+            IVolumeBreakoutStrategy volumeBreakout,
+            IDcaStrategy dcaStrategy,
+            INewsProvider newsProvider,
+            IMacroCalendarProvider macroCalendar,
+            TradingSettings tradingSettings,
+            IBackupService backupService,
+            IAiRiskEngine aiRiskEngine,
+            IDashboardWebSocketServer dashboardServer,
+            IFearGreedIndexProvider fearGreedProvider,
+            IPriceAlertManager priceAlertManager,
+            IRiskManager riskManager,
+            WebSocketPriceManager webSocketManager,
+            BotConfig config)
         {
-            _client = client;
+            _client = (BinanceClient)client;
             _wallet = wallet;
             _earn = earn;
-            _rebalancer = rebalancer ?? new BalanceRebalancer ();
-            _telegramBotToken = telegramBotToken;
-            _telegramChatId = telegramChatId;
-
-            string dataDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data");
-            string logsDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
-
-            // ИСПРАВЛЕНИЕ: Создать dummy logger для инициализации до SetLogger
-            Action<string> dummyLogger = msg => System.Diagnostics.Debug.WriteLine ($"[Init] {msg}");
-
-            _positionManager = new PositionManager (Path.Combine (dataDir, "open_positions.json"), dummyLogger);
-            _mlManager = new MlModelManager (Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip"), dummyLogger);
-            _strategy = new TradingStrategy (dummyLogger);
-            _signalFilter = new SignalFilter (dummyLogger);
-            _positionProtector = new PositionProtector (client, _positionManager, dummyLogger);
-            _volumeBreakout = new VolumeBreakoutStrategy (client, dummyLogger);
-            _dcaStrategy = new DCAStrategy (client, dummyLogger);
-            _newsProvider = new NewsProvider (_sharedHttpClient, dummyLogger);
-            _macroCalendar = new MacroCalendarProvider (_sharedHttpClient, dummyLogger);
-            _tradingSettings = new TradingSettings ();
-            _backupService = new BackupService (dummyLogger);
-            _aiRiskEngine = new AiRiskEngine (_mlManager, client, dummyLogger);
-
-            // ✅ Дашборд WebSocket сервер
-            _dashboardServer = new DashboardWebSocketServer (ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ());
-
-            // ✅ ИНИЦИАЛИЗАЦИЯ WebSocket менеджера
-            _webSocketManager = new WebSocketPriceManager (dummyLogger);
+            _rebalancer = rebalancer;
+            _positionManager = positionManager;
+            _mlManager = mlManager;
+            _strategy = strategy;
+            _signalFilter = signalFilter;
+            _positionProtector = positionProtector;
+            _volumeBreakout = volumeBreakout;
+            _dcaStrategy = dcaStrategy;
+            _newsProvider = newsProvider;
+            _macroCalendar = macroCalendar;
+            _tradingSettings = tradingSettings;
+            _backupService = backupService;
+            _aiRiskEngine = aiRiskEngine;
+            _dashboardServer = dashboardServer;
+            _fearGreedProvider = fearGreedProvider;
+            _priceAlertManager = priceAlertManager;
+            _riskManager = riskManager;
+            _webSocketManager = webSocketManager;
+            _telegramBotToken = config?.TelegramBotToken ?? "";
+            _telegramChatId = config?.TelegramChatId ?? "";
         }
 
         private bool _loggerSet = false;
@@ -130,10 +144,7 @@ namespace BinanceBotWpf.Services
             _rebalancer.OnLogGenerated += logger;
             _client.OnLogGenerated += logger;
 
-            // Пересоздаём MlModelManager с логгером
-            string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
-            _mlManager = new MlModelManager (modelPath, logger);
-            _strategy.SetMlManager(_mlManager);
+            _strategy.SetMlManager((MlModelManager)_mlManager);
 
             // ═══════ Золотая архитектура: 3 эшелона ИИ ═══════
             try
@@ -165,13 +176,6 @@ namespace BinanceBotWpf.Services
             catch (Exception ex)
             {
                 _ui?.AddLog ($"⚠️ Ошибка инициализации ИИ-агентов: {ex.Message}");
-            }
-
-            // У новых сервисов логгер уже установлен в конструкторе
-            if (_webSocketManager == null)
-            {
-                _webSocketManager = new WebSocketPriceManager (logger, _ui?.FuturesEnabled == true);
-                logger ($"✅ WebSocket менеджер инициализирован");
             }
 
             // Инициализация Telegram
@@ -208,9 +212,9 @@ namespace BinanceBotWpf.Services
                             _ui?.RefreshTelegramStatus ();
                         };
                         _telegramHandler = new TelegramCommandHandler (
-                            _telegram, _client, _wallet, _positionManager, _tradingSettings,
-                            _mlManager, _webSocketManager, _backupService, _fearGreedProvider,
-                            _priceAlertManager, _ui, _recentErrors, _activePairs,
+                            _telegram, _client, (WalletManager)_wallet, (PositionManager)_positionManager, _tradingSettings,
+                            (MlModelManager)_mlManager, _webSocketManager, (BackupService)_backupService, (FearGreedIndexProvider)_fearGreedProvider,
+                            (PriceAlertManager)_priceAlertManager, _ui, _recentErrors, _activePairs,
                             () => _isRunning,
                             () => { StopTrading (); return Task.CompletedTask; },
                             async (sym) => await StartAutoGridAsync (sym),
@@ -256,31 +260,11 @@ namespace BinanceBotWpf.Services
                 logger ($"⚠️ Ошибка инициализации UpdateChecker: {ex.Message}");
             }
 
-            // Инициализация Fear & Greed Index
-            try
+            // FearGreed и PriceAlert инициализированы через DI — привязываем только обработчики
+            _priceAlertManager.OnAlertTriggered += alert =>
             {
-                _fearGreedProvider = new FearGreedIndexProvider (logger);
-                logger ("✅ Fear & Greed Index инициализирован");
-            }
-            catch (Exception ex)
-            {
-                logger ($"⚠️ Ошибка инициализации FearGreedIndex: {ex.Message}");
-            }
-
-            // Инициализация Price Alert Manager
-            try
-            {
-                _priceAlertManager = new PriceAlertManager (GetCurrentPrice, notifyTelegram, logger);
-                _priceAlertManager.OnAlertTriggered += alert =>
-                {
-                    _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} triggered!");
-                };
-                logger ("✅ Price Alert Manager инициализирован");
-            }
-            catch (Exception ex)
-            {
-                logger ($"⚠️ Ошибка инициализации PriceAlertManager: {ex.Message}");
-            }
+                _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} triggered!");
+            };
         }
 
         public async Task StartTradingAsync(MainWindowViewModel vm)
@@ -375,7 +359,7 @@ namespace BinanceBotWpf.Services
             decimal balance = _wallet.GetTotalBalance ("USDC");
             decimal investmentUsdc = balance * investmentPercent;
 
-            _gridBot = new GridBot (_client, _positionManager, msg => _ui?.AddLog (msg));
+            _gridBot = new GridBot (_client, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
             _gridBot.OnTrade += trade => _ui?.AddTradeToHistory (trade);
             await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
         }
@@ -432,7 +416,7 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Баланс: {balance:F2} USDC");
             _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
 
-            _gridBot = new GridBot (_client, _positionManager, msg => _ui?.AddLog (msg));
+            _gridBot = new GridBot (_client, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
             _gridBot.OnTrade += trade => _ui?.AddTradeToHistory (trade);
             await _gridBot.StartAsync (symbol, currentPrice, grid.RangePercent, grid.Levels, investmentUsdc, grid.UseDynamicStep);
         }
@@ -452,15 +436,13 @@ namespace BinanceBotWpf.Services
 
         private async Task InitAsync()
         {
-            // Загружаем TradingSettings ДО подписок, чтобы знать FuturesEnabled
-            _tradingSettings = await TradingSettings.LoadAsync ();
+            // TradingSettings загружены через DI, не нужно загружать заново
 
-            // Гарантируем инициализацию WebSocket менеджера (фьючерсный эндпоинт если Futures включены)
+            // Инициализация WebSocket менеджера
             bool useFutures = _ui?.FuturesEnabled == true || _tradingSettings?.FuturesEnabled == true;
             if (_webSocketManager != null)
             {
                 _webSocketManager.Dispose ();
-                _webSocketManager = null;
             }
             _webSocketManager = new WebSocketPriceManager (msg => _ui?.AddLog (msg), useFutures);
             _ui?.AddLog ($"🔌 WebSocket эндпоинт: {(useFutures ? "фьючерсы (fstream.binance.com)" : "спот (stream.binance.com)")}");
@@ -563,11 +545,9 @@ namespace BinanceBotWpf.Services
                 });
             }
 
-            // Запуск Dashboard WebSocket сервера
+            // Запуск Dashboard WebSocket сервера (инициализирован через DI)
             try
             {
-                var dashboardLogger = ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ();
-                _dashboardServer = new DashboardWebSocketServer (dashboardLogger);
                 _dashboardHandler = new DashboardCommandHandler (
                     _ui, () => _isRunning,
                     () => { StopTrading (); return Task.CompletedTask; },

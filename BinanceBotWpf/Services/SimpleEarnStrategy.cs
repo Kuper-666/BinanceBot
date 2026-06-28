@@ -5,7 +5,7 @@ using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {
-    public class SimpleEarnStrategy
+    public class SimpleEarnStrategy : ISimpleEarnStrategy
     {
         private readonly BinanceClient _client;
         private readonly Action<string> _logger;

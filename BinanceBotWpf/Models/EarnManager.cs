@@ -2,11 +2,12 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using BinanceBotWpf.Services;
 
 namespace BinanceBotWpf.Models
 {
     /// <summary>Управление Earn: выкуп активов на спот.</summary>
-    public class EarnManager
+    public class EarnManager : IEarnManager
     {
         private readonly HashSet<string> _pendingRedemptions = new ();
         private readonly object _pendingLock = new ();

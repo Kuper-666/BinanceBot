@@ -10,7 +10,7 @@ namespace BinanceBotWpf.Services
     /// Провайдер макроэкономического календаря:
     /// загружает предстоящие события (FOMC, CPI, NFP и т.д.)
     /// </summary>
-    public class MacroCalendarProvider
+    public class MacroCalendarProvider : IMacroCalendarProvider
     {
         private readonly HttpClient _httpClient;
         private readonly Action<string> _logger;

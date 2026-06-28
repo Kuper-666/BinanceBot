@@ -10,7 +10,7 @@ namespace BinanceBotWpf.Services
     /// покупает при отклонении цены от максимума на 2 * ATR.
     /// Отключается при падении > 30% от максимума (ловля падающего ножа).
     /// </summary>
-    public class DCAStrategy
+    public class DCAStrategy : IDcaStrategy
     {
         private readonly BinanceClient _client;
         private readonly Action<string> _logger;

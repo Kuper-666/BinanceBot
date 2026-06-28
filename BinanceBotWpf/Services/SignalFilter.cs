@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -9,7 +9,7 @@ namespace BinanceBotWpf.Services
     /// <summary>
     /// Фильтрация торговых сигналов с помощью дополнительных индикаторов
     /// </summary>
-    public class SignalFilter
+    public class SignalFilter : ISignalFilter
     {
         private readonly Action<string> _logger;
 
@@ -36,7 +36,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Проверяет, стоит ли покупать по всем фильтрам
         /// </summary>
-        public async Task<bool> ShouldBuyAsync(
+        public Task<bool> ShouldBuyAsync(
             string symbol,
             decimal price,
             decimal rsi,
@@ -55,7 +55,7 @@ namespace BinanceBotWpf.Services
             if (!volumeOk)
             {
                 _logger?.Invoke ($"📊 {symbol}: объём {volume:F0} < {avgVolume * MinVolumeRatio:F0} (мин. {MinVolumeRatio:P0})");
-                return false;
+                return Task.FromResult (false);
             }
 
             // 2. RSI фильтр (не перекуплен)
@@ -63,7 +63,7 @@ namespace BinanceBotWpf.Services
             if (!rsiOk)
             {
                 _logger?.Invoke ($"📊 {symbol}: RSI {rsi:F1} > {MinRsiForBuy} (перекуплен)");
-                return false;
+                return Task.FromResult (false);
             }
 
             // 3. Трендовый фильтр (цена выше SMA50)
@@ -101,7 +101,7 @@ namespace BinanceBotWpf.Services
             if (result)
                 _logger?.Invoke ($"✅ {symbol}: все фильтры пройдены");
 
-            return result;
+            return Task.FromResult (result);
         }
 
         /// <summary>

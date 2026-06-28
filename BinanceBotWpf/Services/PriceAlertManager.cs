@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -22,7 +23,7 @@ namespace BinanceBotWpf.Services
         public string Id { get; set; } = Guid.NewGuid().ToString("N")[..8];
     }
 
-    public class PriceAlertManager : IDisposable
+    public class PriceAlertManager : IPriceAlertManager
     {
         private readonly ConcurrentDictionary<string, PriceAlert> _alerts = new();
         private readonly Func<string, Task> _notifyTelegram;
@@ -30,7 +31,7 @@ namespace BinanceBotWpf.Services
         private readonly Func<string, decimal> _getCurrentPrice;
         private readonly Timer _checkTimer;
 
-        public event Action<PriceAlert> OnAlertTriggered;
+        public event Action<PriceAlert>? OnAlertTriggered;
 
         public PriceAlertManager(
             Func<string, decimal> getCurrentPrice,

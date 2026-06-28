@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
 using BinanceBotWpf.Models;
+using BinanceBotWpf.Risk;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
@@ -195,27 +196,113 @@ namespace BinanceBotWpf
             string apiKey, string apiSecret, bool isTestnet,
             decimal minUsdcBalance, string telegramBotToken, string telegramChatId)
         {
+            Action<string> fileLogger = msg => _fileLogger?.Info ("App", msg);
+            string dataDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data");
+            string modelPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "trading_model.zip");
+            string positionsPath = Path.Combine (dataDir, "open_positions.json");
+            var sharedHttpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds (30) };
+
+            // BotConfig
+            services.AddSingleton<BotConfig> (sp => BotConfig.LoadOrMigrate (out _));
+
+            // Core services
             services.AddSingleton<IEventBus, EventBus> ();
             services.AddSingleton<IBinanceClient> (sp => new BinanceClient (apiKey, apiSecret, isTestnet));
             services.AddSingleton<IWalletManager> (sp =>
             {
-                var client = sp.GetRequiredService<IBinanceClient> ();
-                var wallet = new WalletManager ((BinanceClient)client);
-                wallet.OnLogGenerated += msg => _fileLogger?.Info ("Wallet", msg);
+                var client = (BinanceClient)sp.GetRequiredService<IBinanceClient> ();
+                var wallet = new WalletManager (client);
+                wallet.OnLogGenerated += fileLogger;
                 return wallet;
             });
-            services.AddSingleton (sp => new EarnManager ());
-            services.AddSingleton (sp => new BalanceRebalancer ());
-            services.AddSingleton<IPositionManager> (sp => new PositionManager (
-                Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "open_positions.json"),
-                msg => _fileLogger?.Info ("Position", msg)));
-            services.AddSingleton (sp => new TradingService (
-                (BinanceClient)sp.GetRequiredService<IBinanceClient> (),
-                (WalletManager)sp.GetRequiredService<IWalletManager> (),
-                sp.GetRequiredService<EarnManager> (),
-                sp.GetRequiredService<BalanceRebalancer> (),
-                minUsdcBalance, telegramBotToken, telegramChatId));
-            services.AddSingleton (sp => new MainWindowViewModel (
+            services.AddSingleton<IEarnManager> (sp =>
+            {
+                var earn = new EarnManager ();
+                earn.OnLogGenerated += fileLogger;
+                return earn;
+            });
+            services.AddSingleton<IBalanceRebalancer> (sp =>
+            {
+                var rebalancer = new BalanceRebalancer ();
+                rebalancer.OnLogGenerated += fileLogger;
+                return rebalancer;
+            });
+            services.AddSingleton<IPositionManager> (sp => new PositionManager (positionsPath, fileLogger));
+
+            // ML and strategy
+            services.AddSingleton<IMlModelManager> (sp => new MlModelManager (modelPath, fileLogger));
+            services.AddSingleton<ITradingStrategy> (sp => new TradingStrategy (fileLogger));
+            services.AddSingleton<ISignalFilter> (sp => new SignalFilter (fileLogger));
+
+            // Protection and strategies
+            services.AddSingleton<IPositionProtector> (sp =>
+                new PositionProtector (
+                    (BinanceClient)sp.GetRequiredService<IBinanceClient> (),
+                    (PositionManager)sp.GetRequiredService<IPositionManager> (),
+                    fileLogger));
+            services.AddSingleton<IVolumeBreakoutStrategy> (sp =>
+                new VolumeBreakoutStrategy (
+                    (BinanceClient)sp.GetRequiredService<IBinanceClient> (), fileLogger));
+            services.AddSingleton<IDcaStrategy> (sp =>
+                new DCAStrategy (
+                    (BinanceClient)sp.GetRequiredService<IBinanceClient> (), fileLogger));
+
+            // Providers
+            services.AddSingleton<INewsProvider> (sp => new NewsProvider (sharedHttpClient, fileLogger));
+            services.AddSingleton<IMacroCalendarProvider> (sp => new MacroCalendarProvider (sharedHttpClient, fileLogger));
+            services.AddSingleton<IFearGreedIndexProvider> (sp => new FearGreedIndexProvider (fileLogger));
+            services.AddSingleton<IPriceAlertManager> (sp =>
+            {
+                var mgr = new PriceAlertManager (
+                    (Func<string, decimal>)(sym => 0),
+                    null,
+                    fileLogger);
+                return mgr;
+            });
+
+            // Infrastructure
+            services.AddSingleton<TradingSettings> (sp => TradingSettings.LoadAsync ().GetAwaiter ().GetResult ());
+            services.AddSingleton<IBackupService> (sp => new BackupService (fileLogger));
+            services.AddSingleton<IRiskManager> (sp => new Risk.RiskManager ());
+            services.AddSingleton<IAiRiskEngine> (sp =>
+                new AiRiskEngine (
+                    (MlModelManager)sp.GetRequiredService<IMlModelManager> (),
+                    (BinanceClient)sp.GetRequiredService<IBinanceClient> (),
+                    fileLogger));
+            services.AddSingleton<IDashboardWebSocketServer> (sp =>
+                new DashboardWebSocketServer (
+                    ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ()));
+            services.AddSingleton<WebSocketPriceManager> (sp =>
+                new WebSocketPriceManager (fileLogger));
+            services.AddSingleton<ISimpleEarnStrategy> (sp =>
+                new SimpleEarnStrategy (
+                    (BinanceClient)sp.GetRequiredService<IBinanceClient> (), fileLogger));
+
+            // Main services
+            services.AddSingleton<TradingService> (sp => new TradingService (
+                sp.GetRequiredService<IBinanceClient> (),
+                sp.GetRequiredService<IWalletManager> (),
+                sp.GetRequiredService<IEarnManager> (),
+                sp.GetRequiredService<IBalanceRebalancer> (),
+                sp.GetRequiredService<IPositionManager> (),
+                sp.GetRequiredService<IMlModelManager> (),
+                sp.GetRequiredService<ITradingStrategy> (),
+                sp.GetRequiredService<ISignalFilter> (),
+                sp.GetRequiredService<IPositionProtector> (),
+                sp.GetRequiredService<IVolumeBreakoutStrategy> (),
+                sp.GetRequiredService<IDcaStrategy> (),
+                sp.GetRequiredService<INewsProvider> (),
+                sp.GetRequiredService<IMacroCalendarProvider> (),
+                sp.GetRequiredService<TradingSettings> (),
+                sp.GetRequiredService<IBackupService> (),
+                sp.GetRequiredService<IAiRiskEngine> (),
+                sp.GetRequiredService<IDashboardWebSocketServer> (),
+                sp.GetRequiredService<IFearGreedIndexProvider> (),
+                sp.GetRequiredService<IPriceAlertManager> (),
+                sp.GetRequiredService<IRiskManager> (),
+                sp.GetRequiredService<WebSocketPriceManager> (),
+                sp.GetRequiredService<BotConfig> ()));
+            services.AddSingleton<MainWindowViewModel> (sp => new MainWindowViewModel (
                 sp.GetRequiredService<TradingService> (), isTestnet));
         }
 

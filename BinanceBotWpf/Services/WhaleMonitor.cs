@@ -19,7 +19,7 @@ namespace BinanceBotWpf.Services
         public DateTime Time { get; set; }
     }
 
-    public class WhaleMonitor : IDisposable
+    public class WhaleMonitor : IWhaleMonitor
     {
         private readonly Action<string> _logger;
         private readonly decimal _thresholdUsdc;

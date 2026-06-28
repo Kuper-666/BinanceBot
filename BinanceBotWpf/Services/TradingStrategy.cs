@@ -10,7 +10,7 @@ namespace BinanceBotWpf.Services
     /// Основная торговая стратегия (SMA + RSI + MACD) с мульти-таймфрейм поддержкой
     /// и Золотой архитектурой (3 эшелона ИИ)
     /// </summary>
-    public class TradingStrategy
+    public class TradingStrategy : ITradingStrategy
     {
         private readonly StrategyEngine _strategyEngine = new ();
         private readonly Action<string> _logger;
@@ -91,7 +91,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Анализ пары и генерация сигнала с интеграцией 3 эшелонов ИИ
         /// </summary>
-        public async Task<(TradeAction Action, string Reason, Dictionary<string, decimal> Indicators)>
+        public Task<(TradeAction Action, string Reason, Dictionary<string, decimal> Indicators)>
             AnalyzeAsync (string symbol, List<BinanceKline> klines)
         {
             var result = (Action: TradeAction.Hold, Reason: "Нет сигнала", Indicators: new Dictionary<string, decimal> ());
@@ -99,7 +99,7 @@ namespace BinanceBotWpf.Services
             if (klines == null || klines.Count < SlowSmaPeriod + 5)
             {
                 result.Reason = "Недостаточно данных";
-                return result;
+                return Task.FromResult (result);
             }
 
             try
@@ -326,7 +326,7 @@ namespace BinanceBotWpf.Services
                 result.Reason = $"Ошибка: {ex.Message}";
             }
 
-            return result;
+            return Task.FromResult (result);
         }
 
         /// <summary>

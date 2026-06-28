@@ -190,7 +190,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Оптимизация параметров (простой перебор)
         /// </summary>
-        public async Task<Dictionary<string, object>> OptimizeParametersAsync(
+        public Task<Dictionary<string, object>> OptimizeParametersAsync(
             List<BinanceKline> klines,
             List<int> fastPeriods,
             List<int> slowPeriods,
@@ -241,7 +241,7 @@ namespace BinanceBotWpf.Services
             }
 
             _logger?.Invoke ($"✅ Оптимизация завершена. Лучшая доходность: {bestResult.TotalReturn:F2}%");
-            return bestParams;
+            return Task.FromResult (bestParams);
         }
 
         private List<decimal> CalculateSmaList(List<decimal> data, int period)

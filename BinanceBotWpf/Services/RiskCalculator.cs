@@ -55,7 +55,7 @@ namespace BinanceBotWpf.Services
         public static (decimal Quantity, QuantityResult Result) CalculatePositionQuantity(
      decimal riskAmount, decimal price, decimal stepSize, decimal minQty, decimal currentBalance, decimal minNotional = 6m)
         {
-            if (price <= 0 || stepSize <= 0 || minQty <= 0)
+            if (price <= 0 || stepSize <= 0 || minQty < 0)
                 return (0, QuantityResult.ZeroQuantityAfterRounding);
 
             // 1. Сначала проверяем, хватит ли баланса хотя бы на минимальный нотионал

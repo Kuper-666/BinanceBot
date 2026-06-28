@@ -10,7 +10,7 @@ namespace BinanceBotWpf.Services
     /// Провайдер новостей: парсит RSS Binance Announcements и Google News
     /// для ключевых слов (launchpool, airdrop, listing и т.д.)
     /// </summary>
-    public class NewsProvider
+    public class NewsProvider : INewsProvider
     {
         private readonly HttpClient _httpClient;
         private readonly Action<string> _logger;

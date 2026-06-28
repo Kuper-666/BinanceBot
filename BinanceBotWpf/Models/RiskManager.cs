@@ -23,7 +23,7 @@ namespace BinanceBotWpf.Risk
         private readonly List<decimal> _tradeHistory = new ();
 
         // === ПУБЛИЧНЫЕ СВОЙСТВА ===
-        public decimal BalanceUSDC { get; internal set; }
+        public decimal BalanceUSDC { get; set; }
         public decimal Leverage { get; private set; }
         public int LevelsPerSide { get; private set; }
         public double StepPercent { get; private set; }

@@ -1,3 +1,4 @@
+#nullable enable
 using System;
 using System.Net.Http;
 using System.Threading;
@@ -13,7 +14,7 @@ namespace BinanceBotWpf.Services
         public DateTime Timestamp { get; set; }
     }
 
-    public class FearGreedIndexProvider : IDisposable
+    public class FearGreedIndexProvider : IFearGreedIndexProvider
     {
         private readonly HttpClient _httpClient;
         private readonly Action<string> _logger;

@@ -49,19 +49,26 @@ namespace BinanceBotWpf.Models
             result = CandleInterval.OneHour; // по умолчанию
 
             // Проверяем что интервал не меньше 1 часа
-            return interval switch
+            switch (interval)
             {
-                "1h" => (result = CandleInterval.OneHour) is CandleInterval,
-                "4h" => (result = CandleInterval.FourHours) is CandleInterval,
-                "1d" => (result = CandleInterval.OneDay) is CandleInterval,
-                "1w" => (result = CandleInterval.OneWeek) is CandleInterval,
-                "1M" => (result = CandleInterval.OneMonth) is CandleInterval,
-
-                // Интервалы короче 1h запрещены
-                "1m" or "5m" or "15m" or "30m" => false,
-
-                _ => false
-            };
+                case "1h":
+                    result = CandleInterval.OneHour;
+                    return true;
+                case "4h":
+                    result = CandleInterval.FourHours;
+                    return true;
+                case "1d":
+                    result = CandleInterval.OneDay;
+                    return true;
+                case "1w":
+                    result = CandleInterval.OneWeek;
+                    return true;
+                case "1M":
+                    result = CandleInterval.OneMonth;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         /// <summary>

@@ -8,7 +8,7 @@ namespace BinanceBotWpf.Services
     /// ИИ-движок риска: автоматически рассчитывает параметры риска и сетки
     /// на основе предсказаний ML-модели, волатильности и баланса.
     /// </summary>
-    public class AiRiskEngine
+    public class AiRiskEngine : IAiRiskEngine
     {
         private readonly MlModelManager _mlManager;
         private readonly BinanceClient _client;

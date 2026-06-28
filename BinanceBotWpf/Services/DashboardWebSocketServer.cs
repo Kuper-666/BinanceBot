@@ -14,7 +14,7 @@ using Microsoft.Extensions.Logging;
 
 namespace BinanceBotWpf.Services
 {
-    public class DashboardWebSocketServer
+    public class DashboardWebSocketServer : IDashboardWebSocketServer
     {
         public const string ApiVersion = "1.0.0";
         private HttpListener _listener;

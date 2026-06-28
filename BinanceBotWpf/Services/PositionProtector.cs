@@ -9,7 +9,7 @@ namespace BinanceBotWpf.Services
     /// <summary>
     /// Защита открытых позиций: трейлинг-стоп, частичная фиксация, таймауты
     /// </summary>
-    public class PositionProtector
+    public class PositionProtector : IPositionProtector
     {
         private readonly BinanceClient _client;
         private readonly PositionManager _positionManager;

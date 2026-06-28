@@ -11,7 +11,7 @@ namespace BinanceBotWpf.Services
     /// за 20 свечей в N раз, и цена закрывается выше верхней полосы Боллинджера —
     /// отправляется STOP_MARKET на покупку.
     /// </summary>
-    public class VolumeBreakoutStrategy
+    public class VolumeBreakoutStrategy : IVolumeBreakoutStrategy
     {
         private readonly BinanceClient _client;
         private readonly Action<string> _logger;

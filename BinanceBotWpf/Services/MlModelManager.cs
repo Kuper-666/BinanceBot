@@ -1,3 +1,4 @@
+#nullable enable
 using BinanceBotWpf.Models;
 using Microsoft.ML;
 using Microsoft.ML.Data;
@@ -9,11 +10,11 @@ using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
 {
-    public class MlModelManager
+    public class MlModelManager : IMlModelManager
     {
         private readonly string _modelPath;
-        private MLContext _mlContext;
-        private ITransformer _mlModel;
+        private MLContext? _mlContext;
+        private ITransformer? _mlModel;
         private bool _mlModelLoaded = false;
         private readonly Action<string> _logger;
 
@@ -85,6 +86,8 @@ namespace BinanceBotWpf.Services
                     SentimentScore = sentimentScore,
                     GalaxyScore = galaxyScore
                 };
+                if (_mlContext == null || _mlModel == null) return (true, 1.0f, "Low Risk");
+
                 var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
                 var result = predEngine.Predict (input);
                 
@@ -152,12 +155,13 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex) { logger?.Invoke ($"❌ Ошибка обучения: {ex.Message}"); }
             });
         }
-        public async Task CollectExamplesFromHistoryAsync(BinanceClient client, List<string> pairs, int lookaheadBars = 12) // 12*5мин = 1 час
+        public Task CollectExamplesFromHistoryAsync(BinanceClient client, List<string> pairs, int lookaheadBars = 12) // 12*5мин = 1 час
         {
             // Для каждой пары загружаем 500 свечей
             // Для каждой позиции i (от 50 до 500-lookaheadBars) вычисляем фичи на баре i
             // Целевая переменная: (close[i+lookaheadBars] - close[i]) / close[i]   – будущая доходность
             // Сохраняем в CSV для обучения на Python (LightGBM) или используем ML.NET регрессию
+            return Task.CompletedTask;
         }
     }
 
