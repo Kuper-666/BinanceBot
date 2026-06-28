@@ -261,7 +261,7 @@ namespace BinanceBotWpf
             });
 
             // Infrastructure
-            services.AddSingleton<TradingSettings> (sp => TradingSettings.LoadAsync ().GetAwaiter ().GetResult ());
+            services.AddSingleton<TradingSettings> (sp => Task.Run (() => TradingSettings.LoadAsync ()).GetAwaiter ().GetResult ());
             services.AddSingleton<IBackupService> (sp => new BackupService (fileLogger));
             services.AddSingleton<IRiskManager> (sp => new Risk.RiskManager ());
             services.AddSingleton<IAiRiskEngine> (sp =>
