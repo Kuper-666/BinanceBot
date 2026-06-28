@@ -961,20 +961,7 @@ namespace BinanceBotWpf.Services
                             _ui?.AddLog ($"🔍 {sym}: STRONG Buy ЗАБЛОКИРОВАН — multi-TF подтверждение НЕ пройдено (5m)");
                         }
 
-                        // Фильтр по рыночным сессиям
-                        var currentSession = MarketSessionService.GetCurrentSession ();
-                        bool filterEnabled = _tradingSettings?.SessionFilterEnabled ?? false;
-                        bool sessionAllowed = !filterEnabled
-                            || MarketSessionService.ShouldTrade (currentSession, _tradingSettings?.TradeOnlyEuUs ?? false);
-
-                        if (!sessionAllowed)
-                        {
-                            if (analysis.Action != TradeAction.Hold)
-                            {
-                                _ui?.AddLog ($"🕐 {sym}: {analysis.Action} пропущен — сессия {MarketSessionService.GetSessionLabel (currentSession)}");
-                            }
-                        }
-                        else if (analysis.Action == TradeAction.Buy && !hasPosition && !confirmed)
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && !confirmed)
                         {
                             // Уже залогировано выше
                         }
