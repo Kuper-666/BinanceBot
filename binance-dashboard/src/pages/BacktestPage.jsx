@@ -16,6 +16,21 @@ export default function BacktestPage({ data }) {
   const { t } = useTranslation();
   const bt = data.backtest;
 
+  if (!bt) {
+    return (
+      <div style={{ display: 'grid', gap: '16px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{t('backtest')}</h3>
+        <div className="card" style={{ padding: '32px', textAlign: 'center' }}>
+          <div style={{ fontSize: '36px', marginBottom: '12px' }}>📊</div>
+          <div style={{ fontSize: '14px', color: '#888', marginBottom: '8px' }}>{t('no_data')}</div>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            {t('backtest_not_run')}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'grid', gap: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>

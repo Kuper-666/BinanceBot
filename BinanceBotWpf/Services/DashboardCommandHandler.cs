@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using BinanceBotWpf.ViewModels;
 
@@ -12,17 +13,23 @@ namespace BinanceBotWpf.Services
         private readonly Func<bool> _isRunning;
         private readonly Func<Task> _stopTrading;
         private readonly Func<MainWindowViewModel, Task> _startTrading;
+        private readonly Func<Task> _runBacktest;
+        private readonly Func<Task> _runOptimization;
 
         public DashboardCommandHandler (
             MainWindowViewModel ui,
             Func<bool> isRunning,
             Func<Task> stopTrading,
-            Func<MainWindowViewModel, Task> startTrading)
+            Func<MainWindowViewModel, Task> startTrading,
+            Func<Task> runBacktest = null,
+            Func<Task> runOptimization = null)
         {
             _ui = ui;
             _isRunning = isRunning;
             _stopTrading = stopTrading;
             _startTrading = startTrading;
+            _runBacktest = runBacktest;
+            _runOptimization = runOptimization;
         }
 
         public async Task HandleAsync (string action, Dictionary<string, object> data)
@@ -49,6 +56,26 @@ namespace BinanceBotWpf.Services
 
                     case "retrain":
                         _ui?.AddLog ("🔄 Переобучение ML запущено из дашборда");
+                        if (_runOptimization != null)
+                        {
+                            _ = Task.Run (async () =>
+                            {
+                                try { await _runOptimization (); }
+                                catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка оптимизации: {ex.Message}"); }
+                            });
+                        }
+                        break;
+
+                    case "backtest":
+                        _ui?.AddLog ("📊 Бэктест запущен из дашборда");
+                        if (_runBacktest != null)
+                        {
+                            _ = Task.Run (async () =>
+                            {
+                                try { await _runBacktest (); }
+                                catch (Exception ex) { _ui?.AddLog ($"❌ Ошибка бэктеста: {ex.Message}"); }
+                            });
+                        }
                         break;
 
                     case "export":

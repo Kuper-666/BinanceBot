@@ -337,6 +337,11 @@ namespace BinanceBotWpf.Services
             _ = BroadcastAsync ("gridbot", data);
         }
 
+        public void BroadcastBacktest (Dictionary<string, object> data)
+        {
+            _ = BroadcastAsync ("backtest", data);
+        }
+
         private static readonly Dictionary<string, string> MimeTypes = new ()
         {
             [".html"] = "text/html",

@@ -23,5 +23,6 @@ namespace BinanceBotWpf.Services
         void BroadcastFearGreed (Dictionary<string, object> data);
         void BroadcastPriceAlerts (List<Dictionary<string, object>> alerts);
         void BroadcastGridBot (Dictionary<string, object> data);
+        void BroadcastBacktest (Dictionary<string, object> data);
     }
 }

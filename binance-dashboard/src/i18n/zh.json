@@ -133,5 +133,6 @@
   "status": "状态",
   "bot_status": "机器人状态",
   "version_info": "v1.10.4 · 7 交易对 · 5x 杠杆",
-  "grid_bot_not_running": "在设置中启用网格交易并开始交易。"
+  "grid_bot_not_running": "在设置中启用网格交易并开始交易。",
+  "backtest_not_run": "从设置运行优化或回测以查看结果。"
 }

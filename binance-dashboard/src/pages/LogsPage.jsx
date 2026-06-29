@@ -29,7 +29,21 @@ export default function LogsPage({ data }) {
   const [search, setSearch] = useState('');
 
   const allLogs = useMemo(() => {
-    if (data?.logs?.length > 0) return data.logs;
+    if (data?.logs) {
+      const raw = data.logs;
+      if (Array.isArray(raw)) return raw;
+      if (typeof raw === 'string' && raw.length > 0) {
+        return raw.split('\n').filter(Boolean).map(line => {
+          const m = line.match(/^\[?(\d{2}:\d{2}:\d{2})\]?\s*(.*)$/);
+          const msg = m ? m[2] : line;
+          let level = 'info';
+          if (msg.includes('❌') || msg.includes('ОШИБКА') || msg.includes('ERROR')) level = 'error';
+          else if (msg.includes('⚠️') || msg.includes('WARNING')) level = 'warn';
+          else if (msg.includes('DEBUG') || msg.includes('DBG')) level = 'debug';
+          return { time: m ? m[1] : '', level, source: 'Bot', message: msg };
+        });
+      }
+    }
     return MOCK_LOGS;
   }, [data?.logs]);
 

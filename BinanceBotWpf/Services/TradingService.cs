@@ -291,7 +291,9 @@ namespace BinanceBotWpf.Services
                 _dashboardHandler = new DashboardCommandHandler (
                     _ui, () => _isRunning,
                     () => { StopTrading (); return Task.CompletedTask; },
-                    async (vm) => await StartTradingAsync (vm));
+                    async (vm) => await StartTradingAsync (vm),
+                    () => RunBacktestAndBroadcast (),
+                    () => RunOptimizationAndBroadcast ());
                 _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
                 System.Diagnostics.Debug.WriteLine ("[Dashboard] Starting server on port 8765...");
                 await _dashboardServer.StartAsync (8765);
@@ -373,6 +375,101 @@ namespace BinanceBotWpf.Services
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
+
+        private async Task RunBacktestAndBroadcast ()
+        {
+            if (_dashboardServer == null || !_dashboardServer.IsRunning) return;
+
+            _ui?.AddLog ("📊 Бэктест: загрузка исторических данных...");
+
+            string pair = _tradingSettings?.GridSymbol ?? "BTCUSDC";
+            var klines = await GetKlinesCachedAsync (pair, "1h", 3000);
+            if (klines == null || klines.Count < 100)
+            {
+                _ui?.AddLog ($"❌ Бэктест: недостаточно данных для {pair}");
+                return;
+            }
+
+            var engine = new BacktestEngine (msg => _ui?.AddLog (msg));
+            decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 1000m;
+            if (balance <= 0) balance = 1000m;
+
+            var result = engine.Run (
+                klines,
+                _ui?.FastSma ?? 12,
+                _ui?.SlowSma ?? 26,
+                _ui?.RsiPeriod ?? 14,
+                _ui?.StopLossPercent ?? 0.02m,
+                _ui?.TakeProfitPercent ?? 0.06m,
+                balance);
+
+            if (result == null)
+            {
+                _ui?.AddLog ("❌ Бэктест: не удалось выполнить");
+                return;
+            }
+
+            decimal[] eqArray = result.EquityCurve?.ToArray () ?? Array.Empty<decimal> ();
+            int step = Math.Max (1, eqArray.Length / 30);
+            var equityCurve = new List<Dictionary<string, object>> ();
+            for (int i = 0; i < eqArray.Length; i += step)
+            {
+                equityCurve.Add (new Dictionary<string, object>
+                {
+                    ["date"] = i.ToString (),
+                    ["value"] = Math.Round (eqArray[i], 2),
+                });
+            }
+            if (eqArray.Length > 0)
+            {
+                equityCurve.Add (new Dictionary<string, object>
+                {
+                    ["date"] = ( eqArray.Length - 1 ).ToString (),
+                    ["value"] = Math.Round (eqArray[^1], 2),
+                });
+            }
+
+            decimal avgWin = result.WinningTrades > 0
+                ? Math.Round (result.TotalReturn / result.WinningTrades, 2)
+                : 0;
+            decimal avgLoss = result.LosingTrades > 0
+                ? -Math.Round (Math.Abs (result.TotalReturn / result.LosingTrades), 2)
+                : 0;
+
+            _dashboardServer.BroadcastBacktest (new Dictionary<string, object>
+            {
+                ["startDate"] = klines.First ().OpenTime.ToString ("yyyy-MM-dd"),
+                ["endDate"] = klines.Last ().OpenTime.ToString ("yyyy-MM-dd"),
+                ["initialBalance"] = balance,
+                ["finalBalance"] = Math.Round (balance * ( 1 + result.TotalReturn / 100m ), 2),
+                ["totalReturn"] = Math.Round (result.TotalReturn, 1),
+                ["maxDrawdown"] = Math.Round (result.MaxDrawdown, 1),
+                ["sharpeRatio"] = Math.Round (result.SharpeRatio, 2),
+                ["winRate"] = Math.Round (result.WinRate, 1),
+                ["totalTrades"] = result.TotalTrades,
+                ["profitFactor"] = Math.Round (result.ProfitFactor, 2),
+                ["avgWin"] = avgWin,
+                ["avgLoss"] = avgLoss,
+                ["equity"] = equityCurve,
+                ["monthlyReturns"] = new List<object> (),
+                ["strategyParams"] = new Dictionary<string, string>
+                {
+                    ["fastSma"] = (_ui?.FastSma ?? 12).ToString (),
+                    ["slowSma"] = (_ui?.SlowSma ?? 26).ToString (),
+                    ["rsiPeriod"] = (_ui?.RsiPeriod ?? 14).ToString (),
+                    ["stopLoss"] = $"ATR × 1.5",
+                    ["takeProfit"] = $"SL × 3",
+                    ["adaptiveSl"] = "0.4x",
+                },
+            });
+
+            _ui?.AddLog ($"✅ Бэктест завершён: доходность {result.TotalReturn:F1}%, винрейт {result.WinRate:F1}%, сделок {result.TotalTrades}");
+        }
+
+        private async Task RunOptimizationAndBroadcast ()
+        {
+            await RunBacktestAndBroadcast ();
+        }
 
         /// <summary>
         /// Запуск сеточного бота

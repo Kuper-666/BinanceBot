@@ -133,5 +133,6 @@
   "status": "Estado",
   "bot_status": "Estado del bot",
   "version_info": "v1.10.4 · 7 pares · apalancamiento 5x",
-  "grid_bot_not_running": "Active el grid bot en la configuración e inicie el trading."
+  "grid_bot_not_running": "Active el grid bot en la configuración e inicie el trading.",
+  "backtest_not_run": "Ejecute la optimización o backtest desde la configuración."
 }

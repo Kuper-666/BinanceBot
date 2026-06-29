@@ -142,6 +142,7 @@
   "futures_enabled": "Futures Enabled",
   "grid_bot_running": "Grid Bot Running",
   "grid_bot_not_running": "Enable the grid bot in settings and start trading.",
+  "backtest_not_run": "Run optimization or backtest from settings to see results.",
   "price_alerts": "Price Alerts",
   "whale_alerts": "Whale Alerts",
   "p2p_opportunities": "P2P Opportunities",
