@@ -689,6 +689,7 @@ function renderSettings() {
   btns.appendChild(h('button',{class:'btn btn-danger',onclick:() => wsSend({type:'command',action:'stop'})},'Стоп'));
   btns.appendChild(h('button',{class:'btn btn-outline',onclick:() => wsSend({type:'command',action:'backtest'})},'Бэктест'));
   btns.appendChild(h('button',{class:'btn btn-outline',onclick:() => wsSend({type:'command',action:'retrain'})},'Переобучить ML'));
+  btns.appendChild(h('button',{class:'btn btn-outline',onclick:() => wsSend({type:'command',action:'test_telegram'})},'Тест Telegram'));
   bCard.appendChild(btns);
   // Status
   const status = h('div',{style:{padding:'12px',background:'#1a1a1a',borderRadius:'6px',fontSize:'12px',marginTop:'16px'}});

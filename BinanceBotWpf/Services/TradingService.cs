@@ -298,7 +298,8 @@ namespace BinanceBotWpf.Services
                     () => { StopTrading (); return Task.CompletedTask; },
                     async (vm) => await StartTradingAsync (vm),
                     () => RunBacktestAndBroadcast (),
-                    () => RunOptimizationAndBroadcast ());
+                    () => RunOptimizationAndBroadcast (),
+                    () => TestTelegramAsync ());
                 _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
                 System.Diagnostics.Debug.WriteLine ("[Dashboard] Starting server on port 8765...");
                 await _dashboardServer.StartAsync (8765);

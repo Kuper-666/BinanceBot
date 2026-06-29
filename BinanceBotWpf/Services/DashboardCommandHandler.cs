@@ -15,6 +15,7 @@ namespace BinanceBotWpf.Services
         private readonly Func<MainWindowViewModel, Task> _startTrading;
         private readonly Func<Task> _runBacktest;
         private readonly Func<Task> _runOptimization;
+        private readonly Func<Task<bool>> _testTelegram;
 
         public DashboardCommandHandler (
             MainWindowViewModel ui,
@@ -22,7 +23,8 @@ namespace BinanceBotWpf.Services
             Func<Task> stopTrading,
             Func<MainWindowViewModel, Task> startTrading,
             Func<Task> runBacktest = null,
-            Func<Task> runOptimization = null)
+            Func<Task> runOptimization = null,
+            Func<Task<bool>> testTelegram = null)
         {
             _ui = ui;
             _isRunning = isRunning;
@@ -30,6 +32,7 @@ namespace BinanceBotWpf.Services
             _startTrading = startTrading;
             _runBacktest = runBacktest;
             _runOptimization = runOptimization;
+            _testTelegram = testTelegram;
         }
 
         public async Task HandleAsync (string action, Dictionary<string, object> data)
@@ -105,6 +108,19 @@ namespace BinanceBotWpf.Services
                         catch (Exception ex)
                         {
                             _ui?.AddLog ($"❌ Ошибка экспорта: {ex.Message}");
+                        }
+                        break;
+
+                    case "test_telegram":
+                        _ui?.AddLog ("📱 Тест Telegram...");
+                        if (_testTelegram != null)
+                        {
+                            bool ok = await _testTelegram ();
+                            _ui?.AddLog (ok ? "✅ Telegram: тест пройден" : "❌ Telegram: тест не удался");
+                        }
+                        else
+                        {
+                            _ui?.AddLog ("⚠️ Telegram не настроен");
                         }
                         break;
 
