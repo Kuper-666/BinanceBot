@@ -382,11 +382,25 @@ namespace BinanceBotWpf.Services
 
             _ui?.AddLog ("📊 Бэктест: загрузка исторических данных...");
 
-            string pair = _tradingSettings?.GridSymbol ?? "BTCUSDC";
-            var klines = await GetKlinesCachedAsync (pair, "1h", 3000);
-            if (klines == null || klines.Count < 100)
+            string[] candidates;
+            lock (_pairsLock) { candidates = _activePairs.Count > 0 ? _activePairs.ToArray () : new[] { "BTCUSDC", "ETHUSDC", "DOGEUSDC" }; }
+
+            List<BinanceKline> klines = null;
+            string pair = null;
+            foreach (string candidate in candidates)
             {
-                _ui?.AddLog ($"❌ Бэктест: недостаточно данных для {pair}");
+                klines = await GetKlinesCachedAsync (candidate, "1h", 1000);
+                if (klines != null && klines.Count >= 100)
+                {
+                    pair = candidate;
+                    break;
+                }
+                _ui?.AddLog ($"⚠️ Бэктест: {candidate} — мало данных, пробуем следующую...");
+            }
+
+            if (klines == null || klines.Count < 100 || pair == null)
+            {
+                _ui?.AddLog ("❌ Бэктест: недостаточно данных ни для одной пары");
                 return;
             }
 
