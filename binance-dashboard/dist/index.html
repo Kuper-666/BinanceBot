@@ -175,7 +175,12 @@ onChannel('equity', d => { if (Array.isArray(d)) D.equity = d; });
 onChannel('pnl', d => { if (Array.isArray(d)) D.pnlHistory = d; });
 onChannel('gridbot', d => { D.gridBot = d; });
 onChannel('backtest', d => { D.backtest = d; });
-onChannel('logs', d => { if (typeof d === 'string') D.logs = d; });
+onChannel('logs', d => {
+  if (typeof d === 'string') {
+    D.logs = d;
+    if (currentTab === 'logs') updateLogsLive();
+  }
+});
 
 // ===== CANVAS CHARTS =====
 function setupCanvas(canvas) {
@@ -188,14 +193,32 @@ function setupCanvas(canvas) {
   return {ctx, w: rect.width, h: rect.height};
 }
 
+function arrMinMax(arr) {
+  let mn = Infinity, mx = -Infinity;
+  for (let i = 0; i < arr.length; i++) { if (arr[i] < mn) mn = arr[i]; if (arr[i] > mx) mx = arr[i]; }
+  return [mn, mx];
+}
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
 function drawAreaChart(canvasId, data, xKey, yKey, color) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || !data || data.length < 2) return;
   const {ctx, w, h} = setupCanvas(canvas);
   const pad = {t:20,r:10,b:30,l:50};
   const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
-  const vals = data.map(d => d[yKey]);
-  const min = Math.min(...vals), max = Math.max(...vals);
+  const vals = data.map(d => Number(d[yKey]) || 0);
+  const [min, max] = arrMinMax(vals);
   const range = max - min || 1;
 
   ctx.clearRect(0, 0, w, h);
@@ -238,7 +261,7 @@ function drawBarChart(canvasId, data, xKey, yKey) {
   const {ctx, w, h} = setupCanvas(canvas);
   const pad = {t:10,r:10,b:30,l:40};
   const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
-  const max = Math.max(...data.map(d => Math.abs(d[yKey]))) || 1;
+  const max = arrMinMax(data.map(d => Math.abs(Number(d[yKey]) || 0)))[1] || 1;
   const bw = cw / data.length * 0.7;
   const gap = cw / data.length * 0.3;
 
@@ -248,7 +271,7 @@ function drawBarChart(canvasId, data, xKey, yKey) {
     const bh = (Math.abs(d[yKey]) / max) * ch;
     const y = pad.t + ch - bh;
     ctx.fillStyle = d[yKey] > 1.5 ? '#f59e0b' : d[yKey] > 1 ? '#22c55e' : '#333';
-    ctx.beginPath(); ctx.roundRect(x, y, bw, bh, [3,3,0,0]); ctx.fill();
+    roundRect(ctx, x, y, bw, bh, 3); ctx.fill();
     ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
     ctx.fillText(d[xKey].replace('USDC','').replace('USDT',''), x + bw/2, h - 5);
   });
@@ -297,14 +320,14 @@ function renderOverview() {
   // Stat cards row
   const stats = h('div',{class:'grid grid-auto'});
   const cards = [
-    {l:'Баланс',v:fmt$(D.balance),c:'#22c55e'},
-    {l:'P&L',v:(D.pnl>=0?'+':'')+fmt$(D.pnl),sub:D.pnlPercent+'%',c:D.pnl>=0?'#22c55e':'#ef4444'},
-    {l:'Винрейт',v:D.winRate.toFixed(1)+'%'},
-    {l:'Макс. просадка',v:'-'+D.maxDrawdown.toFixed(1)+'%',c:'#ef4444'},
-    {l:'Сделки',v:D.totalTrades},
-    {l:'Позиции',v:D.openPositions+'/'+D.maxPositions},
-    {l:'Страх/Жадность',v:D.fearGreedValue,c:D.fearGreedValue>60?'#22c55e':D.fearGreedValue<40?'#ef4444':'#f59e0b',sub:D.fearGreedClassification},
-    {l:'Плечо',v:D.leverage+'x',c:'#3b82f6'}
+    {l:'Баланс',v:fmt$(D.balance||0),c:'#22c55e'},
+    {l:'P&L',v:((D.pnl||0)>=0?'+':'')+fmt$(D.pnl||0),sub:(D.pnlPercent||0)+'%',c:(D.pnl||0)>=0?'#22c55e':'#ef4444'},
+    {l:'Винрейт',v:(D.winRate||0).toFixed(1)+'%'},
+    {l:'Макс. просадка',v:'-'+(D.maxDrawdown||0).toFixed(1)+'%',c:'#ef4444'},
+    {l:'Сделки',v:D.totalTrades||0},
+    {l:'Позиции',v:(D.openPositions||0)+'/'+(D.maxPositions||5)},
+    {l:'Страх/Жадность',v:D.fearGreedValue||50,c:(D.fearGreedValue||50)>60?'#22c55e':(D.fearGreedValue||50)<40?'#ef4444':'#f59e0b',sub:D.fearGreedClassification||'Neutral'},
+    {l:'Плечо',v:(D.leverage||5)+'x',c:'#3b82f6'}
   ];
   cards.forEach(c => {
     const card = h('div',{class:'card stat'});
@@ -544,7 +567,7 @@ function drawGridVis(canvasId, g) {
     ctx.fillStyle = filled ? (isBuy ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)') : '#1a1a1a';
     ctx.strokeStyle = filled ? (isBuy ? '#22c55e' : '#ef4444') : '#333';
     ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.roundRect(x+2, 5, bw-4, h-20, 3); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); roundRect(ctx, x+2, 5, bw-4, h-20, 3); ctx.fill(); ctx.stroke();
     ctx.fillStyle = filled ? (isBuy ? '#22c55e' : '#ef4444') : '#888';
     ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
     ctx.fillText('$' + (o.price||o.level).toLocaleString(), x + bw/2, h/2 + 2);
@@ -593,7 +616,7 @@ function renderBacktest() {
   ));
   // Stat cards
   const stats = h('div',{class:'grid grid-auto',style:{marginBottom:'16px'}});
-  [{l:'Начальный баланс',v:fmt$(bt.initialBalance)},{l:'Итоговый баланс',v:fmt$(bt.finalBalance),c:'#22c55e'},{l:'Доходность',v:'+'+bt.totalReturn+'%',c:'#22c55e'},{l:'Макс. просадка',v:'-'+bt.maxDrawdown+'%',c:'#ef4444'},{l:'Sharpe',v:Number(bt.sharpeRatio).toFixed(2),c:bt.sharpeRatio>1.5?'#22c55e':'#f59e0b'},{l:'Винрейт',v:bt.winRate+'%'},{l:'Сделки',v:bt.totalTrades},{l:'Profit Factor',v:Number(bt.profitFactor).toFixed(2),c:'#22c55e'},{l:'Ср. прибыль',v:'+'+bt.avgWin+'%',c:'#22c55e'},{l:'Ср. убыток',v:bt.avgLoss+'%',c:'#ef4444'}].forEach(c => {
+  [{l:'Начальный баланс',v:fmt$(bt.initialBalance)},{l:'Итоговый баланс',v:fmt$(bt.finalBalance),c:'#22c55e'},{l:'Доходность',v:'+'+bt.totalReturn+'%',c:'#22c55e'},{l:'Макс. просадка',v:'-'+bt.maxDrawdown+'%',c:'#ef4444'},{l:'Sharpe',v:Number(bt.sharpeRatio).toFixed(2),c:Number(bt.sharpeRatio)>1.5?'#22c55e':'#f59e0b'},{l:'Винрейт',v:bt.winRate+'%'},{l:'Сделки',v:bt.totalTrades},{l:'Profit Factor',v:Number(bt.profitFactor).toFixed(2),c:'#22c55e'},{l:'Ср. прибыль',v:'+'+bt.avgWin+'%',c:'#22c55e'},{l:'Ср. убыток',v:bt.avgLoss+'%',c:'#ef4444'}].forEach(c => {
     const card = h('div',{class:'card stat'});
     card.appendChild(h('div',{class:'label'},c.l));
     const val = h('div',{class:'value'},c.v);
@@ -694,38 +717,40 @@ function renderSettings() {
 function renderLogs() {
   const el = $('#page-logs');
   el.innerHTML = '';
+  _logLevel = 'all'; _logSearch = '';
   const filterBar = h('div',{class:'filter-bar'});
-  let level = 'all', search = '';
   ['all','error','warn','info'].forEach(l => {
-    const btn = h('button',{class:'filter-btn'+(l===level?' active':''), onclick:() => {
-      level = l; el.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active'); doRender();
+    const btn = h('button',{class:'filter-btn'+(l===_logLevel?' active':''), onclick:() => {
+      _logLevel = l; el.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); updateLogsLive();
     }}, l === 'all' ? 'Все' : l === 'error' ? 'Ошибки' : l === 'warn' ? 'Предупреждения' : 'Инфо');
     filterBar.appendChild(btn);
   });
-  const searchInput = h('input',{type:'text',class:'search',placeholder:'Поиск...',style:{marginLeft:'auto'}, oninput:() => { search = searchInput.value.toLowerCase(); doRender(); }});
+  const searchInput = h('input',{type:'text',class:'search',placeholder:'Поиск...',style:{marginLeft:'auto'}, oninput:() => { _logSearch = searchInput.value.toLowerCase(); updateLogsLive(); }});
   filterBar.appendChild(searchInput);
+  _logCountSpan = h('span',{style:{fontSize:'12px',color:'#666',marginLeft:'8px'}});
+  filterBar.appendChild(_logCountSpan);
   el.appendChild(filterBar);
-  const container = h('div',{style:{background:'#141414',borderRadius:'8px',border:'1px solid #222',overflow:'hidden',maxHeight:'calc(100vh - 180px)',overflowY:'auto'}});
-  el.appendChild(container);
-  const countSpan = h('span',{style:{fontSize:'12px',color:'#666',marginLeft:'8px'}});
-  filterBar.appendChild(countSpan);
+  _logContainer = h('div',{style:{background:'#141414',borderRadius:'8px',border:'1px solid #222',overflow:'hidden',maxHeight:'calc(100vh - 180px)',overflowY:'auto'}});
+  el.appendChild(_logContainer);
+  updateLogsLive();
+}
 
-  function doRender() {
-    container.innerHTML = '';
-    if (!D.logs) { container.appendChild(h('div',{class:'empty'},'Ожидание логов...')); countSpan.textContent = ''; return; }
-    const lines = D.logs.split('\n').filter(Boolean);
-    let filtered = lines;
-    if (level !== 'all') filtered = filtered.filter(l => level === 'error' ? (l.includes('❌')||l.includes('ОШИБКА')) : level === 'warn' ? (l.includes('⚠️')) : level === 'info' ? (l.includes('✅')||l.includes('ℹ️')) : true);
-    if (search) filtered = filtered.filter(l => l.toLowerCase().includes(search));
-    countSpan.textContent = filtered.length + ' / ' + lines.length;
-    filtered.forEach(line => {
-      const cls = line.includes('❌')||line.includes('ОШИБКА') ? 'error' : line.includes('⚠️') ? 'warn' : line.includes('✅')||line.includes('ℹ️') ? 'info' : '';
-      container.appendChild(h('div',{class:'log-line ' + cls}, line));
-    });
-    container.scrollTop = container.scrollHeight;
-  }
-  doRender();
+let _logContainer = null, _logCountSpan = null, _logLevel = 'all', _logSearch = '';
+function updateLogsLive() {
+  if (!_logContainer || !_logCountSpan) return;
+  _logContainer.innerHTML = '';
+  if (!D.logs) { _logContainer.appendChild(h('div',{class:'empty'},'Ожидание логов...')); _logCountSpan.textContent = ''; return; }
+  const lines = D.logs.split('\n').filter(Boolean);
+  let filtered = lines;
+  if (_logLevel !== 'all') filtered = filtered.filter(l => _logLevel === 'error' ? (l.includes('❌')||l.includes('ОШИБКА')) : _logLevel === 'warn' ? (l.includes('⚠️')) : _logLevel === 'info' ? (l.includes('✅')||l.includes('ℹ️')) : true);
+  if (_logSearch) filtered = filtered.filter(l => l.toLowerCase().includes(_logSearch));
+  _logCountSpan.textContent = filtered.length + ' / ' + lines.length;
+  filtered.forEach(line => {
+    const cls = line.includes('❌')||line.includes('ОШИБКА') ? 'error' : line.includes('⚠️') ? 'warn' : line.includes('✅')||line.includes('ℹ️') ? 'info' : '';
+    _logContainer.appendChild(h('div',{class:'log-line ' + cls}, line));
+  });
+  _logContainer.scrollTop = _logContainer.scrollHeight;
 }
 
 function renderAlerts() {
@@ -765,8 +790,8 @@ initNav();
 render();
 wsConnect();
 
-// Periodic re-render
-setInterval(() => { if (D.pairs.length > 0 || D.equity.length > 0) render(); }, 5000);
+// Periodic re-render (skip settings to preserve input focus)
+setInterval(() => { if (currentTab !== 'settings' && currentTab !== 'logs' && (D.pairs.length > 0 || D.equity.length > 0)) render(); }, 5000);
 </script>
 </body>
 </html>
