@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BinanceBot Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0a0a0a;--bg2:#111;--bg3:#1a1a1a;--border:#222;--text:#e5e5e5;--text2:#888;--text3:#666;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;--purple:#a78bfa;--radius:8px}
+body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-serif;font-size:14px;overflow-x:hidden}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 24px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.header h1{font-size:18px;color:var(--green);font-weight:700}
+.conn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
+.conn-dot.on{background:var(--green)}
+.nav{display:flex;gap:4px;padding:8px 24px;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
+.tab{padding:8px 14px;border-radius:6px;border:none;background:transparent;color:var(--text2);cursor:pointer;font-size:12px;font-weight:400;white-space:nowrap;transition:all .2s}
+.tab:hover{background:var(--bg3);color:var(--text)}
+.tab.active{background:var(--green);color:#000;font-weight:600}
+.page{padding:20px 24px;max-width:1400px;margin:0 auto;display:none}
+.page.active{display:block}
+.grid{display:grid;gap:16px}
+.grid-2{grid-template-columns:1fr 1fr}
+.grid-3{grid-template-columns:repeat(3,1fr)}
+.grid-auto{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+.card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.card h3{font-size:14px;font-weight:700;margin-bottom:12px}
+.stat{text-align:center}
+.stat .label{font-size:11px;color:var(--text2);margin-bottom:4px}
+.stat .value{font-size:22px;font-weight:700}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;padding:8px 12px;color:var(--text2);font-size:11px;font-weight:600;border-bottom:1px solid var(--border)}
+td{padding:8px 12px;border-bottom:1px solid #1a1a1a}
+tr:hover{background:rgba(255,255,255,.02)}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge.buy{background:rgba(34,197,94,.15);color:var(--green)}
+.badge.sell{background:rgba(239,68,68,.15);color:var(--red)}
+.badge.hold{background:rgba(136,136,136,.15);color:var(--text2)}
+.badge.filled{background:rgba(34,197,94,.15);color:var(--green)}
+.badge.open{background:rgba(245,158,11,.15);color:var(--yellow)}
+.btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.btn-primary{background:var(--green);color:#000}
+.btn-primary:hover{background:#16a34a}
+.btn-danger{background:var(--red);color:#fff}
+.btn-danger:hover{background:#dc2626}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
+.btn-outline:hover{background:var(--bg3);color:var(--text)}
+.toggle{width:36px;height:20px;border-radius:10px;background:var(--bg3);position:relative;cursor:pointer;transition:all .2s;border:1px solid var(--border)}
+.toggle.on{background:var(--green);border-color:var(--green)}
+.toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:1px;left:1px;transition:all .2s}
+.toggle.on::after{left:17px}
+.row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a1a}
+.row label{color:var(--text2);font-size:13px}
+.num-input{display:flex;align-items:center;gap:4px}
+.num-input button{width:24px;height:24px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:12px}
+.num-input input{width:56px;padding:4px;text-align:center;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;font-family:monospace;outline:none}
+.num-input span{font-size:11px;color:var(--text3)}
+.search{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;width:260px;outline:none}
+.log-line{font-family:monospace;font-size:12px;padding:2px 0;border-bottom:1px solid #111;white-space:pre-wrap;word-break:break-all}
+.log-line.error{color:var(--red)}.log-line.warn{color:var(--yellow)}.log-line.info{color:var(--green)}.log-line.debug{color:var(--text3)}
+.filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
+.filter-btn{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-size:12px;background:var(--bg3);color:var(--text2)}
+.filter-btn.active{color:var(--text);font-weight:600}
+.empty{text-align:center;padding:40px;color:var(--text2);font-size:14px}
+.empty .icon{font-size:36px;margin-bottom:12px}
+canvas{width:100%!important}
+@media(max-width:900px){.grid-2{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr}.grid-auto{grid-template-columns:1fr 1fr}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>BinanceBot Dashboard</h1>
+  <div class="conn"><div class="conn-dot" id="connDot"></div><span id="connText">Connecting...</span></div>
+</div>
+<div class="nav" id="nav"></div>
+<div id="pages"></div>
+
+<script>
+// ===== STATE =====
+const D = {
+  balance:0, pnl:0, pnlPercent:0, winRate:0, maxDrawdown:0, totalTrades:0,
+  openPositions:0, maxPositions:5, leverage:5, winningTrades:0, losingTrades:0,
+  bestPnL:0, worstPnL:0, fearGreedValue:50, fearGreedClassification:'Neutral',
+  pairs:[], positions:[], trades:[], equity:[], pnlHistory:[], logs:'',
+  echelons:{adaptive:true,validator:true,newsSentinel:true},
+  gridBot:null, backtest:null,
+  fastSma:12, slowSma:26, rsiPeriod:14, stopLossPercent:0.005, takeProfitPercent:0.008,
+  riskPerTradePercent:0.01, adaptiveAgentEnabled:true, signalValidatorEnabled:true,
+  newsSentinelEnabled:true, gridBotEnabled:false, gridSymbol:'DOGEUSDC',
+  gridRangePercent:10, gridLevels:12, gridInvestmentPercent:80
+};
+
+// ===== TABS =====
+const TABS = [
+  {id:'overview',label:'Обзор'},{id:'signals',label:'Сигналы'},{id:'positions',label:'Позиции'},
+  {id:'trades',label:'Сделки'},{id:'gridbot',label:'Грид-бот'},{id:'analytics',label:'Аналитика'},
+  {id:'backtest',label:'Бэктест'},{id:'settings',label:'Настройки'},{id:'logs',label:'Логи'},
+  {id:'alerts',label:'Оповещения'}
+];
+let currentTab = 'overview';
+
+function initNav() {
+  const nav = document.getElementById('nav');
+  TABS.forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'tab' + (t.id === currentTab ? ' active' : '');
+    b.textContent = t.label;
+    b.onclick = () => switchTab(t.id);
+    b.dataset.tab = t.id;
+    nav.appendChild(b);
+  });
+  const pages = document.getElementById('pages');
+  TABS.forEach(t => {
+    const d = document.createElement('div');
+    d.className = 'page' + (t.id === currentTab ? ' active' : '');
+    d.id = 'page-' + t.id;
+    pages.appendChild(d);
+  });
+}
+
+function switchTab(id) {
+  currentTab = id;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === id));
+  document.querySelectorAll('.page').forEach(p => p.classList.toggle('active', p.id === 'page-' + id));
+  render();
+}
+
+// ===== WEBSOCKET =====
+let ws = null, reconnectTimer = null, reconnectDelay = 1000;
+const handlers = new Map();
+
+function wsConnect() {
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = proto + '//' + location.host;
+  try { ws = new WebSocket(url); } catch(e) { scheduleReconnect(); return; }
+  ws.onopen = () => {
+    reconnectDelay = 1000;
+    document.getElementById('connDot').className = 'conn-dot on';
+    document.getElementById('connText').textContent = 'Connected';
+    ['prices','positions','stats','trades','echelons','equity','pnl','gridbot','backtest','logs'].forEach(ch => {
+      ws.send(JSON.stringify({type:'subscribe',channel:ch}));
+    });
+  };
+  ws.onmessage = (e) => {
+    try {
+      const msg = JSON.parse(e.data);
+      if (msg.channel && handlers.has(msg.channel)) {
+        handlers.get(msg.channel).forEach(fn => fn(msg.data));
+      }
+    } catch(ex) {}
+  };
+  ws.onclose = () => {
+    document.getElementById('connDot').className = 'conn-dot';
+    document.getElementById('connText').textContent = 'Disconnected';
+    scheduleReconnect();
+  };
+  ws.onerror = () => {};
+}
+
+function scheduleReconnect() {
+  clearTimeout(reconnectTimer);
+  reconnectTimer = setTimeout(() => { reconnectDelay = Math.min(reconnectDelay * 1.5, 30000); wsConnect(); }, reconnectDelay);
+}
+
+function wsSend(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
+function onChannel(ch, fn) { if (!handlers.has(ch)) handlers.set(ch, new Set()); handlers.get(ch).add(fn); }
+
+// ===== DATA HANDLERS =====
+onChannel('prices', d => { if (Array.isArray(d)) D.pairs = d; });
+onChannel('positions', d => { if (Array.isArray(d)) D.positions = d; });
+onChannel('stats', d => Object.assign(D, d));
+onChannel('trades', d => { if (Array.isArray(d)) D.trades = d; });
+onChannel('echelons', d => { D.echelons = d; });
+onChannel('equity', d => { if (Array.isArray(d)) D.equity = d; });
+onChannel('pnl', d => { if (Array.isArray(d)) D.pnlHistory = d; });
+onChannel('gridbot', d => { D.gridBot = d; });
+onChannel('backtest', d => { D.backtest = d; });
+onChannel('logs', d => { if (typeof d === 'string') D.logs = d; });
+
+// ===== CANVAS CHARTS =====
+function setupCanvas(canvas) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  return {ctx, w: rect.width, h: rect.height};
+}
+
+function drawAreaChart(canvasId, data, xKey, yKey, color) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data || data.length < 2) return;
+  const {ctx, w, h} = setupCanvas(canvas);
+  const pad = {t:20,r:10,b:30,l:50};
+  const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+  const vals = data.map(d => d[yKey]);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const range = max - min || 1;
+
+  ctx.clearRect(0, 0, w, h);
+  // Grid
+  ctx.strokeStyle = '#1a1a1a'; ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = pad.t + (ch / 4) * i;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(w - pad.r, y); ctx.stroke();
+    const v = max - (range / 4) * i;
+    ctx.fillStyle = '#666'; ctx.font = '10px monospace'; ctx.textAlign = 'right';
+    ctx.fillText('$' + v.toFixed(0), pad.l - 5, y + 3);
+  }
+  // X labels
+  const step = Math.max(1, Math.floor(data.length / 6));
+  ctx.textAlign = 'center';
+  data.forEach((d, i) => {
+    if (i % step === 0) {
+      const x = pad.l + (cw / (data.length - 1)) * i;
+      ctx.fillText(d[xKey], x, h - 5);
+    }
+  });
+  // Line + fill
+  ctx.beginPath();
+  data.forEach((d, i) => {
+    const x = pad.l + (cw / (data.length - 1)) * i;
+    const y = pad.t + ch - ((d[yKey] - min) / range) * ch;
+    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + ch);
+  grad.addColorStop(0, color + '40'); grad.addColorStop(1, color + '00');
+  ctx.lineTo(pad.l + cw, pad.t + ch); ctx.lineTo(pad.l, pad.t + ch); ctx.closePath();
+  ctx.fillStyle = grad; ctx.fill();
+}
+
+function drawBarChart(canvasId, data, xKey, yKey) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas || !data || data.length === 0) return;
+  const {ctx, w, h} = setupCanvas(canvas);
+  const pad = {t:10,r:10,b:30,l:40};
+  const cw = w - pad.l - pad.r, ch = h - pad.t - pad.b;
+  const max = Math.max(...data.map(d => Math.abs(d[yKey]))) || 1;
+  const bw = cw / data.length * 0.7;
+  const gap = cw / data.length * 0.3;
+
+  ctx.clearRect(0, 0, w, h);
+  data.forEach((d, i) => {
+    const x = pad.l + (cw / data.length) * i + gap / 2;
+    const bh = (Math.abs(d[yKey]) / max) * ch;
+    const y = pad.t + ch - bh;
+    ctx.fillStyle = d[yKey] > 1.5 ? '#f59e0b' : d[yKey] > 1 ? '#22c55e' : '#333';
+    ctx.beginPath(); ctx.roundRect(x, y, bw, bh, [3,3,0,0]); ctx.fill();
+    ctx.fillStyle = '#666'; ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(d[xKey].replace('USDC','').replace('USDT',''), x + bw/2, h - 5);
+  });
+}
+
+// ===== UTILITY =====
+function $(sel, par) { return (par || document).querySelector(sel); }
+function $$(sel, par) { return (par || document).querySelectorAll(sel); }
+function h(tag, attrs, ...children) {
+  const el = document.createElement(tag);
+  if (attrs) Object.entries(attrs).forEach(([k,v]) => {
+    if (k === 'style' && typeof v === 'object') Object.assign(el.style, v);
+    else if (k.startsWith('on')) el.addEventListener(k.slice(2).toLowerCase(), v);
+    else if (k === 'class') el.className = v;
+    else el.setAttribute(k, v);
+  });
+  children.flat().forEach(c => {
+    if (c == null) return;
+    el.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+  });
+  return el;
+}
+function signalBadge(s) { return h('span',{class:'badge '+(s||'hold').toLowerCase()}, s === 'buy' ? 'BUY' : s === 'sell' ? 'SELL' : 'HOLD'); }
+function fmtPct(v) { return (v >= 0 ? '+' : '') + v.toFixed(2) + '%'; }
+function fmt$(v) { return '$' + Number(v).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}); }
+
+// ===== RENDER PAGES =====
+function render() {
+  switch(currentTab) {
+    case 'overview': renderOverview(); break;
+    case 'signals': renderSignals(); break;
+    case 'positions': renderPositions(); break;
+    case 'trades': renderTrades(); break;
+    case 'gridbot': renderGridBot(); break;
+    case 'analytics': renderAnalytics(); break;
+    case 'backtest': renderBacktest(); break;
+    case 'settings': renderSettings(); break;
+    case 'logs': renderLogs(); break;
+    case 'alerts': renderAlerts(); break;
+  }
+}
+
+function renderOverview() {
+  const el = $('#page-overview');
+  el.innerHTML = '';
+  // Stat cards row
+  const stats = h('div',{class:'grid grid-auto'});
+  const cards = [
+    {l:'Баланс',v:fmt$(D.balance),c:'#22c55e'},
+    {l:'P&L',v:(D.pnl>=0?'+':'')+fmt$(D.pnl),sub:D.pnlPercent+'%',c:D.pnl>=0?'#22c55e':'#ef4444'},
+    {l:'Винрейт',v:D.winRate.toFixed(1)+'%'},
+    {l:'Макс. просадка',v:'-'+D.maxDrawdown.toFixed(1)+'%',c:'#ef4444'},
+    {l:'Сделки',v:D.totalTrades},
+    {l:'Позиции',v:D.openPositions+'/'+D.maxPositions},
+    {l:'Страх/Жадность',v:D.fearGreedValue,c:D.fearGreedValue>60?'#22c55e':D.fearGreedValue<40?'#ef4444':'#f59e0b',sub:D.fearGreedClassification},
+    {l:'Плечо',v:D.leverage+'x',c:'#3b82f6'}
+  ];
+  cards.forEach(c => {
+    const card = h('div',{class:'card stat'});
+    card.appendChild(h('div',{class:'label'},c.l));
+    const val = h('div',{class:'value'},c.v);
+    if (c.c) val.style.color = c.c;
+    card.appendChild(val);
+    if (c.sub) card.appendChild(h('div',{style:{fontSize:'10px',color:'#888'}}, c.sub));
+    stats.appendChild(card);
+  });
+  el.appendChild(stats);
+
+  // Charts row
+  const charts = h('div',{class:'grid grid-2',style:{marginTop:'16px'}});
+  // Equity chart
+  const eqCard = h('div',{class:'card'});
+  eqCard.appendChild(h('h3',{},'Кривая Equity'));
+  const eqCanvas = h('canvas',{id:'eqChart',style:{width:'100%',height:'180px'}});
+  eqCard.appendChild(eqCanvas);
+  charts.appendChild(eqCard);
+  // PnL chart
+  const pnlCard = h('div',{class:'card'});
+  pnlCard.appendChild(h('h3',{},'P&L за сессию'));
+  const pnlCanvas = h('canvas',{id:'pnlChart',style:{width:'100%',height:'180px'}});
+  pnlCard.appendChild(pnlCanvas);
+  if (D.pnlHistory.length > 0) {
+    const info = h('div',{style:{display:'flex',gap:'16px',marginTop:'8px',fontSize:'12px'}});
+    const first = D.pnlHistory[0], last = D.pnlHistory[D.pnlHistory.length-1];
+    info.appendChild(h('span',{style:{color:'#888'}},'Начало: ', h('b',{style:{color:'#fff'}},fmt$(first.startBalance))));
+    info.appendChild(h('span',{style:{color:'#888'}},'Текущий: ', h('b',{style:{color:'#22c55e'}},fmt$(last.balance))));
+    const pnlVal = last.pnl || 0;
+    info.appendChild(h('span',{style:{color:'#888'}},'PnL: ', h('b',{style:{color:pnlVal>=0?'#22c55e':'#ef4444'}}, fmt$(pnlVal)+' ('+last.pnlPercent.toFixed(1)+'%)')));
+    pnlCard.appendChild(info);
+  }
+  charts.appendChild(pnlCard);
+  el.appendChild(charts);
+
+  // Volume + signals
+  const bottom = h('div',{class:'grid grid-2',style:{marginTop:'16px'}});
+  // Volume
+  const volCard = h('div',{class:'card'});
+  volCard.appendChild(h('h3',{},'Объём'));
+  if (D.pairs.length > 0) {
+    const volCanvas = h('canvas',{id:'volChart',style:{width:'100%',height:'120px'}});
+    volCard.appendChild(volCanvas);
+  }
+  // Echelons
+  volCard.appendChild(h('div',{style:{marginTop:'12px',fontSize:'12px',fontWeight:600}},'Эшелоны'));
+  Object.entries(D.echelons).forEach(([k,v]) => {
+    const name = k === 'adaptive' ? 'Адаптивный агент' : k === 'validator' ? 'Валидатор сигналов' : 'Новостной контроль';
+    volCard.appendChild(h('div',{class:'row'}, h('span',{style:{fontSize:'12px',color:'#aaa'}}, name), h('span',{style:{fontSize:'11px',color:v?'#22c55e':'#ef4444'}}, v ? 'Вкл' : 'Выкл')));
+  });
+  bottom.appendChild(volCard);
+  // Signals table
+  const sigCard = h('div',{class:'card'});
+  sigCard.appendChild(h('h3',{},'Сигналы'));
+  if (D.pairs.length > 0) {
+    const tbl = h('table');
+    tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{},'Пара'), h('th',{style:{textAlign:'right'}},'Цена'), h('th',{},'Сигнал'), h('th',{},'RSI'), h('th',{},'AI'))));
+    const tbody = h('tbody');
+    D.pairs.forEach(p => {
+      const sig = (p.action||'hold').toLowerCase();
+      tbody.appendChild(h('tr',{},
+        h('td',{style:{fontWeight:600}}, p.pair),
+        h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(p.price)),
+        h('td',{style:{textAlign:'center'}}, signalBadge(sig)),
+        h('td',{style:{textAlign:'center',color:p.rsi<30?'#22c55e':p.rsi>70?'#ef4444':'#ddd'}}, (p.rsi||50).toFixed(1)),
+        h('td',{style:{textAlign:'center'}}, h('div',{style:{width:'40px',height:'6px',background:'#333',borderRadius:'3px',margin:'0 auto',overflow:'hidden'}}, h('div',{style:{width:((p.aiScore||0.5)*100)+'%',height:'100%',background:'#22c55e',borderRadius:'3px'}})))
+      ));
+    });
+    tbl.appendChild(tbody);
+    sigCard.appendChild(tbl);
+  } else {
+    sigCard.appendChild(h('div',{class:'empty'},'Ожидание данных...'));
+  }
+  bottom.appendChild(sigCard);
+  el.appendChild(bottom);
+
+  // Draw charts after DOM update
+  requestAnimationFrame(() => {
+    if (D.equity.length > 1) drawAreaChart('eqChart', D.equity, 'time', 'value', '#22c55e');
+    if (D.pnlHistory.length > 1) drawAreaChart('pnlChart', D.pnlHistory, 'time', 'pnl', '#22c55e');
+    if (D.pairs.length > 0) drawBarChart('volChart', D.pairs, 'pair', 'volume');
+  });
+}
+
+function renderSignals() {
+  const el = $('#page-signals');
+  el.innerHTML = '';
+  const card = h('div',{class:'card'});
+  card.appendChild(h('h3',{},'Сигналы'));
+  if (D.pairs.length === 0) { card.appendChild(h('div',{class:'empty'},'Ожидание данных...')); el.appendChild(card); return; }
+  const tbl = h('table');
+  tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{},'Пара'), h('th',{style:{textAlign:'right'}},'Цена'), h('th',{},'Сигнал'), h('th',{},'RSI'), h('th',{},'MACD'), h('th',{},'BB'), h('th',{},'Объём'), h('th',{},'AI'), h('th',{},'Риск'))));
+  const tbody = h('tbody');
+  D.pairs.forEach(p => {
+    const sig = (p.action||'hold').toLowerCase();
+    const risk = p.risk || 'medium';
+    const riskColor = risk === 'low' ? '#22c55e' : risk === 'high' ? '#ef4444' : '#f59e0b';
+    tbody.appendChild(h('tr',{},
+      h('td',{style:{fontWeight:600}}, p.pair),
+      h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(p.price)),
+      h('td',{style:{textAlign:'center'}}, signalBadge(sig)),
+      h('td',{style:{textAlign:'center',color:p.rsi<30?'#22c55e':p.rsi>70?'#ef4444':'#ddd'}}, (p.rsi||50).toFixed(1)),
+      h('td',{style:{textAlign:'center',fontFamily:'monospace'}}, (p.macd||0).toFixed(4)),
+      h('td',{style:{textAlign:'center'}}, ((p.bb||0.02)*100).toFixed(1)+'%'),
+      h('td',{style:{textAlign:'center'}}, (p.volume||1).toFixed(2)+'x'),
+      h('td',{style:{textAlign:'center'}}, (p.aiScore||0.5).toFixed(2)),
+      h('td',{style:{textAlign:'center',color:riskColor}}, risk === 'low' ? 'Низкий' : risk === 'high' ? 'Высокий' : 'Средний')
+    ));
+  });
+  tbl.appendChild(tbody);
+  card.appendChild(tbl);
+  el.appendChild(card);
+}
+
+function renderPositions() {
+  const el = $('#page-positions');
+  el.innerHTML = '';
+  const card = h('div',{class:'card'});
+  card.appendChild(h('h3',{},'Открытые позиции'));
+  if (D.positions.length === 0) { card.appendChild(h('div',{class:'empty'},'Нет открытых позиций')); el.appendChild(card); return; }
+  const tbl = h('table');
+  tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{},'Пара'), h('th',{},'Сторона'), h('th',{style:{textAlign:'right'}},'Вход'), h('th',{style:{textAlign:'right'}},'Текущая'), h('th',{style:{textAlign:'right'}},'Кол-во'), h('th',{},'SL'), h('th',{},'TP'), h('th',{style:{textAlign:'right'}},'P&L'), h('th',{},'Длит.'))));
+  const tbody = h('tbody');
+  D.positions.forEach(p => {
+    const pnl = p.pnl || 0;
+    tbody.appendChild(h('tr',{},
+      h('td',{style:{fontWeight:600}}, p.pair),
+      h('td',{}, h('span',{class:'badge buy'}, p.side||'LONG')),
+      h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(p.entry)),
+      h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(p.current)),
+      h('td',{style:{textAlign:'right'}}, p.qty),
+      h('td',{style:{fontFamily:'monospace',color:'#ef4444'}}, fmt$(p.sl)),
+      h('td',{style:{fontFamily:'monospace',color:'#22c55e'}}, fmt$(p.tp)),
+      h('td',{style:{textAlign:'right',color:pnl>=0?'#22c55e':'#ef4444',fontWeight:600}}, fmtPct(p.pnlPercent||0)),
+      h('td',{}, p.duration||'--')
+    ));
+  });
+  tbl.appendChild(tbody);
+  card.appendChild(tbl);
+  el.appendChild(card);
+}
+
+function renderTrades() {
+  const el = $('#page-trades');
+  el.innerHTML = '';
+  const card = h('div',{class:'card'});
+  card.appendChild(h('h3',{},'История сделок'));
+  if (D.trades.length === 0) { card.appendChild(h('div',{class:'empty'},'Нет сделок')); el.appendChild(card); return; }
+  const tbl = h('table');
+  tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{},'Время'), h('th',{},'Пара'), h('th',{},'Действие'), h('th',{style:{textAlign:'right'}},'Вход'), h('th',{style:{textAlign:'right'}},'Выход'), h('th',{style:{textAlign:'right'}},'P&L%'), h('th',{},'Длит.'), h('th',{},'Причина'))));
+  const tbody = h('tbody');
+  D.trades.forEach(t => {
+    const pnl = t.pnl || 0;
+    tbody.appendChild(h('tr',{},
+      h('td',{}, t.time),
+      h('td',{style:{fontWeight:600}}, t.pair),
+      h('td',{}, h('span',{class:'badge '+(t.action==='BUY'?'buy':'sell')}, t.action)),
+      h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(t.entry)),
+      h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(t.exit)),
+      h('td',{style:{textAlign:'right',color:pnl>=0?'#22c55e':'#ef4444',fontWeight:600}}, fmtPct(pnl)),
+      h('td',{}, t.duration),
+      h('td',{style:{color:'#888'}}, t.reason||'')
+    ));
+  });
+  tbl.appendChild(tbody);
+  card.appendChild(tbl);
+  el.appendChild(card);
+}
+
+function renderGridBot() {
+  const el = $('#page-gridbot');
+  el.innerHTML = '';
+  const g = D.gridBot;
+  if (!g || !g.running) {
+    el.appendChild(h('div',{class:'card empty'}, h('div',{class:'icon'},'🔲'), h('div',{},'Грид-бот не запущен'), h('div',{style:{fontSize:'12px',color:'#666',marginTop:'8px'}},'Включите сеточного бота в настройках')));
+    return;
+  }
+  // Stats row
+  const stats = h('div',{class:'grid grid-auto',style:{marginBottom:'16px'}});
+  [{l:'Диапазон',v:fmt$(g.rangeLow)+' — '+fmt$(g.rangeHigh)},{l:'Уровни',v:g.levels+' ('+g.filledOrders+' исполнен)'},{l:'Инвестиция',v:fmt$(g.investment)},{l:'Реализованный P&L',v:fmt$(g.realizedPnl),c:'#22c55e'},{l:'Нереализованный P&L',v:fmt$(g.unrealizedPnl),c:'#22c55e'}].forEach(c => {
+    const card = h('div',{class:'card stat'});
+    card.appendChild(h('div',{class:'label'},c.l));
+    const val = h('div',{class:'value'},c.v);
+    if (c.c) val.style.color = c.c;
+    card.appendChild(val);
+    stats.appendChild(card);
+  });
+  el.appendChild(stats);
+  // Grid visualization canvas
+  const visCard = h('div',{class:'card'});
+  visCard.appendChild(h('h3',{},'Визуализация сетки'));
+  const canvas = h('canvas',{id:'gridCanvas',style:{width:'100%',height:'60px'}});
+  visCard.appendChild(canvas);
+  el.appendChild(visCard);
+  // Orders table
+  if (g.orders && g.orders.length > 0) {
+    const oCard = h('div',{class:'card',style:{marginTop:'16px'}});
+    oCard.appendChild(h('h3',{},'Ордера сетки'));
+    const tbl = h('table');
+    tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{style:{textAlign:'right'}},'Цена'), h('th',{},'Сигнал'), h('th',{style:{textAlign:'right'}},'Кол-во'), h('th',{},'Статус'), h('th',{},'Исполнен в'))));
+    const tbody = h('tbody');
+    g.orders.forEach(o => {
+      const side = o.side || 'BUY';
+      tbody.appendChild(h('tr',{},
+        h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(o.price||o.level)),
+        h('td',{}, h('span',{class:'badge '+(side==='BUY'?'buy':'sell')}, side)),
+        h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, o.qty || '--'),
+        h('td',{}, h('span',{class:'badge '+(o.status==='filled'?'filled':'open')}, o.status==='filled'?'Исполнен':'Ожидает')),
+        h('td',{style:{color:'#888'}}, o.filledAt || '—')
+      ));
+    });
+    tbl.appendChild(tbody);
+    oCard.appendChild(tbl);
+    el.appendChild(oCard);
+  }
+  requestAnimationFrame(() => {
+    if (g.orders && g.orders.length > 0) drawGridVis('gridCanvas', g);
+  });
+}
+
+function drawGridVis(canvasId, g) {
+  const canvas = document.getElementById(canvasId);
+  if (!canvas) return;
+  const {ctx, w, h} = setupCanvas(canvas);
+  const orders = g.orders;
+  const prices = orders.map(o => o.price || o.level);
+  const min = Math.min(...prices), max = Math.max(...prices);
+  const range = max - min || 1;
+  ctx.clearRect(0, 0, w, h);
+  const bw = (w - 20) / orders.length;
+  orders.forEach((o, i) => {
+    const x = 10 + i * bw;
+    const filled = o.status === 'filled';
+    const isBuy = o.side === 'BUY';
+    ctx.fillStyle = filled ? (isBuy ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)') : '#1a1a1a';
+    ctx.strokeStyle = filled ? (isBuy ? '#22c55e' : '#ef4444') : '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.roundRect(x+2, 5, bw-4, h-20, 3); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = filled ? (isBuy ? '#22c55e' : '#ef4444') : '#888';
+    ctx.font = 'bold 10px monospace'; ctx.textAlign = 'center';
+    ctx.fillText('$' + (o.price||o.level).toLocaleString(), x + bw/2, h/2 + 2);
+    ctx.fillStyle = '#666'; ctx.font = '8px sans-serif';
+    ctx.fillText((isBuy?'BUY':'SELL') + (filled?' '+o.filledAt:''), x + bw/2, h - 4);
+  });
+}
+
+function renderAnalytics() {
+  const el = $('#page-analytics');
+  el.innerHTML = '';
+  el.appendChild(h('div',{class:'card empty'}, h('div',{class:'icon'},'📊'), h('div',{},'Аналитика'), h('div',{style:{fontSize:'12px',color:'#666',marginTop:'8px'}},'Данные обновляются в реальном времени')));
+  if (D.pairs.length > 0) {
+    const card = h('div',{class:'card',style:{marginTop:'16px'}});
+    card.appendChild(h('h3',{},'Пары и объёмы'));
+    const tbl = h('table');
+    tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{},'Пара'), h('th',{style:{textAlign:'right'}},'Цена'), h('th',{},'Объём'), h('th',{},'RSI'), h('th',{},'Сессия'))));
+    const tbody = h('tbody');
+    D.pairs.forEach(p => {
+      tbody.appendChild(h('tr',{},
+        h('td',{style:{fontWeight:600}}, p.pair),
+        h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(p.price)),
+        h('td',{style:{textAlign:'center'}}, (p.volume||1).toFixed(2)+'x'),
+        h('td',{style:{textAlign:'center'}}, (p.rsi||50).toFixed(1)),
+        h('td',{style:{color:'#a78bfa'}}, p.session||'')
+      ));
+    });
+    tbl.appendChild(tbody);
+    card.appendChild(tbl);
+    el.appendChild(card);
+  }
+}
+
+function renderBacktest() {
+  const el = $('#page-backtest');
+  el.innerHTML = '';
+  const bt = D.backtest;
+  if (!bt) {
+    el.appendChild(h('div',{class:'card empty'}, h('div',{class:'icon'},'📊'), h('div',{},'Нет данных'), h('div',{style:{fontSize:'12px',color:'#666',marginTop:'8px'}},'Нажмите "Бэктест" в настройках')));
+    return;
+  }
+  // Header
+  el.appendChild(h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'16px'}},
+    h('h3',{style:{fontSize:'16px',fontWeight:700}},'Результаты бэктеста'),
+    h('div',{style:{fontSize:'12px',color:'#888'}}, (bt.startDate||'') + ' — ' + (bt.endDate||''))
+  ));
+  // Stat cards
+  const stats = h('div',{class:'grid grid-auto',style:{marginBottom:'16px'}});
+  [{l:'Начальный баланс',v:fmt$(bt.initialBalance)},{l:'Итоговый баланс',v:fmt$(bt.finalBalance),c:'#22c55e'},{l:'Доходность',v:'+'+bt.totalReturn+'%',c:'#22c55e'},{l:'Макс. просадка',v:'-'+bt.maxDrawdown+'%',c:'#ef4444'},{l:'Sharpe',v:Number(bt.sharpeRatio).toFixed(2),c:bt.sharpeRatio>1.5?'#22c55e':'#f59e0b'},{l:'Винрейт',v:bt.winRate+'%'},{l:'Сделки',v:bt.totalTrades},{l:'Profit Factor',v:Number(bt.profitFactor).toFixed(2),c:'#22c55e'},{l:'Ср. прибыль',v:'+'+bt.avgWin+'%',c:'#22c55e'},{l:'Ср. убыток',v:bt.avgLoss+'%',c:'#ef4444'}].forEach(c => {
+    const card = h('div',{class:'card stat'});
+    card.appendChild(h('div',{class:'label'},c.l));
+    const val = h('div',{class:'value'},c.v);
+    if (c.c) val.style.color = c.c;
+    card.appendChild(val);
+    stats.appendChild(card);
+  });
+  el.appendChild(stats);
+  // Equity chart
+  if (bt.equity && bt.equity.length > 1) {
+    const chartCard = h('div',{class:'card'});
+    chartCard.appendChild(h('h3',{},'Кривая equity'));
+    chartCard.appendChild(h('canvas',{id:'btEqChart',style:{width:'100%',height:'200px'}}));
+    el.appendChild(chartCard);
+    requestAnimationFrame(() => drawAreaChart('btEqChart', bt.equity, 'date', 'value', '#22c55e'));
+  }
+}
+
+function renderSettings() {
+  const el = $('#page-settings');
+  el.innerHTML = '';
+  const grid = h('div',{class:'grid grid-2'});
+
+  // Strategy card
+  const sCard = h('div',{class:'card'});
+  sCard.appendChild(h('h3',{},'Стратегия'));
+  const stratRows = [
+    ['Быстрая SMA', 'fastSma', 3, 50, 1],
+    ['Медленная SMA', 'slowSma', 10, 200, 1],
+    ['Период RSI', 'rsiPeriod', 5, 30, 1],
+    ['Стоп-лосс %', 'stopLossPercent', 0.5, 10, 0.5, '%'],
+    ['Тейк-профит %', 'takeProfitPercent', 1, 20, 0.5, '%'],
+    ['Риск на сделку %', 'riskPerTradePercent', 0.1, 5, 0.1, '%'],
+    ['Макс. позиций', 'maxPositions', 1, 20, 1],
+    ['Плечо', 'leverage', 1, 50, 1, 'x']
+  ];
+  stratRows.forEach(([label, key, min, max, step, suffix]) => {
+    let val = D[key];
+    if (key === 'stopLossPercent' || key === 'takeProfitPercent' || key === 'riskPerTradePercent') val = Math.round(val * 100);
+    sCard.appendChild(makeRow(label, val, min, max, step, suffix, v => { D[key] = key.includes('Percent') ? v / 100 : v; }));
+  });
+  grid.appendChild(sCard);
+
+  // Echelons card
+  const eCard = h('div',{class:'card'});
+  eCard.appendChild(h('h3',{},'Эшелоны'));
+  eCard.appendChild(makeToggle('Адаптивный агент', D.adaptiveAgentEnabled, v => D.adaptiveAgentEnabled = v));
+  eCard.appendChild(makeToggle('Валидатор сигналов', D.signalValidatorEnabled, v => D.signalValidatorEnabled = v));
+  eCard.appendChild(makeToggle('Новостной контроль', D.newsSentinelEnabled, v => D.newsSentinelEnabled = v));
+  grid.appendChild(eCard);
+
+  // Grid Bot card
+  const gCard = h('div',{class:'card'});
+  gCard.appendChild(h('h3',{},'Грид-бот'));
+  gCard.appendChild(makeToggle('Включён', D.gridBotEnabled, v => D.gridBotEnabled = v));
+  gCard.appendChild(makeRow('Уровни сетки', D.gridLevels, 4, 20, 1, '', v => D.gridLevels = v));
+  gCard.appendChild(makeRow('Инвестиция %', D.gridInvestmentPercent, 5, 100, 5, '%', v => D.gridInvestmentPercent = v));
+  gCard.appendChild(makeRow('Диапазон %', D.gridRangePercent, 1, 30, 0.5, '%', v => D.gridRangePercent = v));
+  gCard.appendChild(h('div',{class:'row'}, h('label',{},'Пара'), h('span',{style:{fontFamily:'monospace',color:'#22c55e',fontSize:'12px'}}, D.gridSymbol)));
+  grid.appendChild(gCard);
+
+  // Bot control card
+  const bCard = h('div',{class:'card'});
+  bCard.appendChild(h('h3',{},'Управление ботом'));
+  const btns = h('div',{style:{display:'flex',gap:'8px',marginTop:'12px',flexWrap:'wrap'}});
+  btns.appendChild(h('button',{class:'btn btn-primary',onclick:() => wsSend({type:'command',action:'start'})},'Запуск'));
+  btns.appendChild(h('button',{class:'btn btn-danger',onclick:() => wsSend({type:'command',action:'stop'})},'Стоп'));
+  btns.appendChild(h('button',{class:'btn btn-outline',onclick:() => wsSend({type:'command',action:'backtest'})},'Бэктест'));
+  btns.appendChild(h('button',{class:'btn btn-outline',onclick:() => wsSend({type:'command',action:'retrain'})},'Переобучить ML'));
+  bCard.appendChild(btns);
+  // Status
+  const status = h('div',{style:{padding:'12px',background:'#1a1a1a',borderRadius:'6px',fontSize:'12px',marginTop:'16px'}});
+  status.appendChild(h('div',{style:{color:'#888',marginBottom:'4px'}},'Статус бота'));
+  const statusRow = h('div',{style:{display:'flex',alignItems:'center',gap:'6px'}});
+  statusRow.appendChild(h('div',{style:{width:'8px',height:'8px',borderRadius:'50%',background:'var(--green)'}}));
+  statusRow.appendChild(h('span',{style:{color:'var(--green)',fontWeight:600}},'Работает'));
+  status.appendChild(statusRow);
+  bCard.appendChild(status);
+  // Save/Export
+  const foot = h('div',{style:{display:'flex',gap:'8px',justifyContent:'flex-end',marginTop:'16px'}});
+  foot.appendChild(h('button',{class:'btn btn-outline',onclick:() => wsSend({type:'command',action:'export'})},'Экспорт'));
+  const saveBtn = h('button',{class:'btn btn-primary',onclick:() => {
+    wsSend({type:'settings',data:{
+      strategy:{fastSma:D.fastSma,slowSma:D.slowSma,rsiPeriod:D.rsiPeriod,stopLoss:D.stopLossPercent,takeProfit:D.takeProfitPercent,riskPerTrade:D.riskPerTradePercent,maxPositions:D.maxPositions,leverage:D.leverage},
+      echelons:{adaptiveAgent:D.adaptiveAgentEnabled,signalValidator:D.signalValidatorEnabled,newsSentinel:D.newsSentinelEnabled},
+      gridBot:{enabled:D.gridBotEnabled,levels:D.gridLevels,investmentPercent:D.gridInvestmentPercent,rangePercent:D.gridRangePercent}
+    }});
+    saveBtn.textContent = '✓ Сохранено'; saveBtn.style.background = '#16a34a';
+    setTimeout(() => { saveBtn.textContent = 'Сохранить'; saveBtn.style.background = ''; }, 2000);
+  }},'Сохранить');
+  foot.appendChild(saveBtn);
+  bCard.appendChild(foot);
+  grid.appendChild(bCard);
+
+  el.appendChild(grid);
+}
+
+function renderLogs() {
+  const el = $('#page-logs');
+  el.innerHTML = '';
+  const filterBar = h('div',{class:'filter-bar'});
+  let level = 'all', search = '';
+  ['all','error','warn','info'].forEach(l => {
+    const btn = h('button',{class:'filter-btn'+(l===level?' active':''), onclick:() => {
+      level = l; el.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active'); doRender();
+    }}, l === 'all' ? 'Все' : l === 'error' ? 'Ошибки' : l === 'warn' ? 'Предупреждения' : 'Инфо');
+    filterBar.appendChild(btn);
+  });
+  const searchInput = h('input',{type:'text',class:'search',placeholder:'Поиск...',style:{marginLeft:'auto'}, oninput:() => { search = searchInput.value.toLowerCase(); doRender(); }});
+  filterBar.appendChild(searchInput);
+  el.appendChild(filterBar);
+  const container = h('div',{style:{background:'#141414',borderRadius:'8px',border:'1px solid #222',overflow:'hidden',maxHeight:'calc(100vh - 180px)',overflowY:'auto'}});
+  el.appendChild(container);
+  const countSpan = h('span',{style:{fontSize:'12px',color:'#666',marginLeft:'8px'}});
+  filterBar.appendChild(countSpan);
+
+  function doRender() {
+    container.innerHTML = '';
+    if (!D.logs) { container.appendChild(h('div',{class:'empty'},'Ожидание логов...')); countSpan.textContent = ''; return; }
+    const lines = D.logs.split('\n').filter(Boolean);
+    let filtered = lines;
+    if (level !== 'all') filtered = filtered.filter(l => level === 'error' ? (l.includes('❌')||l.includes('ОШИБКА')) : level === 'warn' ? (l.includes('⚠️')) : level === 'info' ? (l.includes('✅')||l.includes('ℹ️')) : true);
+    if (search) filtered = filtered.filter(l => l.toLowerCase().includes(search));
+    countSpan.textContent = filtered.length + ' / ' + lines.length;
+    filtered.forEach(line => {
+      const cls = line.includes('❌')||line.includes('ОШИБКА') ? 'error' : line.includes('⚠️') ? 'warn' : line.includes('✅')||line.includes('ℹ️') ? 'info' : '';
+      container.appendChild(h('div',{class:'log-line ' + cls}, line));
+    });
+    container.scrollTop = container.scrollHeight;
+  }
+  doRender();
+}
+
+function renderAlerts() {
+  const el = $('#page-alerts');
+  el.innerHTML = '';
+  el.appendChild(h('div',{class:'card empty'}, h('div',{class:'icon'},'🔔'), h('div',{},'Оповещения'), h('div',{style:{fontSize:'12px',color:'#666',marginTop:'8px'}},'Скоро будет доступно')));
+}
+
+// ===== UI HELPERS =====
+function makeRow(label, value, min, max, step, suffix, onChange) {
+  const row = h('div',{class:'row'});
+  row.appendChild(h('label',{}, label));
+  const inp = h('div',{class:'num-input'});
+  const minus = h('button',{},'−');
+  const input = h('input',{type:'number',value:String(value),min:String(min),max:String(max),step:String(step)});
+  const plus = h('button',{},'+');
+  minus.onclick = () => { const v = Math.max(min, parseFloat(input.value) - step); input.value = v; onChange(v); };
+  plus.onclick = () => { const v = Math.min(max, parseFloat(input.value) + step); input.value = v; onChange(v); };
+  input.onchange = () => { onChange(parseFloat(input.value)); };
+  inp.appendChild(minus); inp.appendChild(input); inp.appendChild(plus);
+  if (suffix) inp.appendChild(h('span',{}, suffix));
+  row.appendChild(inp);
+  return row;
+}
+
+function makeToggle(label, value, onChange) {
+  const row = h('div',{class:'row'});
+  row.appendChild(h('label',{}, label));
+  const tog = h('div',{class:'toggle'+(value?' on':'')});
+  tog.onclick = () => { value = !value; tog.classList.toggle('on', value); onChange(value); };
+  row.appendChild(tog);
+  return row;
+}
+
+// ===== INIT =====
+initNav();
+render();
+wsConnect();
+
+// Periodic re-render
+setInterval(() => { if (D.pairs.length > 0 || D.equity.length > 0) render(); }, 5000);
+</script>
+</body>
+</html>
