@@ -45,29 +45,16 @@ namespace BinanceBotWpf.Services
 
                 _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
 
-                // Авто-открытие браузера (только если ещё не открыт)
-                try
+                // Авто-открытие браузера (только если ещё не открыт в этой сессии)
+                if (!_browserOpened)
                 {
-                    bool alreadyOpen = false;
-                    try
+                    _browserOpened = true;
+                    Process.Start (new ProcessStartInfo
                     {
-                        using var checkClient = new System.Net.Http.HttpClient ();
-                        checkClient.Timeout = TimeSpan.FromSeconds (2);
-                        var resp = await checkClient.GetAsync ($"http://localhost:{port}/");
-                        alreadyOpen = resp.IsSuccessStatusCode;
-                    }
-                    catch { }
-
-                    if (!alreadyOpen)
-                    {
-                        Process.Start (new ProcessStartInfo
-                        {
-                            FileName = $"http://localhost:{port}",
-                            UseShellExecute = true
-                        });
-                    }
+                        FileName = $"http://localhost:{port}",
+                        UseShellExecute = true
+                    });
                 }
-                catch { }
             }
             catch (Exception ex)
             {
@@ -89,6 +76,7 @@ namespace BinanceBotWpf.Services
             _clients.Clear ();
             try { _listener?.Stop (); } catch { }
             _listener = null;
+            _browserOpened = false;
             _log.LogInformation ("Dashboard WS server stopped");
         }
 
@@ -340,6 +328,13 @@ namespace BinanceBotWpf.Services
                 return true;
             }
             return false;
+        }
+
+        private static bool _browserOpened;
+
+        public void BroadcastGridBot (Dictionary<string, object> data)
+        {
+            _ = BroadcastAsync ("gridbot", data);
         }
 
         private static readonly Dictionary<string, string> MimeTypes = new ()

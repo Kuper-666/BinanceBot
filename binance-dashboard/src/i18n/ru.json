@@ -141,6 +141,7 @@
   "dca_enabled": "DCA включён",
   "futures_enabled": "Фьючерсы включены",
   "grid_bot_running": "Грид-бот работает",
+  "grid_bot_not_running": "Включите сеточного бота в настройках и запустите торговлю.",
   "price_alerts": "Ценовые алерты",
   "whale_alerts": "Китовые алерты",
   "p2p_opportunities": "P2P возможности",

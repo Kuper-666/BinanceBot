@@ -1206,6 +1206,56 @@ namespace BinanceBotWpf.Services
                                     _dashboardServer.BroadcastLogs (string.Join ("\n", _recentLogs.TakeLast (50)));
                                 }
                             }
+
+                            // Grid Bot data
+                            if (_gridBot != null && _gridBot.IsRunning)
+                            {
+                                var gridData = new Dictionary<string, object>
+                                {
+                                    ["enabled"] = true,
+                                    ["running"] = true,
+                                    ["pair"] = _gridBot.Symbol,
+                                    ["centerPrice"] = _gridBot.CenterPrice,
+                                    ["levels"] = _gridBot.BuyLevels?.Length ?? 0,
+                                    ["activeOrders"] = _gridBot.ActiveOrdersCount,
+                                    ["rangeLow"] = _gridBot.BuyLevels?.Length > 0 ? _gridBot.BuyLevels[^1] : 0m,
+                                    ["rangeHigh"] = _gridBot.SellLevels?.Length > 0 ? _gridBot.SellLevels[^1] : 0m,
+                                };
+                                var gridOrders = new List<Dictionary<string, object>> ();
+                                if (_gridBot.BuyLevels != null)
+                                {
+                                    foreach (decimal level in _gridBot.BuyLevels)
+                                    {
+                                        bool filled = _positionManager.TryGet (_gridBot.Symbol, out _);
+                                        gridOrders.Add (new Dictionary<string, object>
+                                        {
+                                            ["level"] = level,
+                                            ["side"] = "BUY",
+                                            ["price"] = level,
+                                            ["status"] = "open",
+                                        });
+                                    }
+                                }
+                                if (_gridBot.SellLevels != null)
+                                {
+                                    foreach (decimal level in _gridBot.SellLevels)
+                                    {
+                                        gridOrders.Add (new Dictionary<string, object>
+                                        {
+                                            ["level"] = level,
+                                            ["side"] = "SELL",
+                                            ["price"] = level,
+                                            ["status"] = "open",
+                                        });
+                                    }
+                                }
+                                gridData["orders"] = gridOrders;
+                                gridData["totalOrders"] = gridOrders.Count;
+                                gridData["filledOrders"] = _gridBot.ActiveOrdersCount > 0
+                                    ? Math.Max (0, gridOrders.Count - _gridBot.ActiveOrdersCount)
+                                    : gridOrders.Count;
+                                _dashboardServer.BroadcastGridBot (gridData);
+                            }
                         }
                         catch { }
                     }

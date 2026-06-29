@@ -31,6 +31,18 @@ namespace BinanceBotWpf.Services
         public string Symbol => _symbol;
         public decimal CenterPrice => _centerPrice;
         public int ActiveOrdersCount => _activeOrderIds.Count;
+        public decimal[] BuyLevels => _buyLevels;
+        public decimal[] SellLevels => _sellLevels;
+        public IReadOnlyDictionary<decimal, string> ActiveOrderIds
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return new Dictionary<decimal, string> (_activeOrderIds);
+                }
+            }
+        }
         public event Action<TradeLog> OnTrade;
 
         public GridBot(BinanceClient client, PositionManager positionManager, Action<string> logger)

@@ -3,8 +3,23 @@ import { useTranslation } from 'react-i18next';
 
 export default function GridBotPage({ data }) {
   const { t } = useTranslation();
-  const grid = data.gridBot;
-  const [selectedPair, setSelectedPair] = useState(grid.pair);
+  const grid = data.gridBot || { enabled: false, running: false, orders: [], pair: '', levels: 0, filledOrders: 0, rangeLow: 0, rangeHigh: 0 };
+  const [selectedPair, setSelectedPair] = useState(grid.pair || '');
+
+  if (!grid.enabled || !grid.running) {
+    return (
+      <div style={{ display: 'grid', gap: '16px' }}>
+        <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{t('grid_bot')}</h3>
+        <div className="card" style={{ padding: '32px', textAlign: 'center' }}>
+          <div style={{ fontSize: '36px', marginBottom: '12px' }}>🔲</div>
+          <div style={{ fontSize: '14px', color: '#888', marginBottom: '8px' }}>{t('grid_bot')} {t('disabled')}</div>
+          <div style={{ fontSize: '12px', color: '#666' }}>
+            {t('grid_bot_not_running')}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div style={{ display: 'grid', gap: '16px' }}>

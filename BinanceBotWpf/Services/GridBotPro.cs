@@ -48,6 +48,11 @@ namespace BinanceBotWpf.Services
         public event Action<TradeLog> OnTrade;
         public decimal CenterPrice => _centerPrice;
         public int ActiveOrdersCount => _activeBuyOrders.Count + _activeSellOrders.Count;
+        public decimal RangePercent => _rangePercent;
+        public int GridLevels => _gridLevels;
+        public decimal TotalInvestment => _totalInvestment;
+        public decimal TotalProfit => _totalProfit;
+        public int TotalCycles => _totalCycles;
 
         public GridBotPro (IBinanceClient client, Action<string> logger)
         {

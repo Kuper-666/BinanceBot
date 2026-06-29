@@ -132,5 +132,6 @@
   "sev_success": "SUCCÈS",
   "status": "Statut",
   "bot_status": "Statut du bot",
-  "version_info": "v1.10.4 · 7 paires · effet de levier 5x"
+  "version_info": "v1.10.4 · 7 paires · effet de levier 5x",
+  "grid_bot_not_running": "Activez le grid bot dans les paramètres et lancez le trading."
 }

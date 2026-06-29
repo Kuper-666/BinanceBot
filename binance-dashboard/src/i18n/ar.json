@@ -132,5 +132,6 @@
   "sev_success": "نجاح",
   "status": "الحالة",
   "bot_status": "حالة البوت",
-  "version_info": "v1.10.4 · 7 أزواج · رافعة 5x"
+  "version_info": "v1.10.4 · 7 أزواج · رافعة 5x",
+  "grid_bot_not_running": "فعّل بوت الشبكة في الإعدادات وابدأ التداول."
 }

@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import WebSocketService from '../services/WebSocketService';
 import { MOCK_DATA } from '../data';
 
-const CHANNELS = ['prices', 'positions', 'trades', 'stats', 'echelons', 'equity', 'feargreed', 'pnl'];
+const CHANNELS = ['prices', 'positions', 'trades', 'stats', 'echelons', 'equity', 'feargreed', 'pnl', 'gridbot'];
 
 let mountCount = 0;
 
@@ -61,6 +61,7 @@ export default function useBotData() {
     news: [],
     trades: [],
     positions: [],
+    gridBot: { enabled: false, running: false, orders: [], pair: '', levels: 0, filledOrders: 0, rangeLow: 0, rangeHigh: 0, investment: 0, investmentPercent: 0, realizedPnl: 0, unrealizedPnl: 0 },
   });
   const handlersRef = useRef(new Map());
 
@@ -111,6 +112,9 @@ export default function useBotData() {
               return { ...prev, pnlHistory: newData };
             }
             return { ...prev, pnlHistory: [] };
+          }
+          if (channel === 'gridbot') {
+            return { ...prev, gridBot: newData };
           }
           return { ...prev, [channel]: newData };
         });
