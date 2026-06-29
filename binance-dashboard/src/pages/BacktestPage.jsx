@@ -31,6 +31,11 @@ export default function BacktestPage({ data }) {
     );
   }
 
+  const sp = bt.strategyParams || {};
+  const monthly = Array.isArray(bt.monthlyReturns) ? bt.monthlyReturns : [];
+  const sharpeVal = typeof bt.sharpeRatio === 'number' ? bt.sharpeRatio : parseFloat(bt.sharpeRatio) || 0;
+  const pfVal = typeof bt.profitFactor === 'number' ? bt.profitFactor : parseFloat(bt.profitFactor) || 0;
+
   return (
     <div style={{ display: 'grid', gap: '16px' }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -43,10 +48,10 @@ export default function BacktestPage({ data }) {
         <StatCard label={t('final_balance')} value={`$${bt.finalBalance.toLocaleString()}`} color="#22c55e" />
         <StatCard label={t('total_return')} value={`+${bt.totalReturn}%`} color="#22c55e" />
         <StatCard label={t('max_drawdown')} value={`-${bt.maxDrawdown}%`} color="#ef4444" />
-        <StatCard label={t('sharpe_ratio')} value={bt.sharpeRatio.toFixed(2)} color={bt.sharpeRatio > 1.5 ? '#22c55e' : '#f59e0b'} />
+        <StatCard label={t('sharpe_ratio')} value={sharpeVal.toFixed(2)} color={sharpeVal > 1.5 ? '#22c55e' : '#f59e0b'} />
         <StatCard label={t('win_rate')} value={`${bt.winRate}%`} />
         <StatCard label={t('total_trades')} value={bt.totalTrades} />
-        <StatCard label={t('profit_factor')} value={bt.profitFactor.toFixed(2)} color="#22c55e" />
+        <StatCard label={t('profit_factor')} value={pfVal.toFixed(2)} color="#22c55e" />
         <StatCard label={t('avg_win')} value={`+${bt.avgWin}%`} color="#22c55e" />
         <StatCard label={t('avg_loss')} value={`${bt.avgLoss}%`} color="#ef4444" />
       </div>
@@ -73,8 +78,9 @@ export default function BacktestPage({ data }) {
 
         <div className="card">
           <h3>{t('monthly_returns')}</h3>
+          {monthly.length > 0 ? (
           <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={bt.monthlyReturns} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
+            <BarChart data={monthly} margin={{ top: 10, right: 10, left: 10, bottom: 10 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1a1a1a" />
               <XAxis dataKey="month" tick={{ fill: '#666', fontSize: 12 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fill: '#666', fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={v => `${v}%`} />
@@ -84,12 +90,17 @@ export default function BacktestPage({ data }) {
                 labelStyle={{ color: '#888' }}
               />
               <Bar dataKey="return" radius={[4, 4, 0, 0]}>
-                {bt.monthlyReturns.map((entry, i) => (
+                {monthly.map((entry, i) => (
                   <Cell key={i} fill={entry.return > 5 ? '#22c55e' : entry.return > 3 ? '#16a34a' : '#15803d'} />
                 ))}
               </Bar>
             </BarChart>
           </ResponsiveContainer>
+          ) : (
+          <div style={{ height: 220, display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#666', fontSize: '12px' }}>
+            {t('no_data')}
+          </div>
+          )}
         </div>
       </div>
 
@@ -99,12 +110,12 @@ export default function BacktestPage({ data }) {
           <div>
             <div style={{ fontSize: '12px', color: '#888', marginBottom: '8px' }}>{t('strategy_params')}</div>
             {[
-              { label: t('fast_sma'), value: '9' },
-              { label: t('slow_sma'), value: '21' },
-              { label: t('rsi_period'), value: '14' },
-              { label: t('stop_loss'), value: 'ATR × 1.5' },
-              { label: t('take_profit'), value: 'SL × 3' },
-              { label: t('adaptive_sl'), value: '0.4x' },
+              { label: t('fast_sma'), value: sp.fastSma || '9' },
+              { label: t('slow_sma'), value: sp.slowSma || '21' },
+              { label: t('rsi_period'), value: sp.rsiPeriod || '14' },
+              { label: t('stop_loss'), value: sp.stopLoss || 'ATR × 1.5' },
+              { label: t('take_profit'), value: sp.takeProfit || 'SL × 3' },
+              { label: t('adaptive_sl'), value: sp.adaptiveSl || '0.4x' },
             ].map(s => (
               <div key={s.label} style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 0', borderBottom: '1px solid #1a1a1a', fontSize: '12px' }}>
                 <span style={{ color: '#aaa' }}>{s.label}</span>
@@ -117,8 +128,8 @@ export default function BacktestPage({ data }) {
             {[
               { label: t('total_return'), value: `+${bt.totalReturn}%`, color: '#22c55e' },
               { label: t('win_rate'), value: `${bt.winRate}%` },
-              { label: t('profit_factor'), value: bt.profitFactor.toFixed(2), color: '#22c55e' },
-              { label: t('sharpe_ratio'), value: bt.sharpeRatio.toFixed(2) },
+              { label: t('profit_factor'), value: pfVal.toFixed(2), color: '#22c55e' },
+              { label: t('sharpe_ratio'), value: sharpeVal.toFixed(2) },
               { label: t('max_drawdown'), value: `-${bt.maxDrawdown}%`, color: '#ef4444' },
               { label: t('total_trades'), value: bt.totalTrades },
             ].map(s => (

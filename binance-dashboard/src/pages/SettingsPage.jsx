@@ -127,6 +127,7 @@ export default function SettingsPage({ send, data }) {
   const handleStart = () => { if (send) send({ type: 'command', action: 'start' }); };
   const handleStop = () => { if (send) send({ type: 'command', action: 'stop' }); };
   const handleRetrain = () => { if (send) send({ type: 'command', action: 'retrain' }); };
+  const handleBacktest = () => { if (send) send({ type: 'command', action: 'backtest' }); };
   const handleExport = () => { if (send) send({ type: 'command', action: 'export' }); };
 
   return (
@@ -201,6 +202,7 @@ export default function SettingsPage({ send, data }) {
           <div style={{ display: 'flex', gap: '8px', marginTop: '12px', flexWrap: 'wrap' }}>
             <button className="btn btn-primary" onClick={handleStart}>{t('start')}</button>
             <button className="btn btn-danger" onClick={handleStop}>{t('stop')}</button>
+            <button className="btn btn-outline" onClick={handleBacktest}>{t('backtest')}</button>
             <button className="btn btn-outline" onClick={handleRetrain}>{t('retrain')}</button>
           </div>
           <div style={{ marginTop: '16px', padding: '12px', background: '#1a1a1a', borderRadius: '6px', fontSize: '12px' }}>
