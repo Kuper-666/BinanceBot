@@ -16,6 +16,7 @@ namespace BinanceBotWpf.Services
         private readonly Func<Task> _runBacktest;
         private readonly Func<Task> _runOptimization;
         private readonly Func<Task<bool>> _testTelegram;
+        private readonly Func<string, Task> _closePosition;
 
         public DashboardCommandHandler (
             MainWindowViewModel ui,
@@ -24,7 +25,8 @@ namespace BinanceBotWpf.Services
             Func<MainWindowViewModel, Task> startTrading,
             Func<Task> runBacktest = null,
             Func<Task> runOptimization = null,
-            Func<Task<bool>> testTelegram = null)
+            Func<Task<bool>> testTelegram = null,
+            Func<string, Task> closePosition = null)
         {
             _ui = ui;
             _isRunning = isRunning;
@@ -33,6 +35,7 @@ namespace BinanceBotWpf.Services
             _runBacktest = runBacktest;
             _runOptimization = runOptimization;
             _testTelegram = testTelegram;
+            _closePosition = closePosition;
         }
 
         public async Task HandleAsync (string action, Dictionary<string, object> data)
@@ -121,6 +124,19 @@ namespace BinanceBotWpf.Services
                         else
                         {
                             _ui?.AddLog ("⚠️ Telegram не настроен");
+                        }
+                        break;
+
+                    case "close_position":
+                        if (data.TryGetValue ("symbol", out var symObj))
+                        {
+                            string sym = symObj?.ToString ();
+                            if (!string.IsNullOrEmpty (sym))
+                            {
+                                _ui?.AddLog ($"🔒 Закрытие позиции {sym} из дашборда...");
+                                if (_closePosition != null)
+                                    await _closePosition (sym);
+                            }
                         }
                         break;
 

@@ -6,45 +6,57 @@
 <title>BinanceBot Dashboard</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
-:root{--bg:#0a0a0a;--bg2:#111;--bg3:#1a1a1a;--border:#222;--text:#e5e5e5;--text2:#888;--text3:#666;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;--purple:#a78bfa;--radius:8px}
+:root{--bg:#0a0a0a;--bg2:#111;--bg3:#1a1a1a;--border:#222;--text:#e5e5e5;--text2:#888;--text3:#666;--green:#22c55e;--red:#ef4444;--yellow:#f59e0b;--blue:#3b82f6;--purple:#a78bfa;--radius:8px;--shadow:0 4px 12px rgba(0,0,0,0.3)}
 body{background:var(--bg);color:var(--text);font-family:'Inter','Segoe UI',sans-serif;font-size:14px;overflow-x:hidden}
-.header{display:flex;justify-content:space-between;align-items:center;padding:12px 24px;background:var(--bg2);border-bottom:1px solid var(--border)}
+.header{display:flex;justify-content:space-between;align-items:center;padding:12px 24px;background:var(--bg2);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:100}
 .header h1{font-size:18px;color:var(--green);font-weight:700}
+.header-right{display:flex;align-items:center;gap:16px}
 .conn{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2)}
-.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red)}
-.conn-dot.on{background:var(--green)}
-.nav{display:flex;gap:4px;padding:8px 24px;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto}
-.tab{padding:8px 14px;border-radius:6px;border:none;background:transparent;color:var(--text2);cursor:pointer;font-size:12px;font-weight:400;white-space:nowrap;transition:all .2s}
+.conn-dot{width:8px;height:8px;border-radius:50%;background:var(--red);transition:background .3s}
+.conn-dot.on{background:var(--green);box-shadow:0 0 8px var(--green)}
+.ticker{display:flex;gap:12px;font-size:11px;color:var(--text3)}
+.ticker span{display:flex;align-items:center;gap:4px}
+.ticker .up{color:var(--green)}
+.ticker .down{color:var(--red)}
+.nav{display:flex;gap:4px;padding:8px 24px;background:var(--bg2);border-bottom:1px solid var(--border);overflow-x:auto;position:sticky;top:49px;z-index:99}
+.tab{padding:8px 14px;border-radius:6px;border:none;background:transparent;color:var(--text2);cursor:pointer;font-size:12px;font-weight:400;white-space:nowrap;transition:all .2s;position:relative}
 .tab:hover{background:var(--bg3);color:var(--text)}
 .tab.active{background:var(--green);color:#000;font-weight:600}
-.page{padding:20px 24px;max-width:1400px;margin:0 auto;display:none}
+.tab .badge-count{position:absolute;top:2px;right:2px;background:var(--red);color:#fff;font-size:9px;padding:1px 4px;border-radius:8px;font-weight:700}
+.page{padding:20px 24px;max-width:1400px;margin:0 auto;display:none;animation:fadeIn .2s ease}
 .page.active{display:block}
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 .grid{display:grid;gap:16px}
 .grid-2{grid-template-columns:1fr 1fr}
 .grid-3{grid-template-columns:repeat(3,1fr)}
 .grid-auto{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
-.card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
-.card h3{font-size:14px;font-weight:700;margin-bottom:12px}
+.card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius);padding:16px;transition:border-color .2s,box-shadow .2s}
+.card:hover{border-color:#333;box-shadow:var(--shadow)}
+.card h3{font-size:14px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
 .stat{text-align:center}
-.stat .label{font-size:11px;color:var(--text2);margin-bottom:4px}
+.stat .label{font-size:11px;color:var(--text2);margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
 .stat .value{font-size:22px;font-weight:700}
+.stat .sub{font-size:10px;color:var(--text3);margin-top:2px}
 table{width:100%;border-collapse:collapse;font-size:13px}
-th{text-align:left;padding:8px 12px;color:var(--text2);font-size:11px;font-weight:600;border-bottom:1px solid var(--border)}
+th{text-align:left;padding:8px 12px;color:var(--text2);font-size:11px;font-weight:600;border-bottom:1px solid var(--border);text-transform:uppercase;letter-spacing:.5px}
 td{padding:8px 12px;border-bottom:1px solid #1a1a1a}
-tr:hover{background:rgba(255,255,255,.02)}
+tr{transition:background .15s}
+tr:hover{background:rgba(255,255,255,.03)}
 .badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
 .badge.buy{background:rgba(34,197,94,.15);color:var(--green)}
 .badge.sell{background:rgba(239,68,68,.15);color:var(--red)}
 .badge.hold{background:rgba(136,136,136,.15);color:var(--text2)}
 .badge.filled{background:rgba(34,197,94,.15);color:var(--green)}
 .badge.open{background:rgba(245,158,11,.15);color:var(--yellow)}
-.btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s}
+.btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-size:13px;font-weight:600;transition:all .2s;display:inline-flex;align-items:center;gap:6px}
+.btn:active{transform:scale(0.97)}
 .btn-primary{background:var(--green);color:#000}
 .btn-primary:hover{background:#16a34a}
 .btn-danger{background:var(--red);color:#fff}
 .btn-danger:hover{background:#dc2626}
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
-.btn-outline:hover{background:var(--bg3);color:var(--text)}
+.btn-outline:hover{background:var(--bg3);color:var(--text);border-color:#444}
+.btn-sm{padding:4px 10px;font-size:11px}
 .toggle{width:36px;height:20px;border-radius:10px;background:var(--bg3);position:relative;cursor:pointer;transition:all .2s;border:1px solid var(--border)}
 .toggle.on{background:var(--green);border-color:var(--green)}
 .toggle::after{content:'';position:absolute;width:16px;height:16px;border-radius:50%;background:#fff;top:1px;left:1px;transition:all .2s}
@@ -52,25 +64,41 @@ tr:hover{background:rgba(255,255,255,.02)}
 .row{display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1a1a1a}
 .row label{color:var(--text2);font-size:13px}
 .num-input{display:flex;align-items:center;gap:4px}
-.num-input button{width:24px;height:24px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:12px}
-.num-input input{width:56px;padding:4px;text-align:center;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;font-family:monospace;outline:none}
+.num-input button{width:24px;height:24px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:12px;transition:all .15s}
+.num-input button:hover{background:#222;color:var(--text)}
+.num-input input{width:56px;padding:4px;text-align:center;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;font-family:monospace;outline:none;transition:border-color .2s}
+.num-input input:focus{border-color:var(--green)}
 .num-input span{font-size:11px;color:var(--text3)}
-.search{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;width:260px;outline:none}
-.log-line{font-family:monospace;font-size:12px;padding:2px 0;border-bottom:1px solid #111;white-space:pre-wrap;word-break:break-all}
-.log-line.error{color:var(--red)}.log-line.warn{color:var(--yellow)}.log-line.info{color:var(--green)}.log-line.debug{color:var(--text3)}
-.filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px}
-.filter-btn{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-size:12px;background:var(--bg3);color:var(--text2)}
-.filter-btn.active{color:var(--text);font-weight:600}
+.search{padding:6px 12px;border-radius:6px;border:1px solid var(--border);background:var(--bg3);color:var(--text);font-size:13px;width:260px;outline:none;transition:border-color .2s}
+.search:focus{border-color:var(--green)}
+.log-line{font-family:monospace;font-size:12px;padding:3px 8px;border-bottom:1px solid #111;white-space:pre-wrap;word-break:break-all;border-radius:2px;margin:1px 0}
+.log-line:hover{background:rgba(255,255,255,.02)}
+.log-line.error{color:var(--red);background:rgba(239,68,68,.05)}
+.log-line.warn{color:var(--yellow);background:rgba(245,158,11,.05)}
+.log-line.info{color:var(--green);background:rgba(34,197,94,.05)}
+.log-line.debug{color:var(--text3)}
+.filter-bar{display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap}
+.filter-btn{padding:6px 14px;border-radius:6px;border:1px solid var(--border);cursor:pointer;font-size:12px;background:var(--bg3);color:var(--text2);transition:all .2s}
+.filter-btn:hover{border-color:#444;color:var(--text)}
+.filter-btn.active{color:var(--text);font-weight:600;border-color:var(--green);color:var(--green)}
 .empty{text-align:center;padding:40px;color:var(--text2);font-size:14px}
 .empty .icon{font-size:36px;margin-bottom:12px}
 canvas{width:100%!important}
-@media(max-width:900px){.grid-2{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr}.grid-auto{grid-template-columns:1fr 1fr}}
+.tooltip{position:relative;cursor:help}
+.tooltip:hover::after{content:attr(data-tip);position:absolute;bottom:100%;left:50%;transform:translateX(-50%);background:#333;color:#fff;padding:4px 8px;border-radius:4px;font-size:11px;white-space:nowrap;z-index:1000}
+.progress{height:6px;background:var(--bg3);border-radius:3px;overflow:hidden}
+.progress-bar{height:100%;border-radius:3px;transition:width .3s}
+.divider{height:1px;background:var(--border);margin:12px 0}
+@media(max-width:900px){.grid-2{grid-template-columns:1fr}.grid-3{grid-template-columns:1fr}.grid-auto{grid-template-columns:1fr 1fr}.header h1{font-size:14px}.nav{padding:6px 12px}.page{padding:12px}}
 </style>
 </head>
 <body>
 <div class="header">
   <h1>BinanceBot Dashboard</h1>
-  <div class="conn"><div class="conn-dot" id="connDot"></div><span id="connText">Connecting...</span></div>
+  <div class="header-right">
+    <div class="ticker" id="ticker"></div>
+    <div class="conn"><div class="conn-dot" id="connDot"></div><span id="connText">Connecting...</span></div>
+  </div>
 </div>
 <div class="nav" id="nav"></div>
 <div id="pages"></div>
@@ -166,8 +194,25 @@ function scheduleReconnect() {
 function wsSend(msg) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(msg)); }
 function onChannel(ch, fn) { if (!handlers.has(ch)) handlers.set(ch, new Set()); handlers.get(ch).add(fn); }
 
+function updateTicker() {
+  const ticker = document.getElementById('ticker');
+  if (!ticker || D.pairs.length === 0) return;
+  ticker.innerHTML = D.pairs.slice(0, 4).map(p => {
+    const name = p.pair.replace('USDC','').replace('USDT','');
+    const price = Number(p.price || 0).toFixed(2);
+    const change = Number(p.priceChangePercent || 0);
+    const cls = change >= 0 ? 'up' : 'down';
+    return `<span>${name} $${price} <span class="${cls}">${change >= 0 ? '+' : ''}${change.toFixed(1)}%</span></span>`;
+  }).join('');
+}
+
 // ===== DATA HANDLERS =====
-onChannel('prices', d => { if (Array.isArray(d)) D.pairs = d; });
+onChannel('prices', d => {
+  if (Array.isArray(d)) {
+    D.pairs = d;
+    updateTicker();
+  }
+});
 onChannel('positions', d => { if (Array.isArray(d)) D.positions = d; });
 onChannel('stats', d => Object.assign(D, d));
 onChannel('trades', d => { if (Array.isArray(d)) D.trades = d; });
@@ -321,23 +366,26 @@ function renderOverview() {
   // Stat cards row
   const stats = h('div',{class:'grid grid-auto'});
   const cards = [
-    {l:'Баланс',v:fmt$(D.balance||0),c:'#22c55e'},
-    {l:'P&L',v:((D.pnl||0)>=0?'+':'')+fmt$(D.pnl||0),sub:(D.pnlPercent||0)+'%',c:(D.pnl||0)>=0?'#22c55e':'#ef4444'},
-    {l:'Винрейт',v:(D.winRate||0).toFixed(1)+'%'},
-    {l:'Макс. просадка',v:'-'+(D.maxDrawdown||0).toFixed(1)+'%',c:'#ef4444'},
-    {l:'Сделки',v:D.totalTrades||0},
-    {l:'Позиции',v:(D.openPositions||0)+'/'+(D.maxPositions||5)},
-    {l:'Страх/Жадность',v:D.fearGreedValue||50,c:(D.fearGreedValue||50)>60?'#22c55e':(D.fearGreedValue||50)<40?'#ef4444':'#f59e0b',sub:D.fearGreedClassification||'Neutral'},
-    {l:'Плечо',v:(D.leverage||5)+'x',c:'#3b82f6'},
-    {l:'Трейлинг стоп',v:(D.trailingStopPercent||1)+'%',c:'#3b82f6'}
+    {l:'Баланс',v:fmt$(D.balance||0),c:'#22c55e',icon:'💰'},
+    {l:'P&L',v:((D.pnl||0)>=0?'+':'')+fmt$(D.pnl||0),sub:(D.pnlPercent||0)+'%',c:(D.pnl||0)>=0?'#22c55e':'#ef4444',icon:'📈'},
+    {l:'Винрейт',v:(D.winRate||0).toFixed(1)+'%',icon:'🎯',sub:(D.winningTrades||0)+'W / '+(D.losingTrades||0)+'L'},
+    {l:'Макс. просадка',v:'-'+(D.maxDrawdown||0).toFixed(1)+'%',c:'#ef4444',icon:'📉'},
+    {l:'Сделки',v:D.totalTrades||0,icon:'🔄',sub:'Лучшая: '+(D.bestPnL||0).toFixed(2)},
+    {l:'Позиции',v:(D.openPositions||0)+'/'+(D.maxPositions||5),icon:'📊'},
+    {l:'Страх/Жадность',v:D.fearGreedValue||50,c:(D.fearGreedValue||50)>60?'#22c55e':(D.fearGreedValue||50)<40?'#ef4444':'#f59e0b',sub:D.fearGreedClassification||'Neutral',icon:'😱'},
+    {l:'Плечо',v:(D.leverage||5)+'x',c:'#3b82f6',icon:'⚡'},
+    {l:'Трейлинг стоп',v:(D.trailingStopPercent||1)+'%',c:'#3b82f6',icon:'🎯'}
   ];
   cards.forEach(c => {
     const card = h('div',{class:'card stat'});
-    card.appendChild(h('div',{class:'label'},c.l));
+    const header = h('div',{style:{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:'8px'}});
+    header.appendChild(h('div',{class:'label'},c.l));
+    if (c.icon) header.appendChild(h('span',{style:{fontSize:'16px'}},c.icon));
+    card.appendChild(header);
     const val = h('div',{class:'value'},c.v);
     if (c.c) val.style.color = c.c;
     card.appendChild(val);
-    if (c.sub) card.appendChild(h('div',{style:{fontSize:'10px',color:'#888'}}, c.sub));
+    if (c.sub) card.appendChild(h('div',{class:'sub'}, c.sub));
     stats.appendChild(card);
   });
   el.appendChild(stats);
@@ -450,14 +498,14 @@ function renderPositions() {
   const el = $('#page-positions');
   el.innerHTML = '';
   const card = h('div',{class:'card'});
-  card.appendChild(h('h3',{},'Открытые позиции'));
+  card.appendChild(h('h3',{},'Открытые позиции ('+D.positions.length+')'));
   if (D.positions.length === 0) { card.appendChild(h('div',{class:'empty'},'Нет открытых позиций')); el.appendChild(card); return; }
   const tbl = h('table');
-  tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{},'Пара'), h('th',{},'Сторона'), h('th',{style:{textAlign:'right'}},'Вход'), h('th',{style:{textAlign:'right'}},'Текущая'), h('th',{style:{textAlign:'right'}},'Кол-во'), h('th',{},'SL'), h('th',{},'TP'), h('th',{style:{textAlign:'right'}},'P&L'), h('th',{},'Длит.'))));
+  tbl.appendChild(h('thead',{}, h('tr',{}, h('th',{},'Пара'), h('th',{},'Сторона'), h('th',{style:{textAlign:'right'}},'Вход'), h('th',{style:{textAlign:'right'}},'Текущая'), h('th',{style:{textAlign:'right'}},'Кол-во'), h('th',{},'SL'), h('th',{},'TP'), h('th',{style:{textAlign:'right'}},'P&L'), h('th',{},'Длит.'), h('th',{},''))));
   const tbody = h('tbody');
   D.positions.forEach(p => {
     const pnl = p.pnl || 0;
-    tbody.appendChild(h('tr',{},
+    const row = h('tr',{},
       h('td',{style:{fontWeight:600}}, p.pair),
       h('td',{}, h('span',{class:'badge buy'}, p.side||'LONG')),
       h('td',{style:{textAlign:'right',fontFamily:'monospace'}}, fmt$(p.entry)),
@@ -466,8 +514,14 @@ function renderPositions() {
       h('td',{style:{fontFamily:'monospace',color:'#ef4444'}}, fmt$(p.sl)),
       h('td',{style:{fontFamily:'monospace',color:'#22c55e'}}, fmt$(p.tp)),
       h('td',{style:{textAlign:'right',color:pnl>=0?'#22c55e':'#ef4444',fontWeight:600}}, fmtPct(p.pnlPercent||0)),
-      h('td',{}, p.duration||'--')
-    ));
+      h('td',{}, p.duration||'--'),
+      h('td',{}, h('button',{class:'btn btn-danger btn-sm',onclick:()=>{
+        if (confirm('Закрыть позицию '+p.pair+'?')) {
+          wsSend({type:'command',action:'close_position',data:{symbol:p.pair}});
+        }
+      }},'Закрыть'))
+    );
+    tbody.appendChild(row);
   });
   tbl.appendChild(tbody);
   card.appendChild(tbl);
