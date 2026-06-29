@@ -100,6 +100,11 @@ namespace BinanceBotWpf.ViewModels
         private int _maxPositions = 2;
         private string _positionsStatusText = "0/2 нет открытых";
         private string _riskPercentDisplay = "Риск: 0%";
+
+        public decimal PeakBalance => _peakBalance;
+        public decimal MaxDrawdown => _maxDrawdown;
+        public decimal TotalProfitSum => _totalProfitSum;
+        public decimal TotalLossSum => _totalLossSum;
         private TradingSettings _tradingSettings;
 
         // Обновления

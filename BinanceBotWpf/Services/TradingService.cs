@@ -47,6 +47,7 @@ namespace BinanceBotWpf.Services
         private readonly IPriceAlertManager _priceAlertManager;
         private readonly IRiskManager _riskManager;
         private readonly BotConfig _config;
+        private readonly StatePersistence _statePersistence;
         private TelegramCommandHandler _telegramHandler;
         private DashboardCommandHandler _dashboardHandler;
 
@@ -134,6 +135,10 @@ namespace BinanceBotWpf.Services
             _config = config;
             _telegramBotToken = config?.TelegramBotToken ?? "";
             _telegramChatId = config?.TelegramChatId ?? "";
+
+            // State persistence
+            string dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
+            _statePersistence = new StatePersistence(dataDir);
         }
 
         private bool _loggerSet = false;
@@ -324,6 +329,11 @@ namespace BinanceBotWpf.Services
                 prot.TrailingStopPercent = _ui.TrailingStopPercent;
             }
 
+            // Restore trading state from file
+            _statePersistence.Register(GetCurrentState, RestoreState);
+            _statePersistence.Restore();
+            _statePersistence.StartAutoSave();
+
             _ = Task.Run (() => RunLoopWithRestart (BalanceLoop, "BalanceLoop"));
             _ = Task.Run (() => RunLoopWithRestart (TradingLoop, "TradingLoop"));
             _ = Task.Run (() => RunLoopWithRestart (AutoOptimizeLoop, "AutoOptimizeLoop"));
@@ -357,6 +367,10 @@ namespace BinanceBotWpf.Services
         public void StopTrading()
         {
             _isRunning = false;
+
+            // Save state before stopping
+            try { _statePersistence?.Save (); } catch { }
+
             _shutdownCts?.Cancel ();
             if (_ui != null) _ui.IsRunning = false;
 
@@ -381,6 +395,78 @@ namespace BinanceBotWpf.Services
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
+
+        /// <summary>
+        /// Capture current trading state for persistence.
+        /// </summary>
+        private TradingState GetCurrentState ()
+        {
+            var trades = _ui?.TradesHistory?.ToList () ?? new List<TradeLog> ();
+            return new TradingState
+            {
+                SessionStartBalance = _sessionStartBalance,
+                SessionStartBalanceCaptured = _sessionStartBalanceCaptured,
+                LastBuyTime = new Dictionary<string, DateTime> (_lastBuyTime),
+                RecentTradeTimes = new List<DateTime> (_recentTradeTimes),
+                TradesHistory = trades,
+                TotalPnL = _ui?.TotalPnL ?? 0,
+                WinRate = _ui?.WinRate ?? 0,
+                TotalTrades = _ui?.TotalTrades ?? 0,
+                WinningTrades = _ui?.WinningTrades ?? 0,
+                LosingTrades = _ui?.LosingTrades ?? 0,
+                BestPnL = _ui?.BestPnL ?? 0,
+                WorstPnL = _ui?.WorstPnL ?? 0,
+                PeakBalance = _ui?.PeakBalance ?? 0,
+                MaxDrawdown = _ui?.MaxDrawdown ?? 0,
+                TotalProfitSum = _ui?.TotalProfitSum ?? 0,
+                TotalLossSum = _ui?.TotalLossSum ?? 0,
+                EquityHistory = new List<Dictionary<string, object>> (_equityHistory),
+                PnlHistory = new List<Dictionary<string, object>> (_pnlHistory),
+            };
+        }
+
+        /// <summary>
+        /// Restore trading state from saved snapshot.
+        /// </summary>
+        private void RestoreState (TradingState state)
+        {
+            if (state == null) return;
+
+            _sessionStartBalance = state.SessionStartBalance;
+            _sessionStartBalanceCaptured = state.SessionStartBalanceCaptured;
+
+            _lastBuyTime.Clear ();
+            foreach (var kvp in state.LastBuyTime)
+            {
+                // Only restore cooldowns that haven't expired
+                if (DateTime.UtcNow - kvp.Value < TimeSpan.FromMinutes (15))
+                    _lastBuyTime[kvp.Key] = kvp.Value;
+            }
+
+            _recentTradeTimes.Clear ();
+            foreach (DateTime t in state.RecentTradeTimes)
+            {
+                if (DateTime.UtcNow - t < TimeSpan.FromHours (1))
+                    _recentTradeTimes.Add (t);
+            }
+
+            // Restore trade history and stats
+            if (_ui != null && state.TradesHistory.Count > 0)
+            {
+                foreach (var trade in state.TradesHistory)
+                {
+                    _ui.AddTradeToHistory (trade);
+                }
+            }
+
+            _equityHistory.Clear ();
+            _equityHistory.AddRange (state.EquityHistory);
+
+            _pnlHistory.Clear ();
+            _pnlHistory.AddRange (state.PnlHistory);
+
+            _ui?.AddLog ($"📂 Состояние восстановлено: {state.TradesHistory.Count} сделок, баланс сессии ${state.SessionStartBalance:F2}");
+        }
 
         private async Task RunBacktestAndBroadcast ()
         {
