@@ -45,14 +45,27 @@ namespace BinanceBotWpf.Services
 
                 _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
 
-                // Авто-открытие браузера
+                // Авто-открытие браузера (только если ещё не открыт)
                 try
                 {
-                    Process.Start (new ProcessStartInfo
+                    bool alreadyOpen = false;
+                    try
                     {
-                        FileName = $"http://localhost:{port}",
-                        UseShellExecute = true
-                    });
+                        using var checkClient = new System.Net.Http.HttpClient ();
+                        checkClient.Timeout = TimeSpan.FromSeconds (2);
+                        var resp = await checkClient.GetAsync ($"http://localhost:{port}/");
+                        alreadyOpen = resp.IsSuccessStatusCode;
+                    }
+                    catch { }
+
+                    if (!alreadyOpen)
+                    {
+                        Process.Start (new ProcessStartInfo
+                        {
+                            FileName = $"http://localhost:{port}",
+                            UseShellExecute = true
+                        });
+                    }
                 }
                 catch { }
             }
