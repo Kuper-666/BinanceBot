@@ -287,16 +287,20 @@ namespace BinanceBotWpf.Services
             // Запуск Dashboard WebSocket сервера сразу при старте приложения
             try
             {
+                System.Diagnostics.Debug.WriteLine ("[Dashboard] Creating handler...");
                 _dashboardHandler = new DashboardCommandHandler (
                     _ui, () => _isRunning,
                     () => { StopTrading (); return Task.CompletedTask; },
                     async (vm) => await StartTradingAsync (vm));
                 _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
+                System.Diagnostics.Debug.WriteLine ("[Dashboard] Starting server on port 8765...");
                 await _dashboardServer.StartAsync (8765);
+                System.Diagnostics.Debug.WriteLine ("[Dashboard] Server started OK");
                 _ui?.AddLog ("📡 Dashboard WebSocket доступен на http://localhost:8765");
             }
             catch (Exception ex)
             {
+                System.Diagnostics.Debug.WriteLine ($"[Dashboard] FAILED: {ex}");
                 _ui?.AddLog ($"⚠️ Dashboard WS не запущен: {ex.Message}");
             }
         }

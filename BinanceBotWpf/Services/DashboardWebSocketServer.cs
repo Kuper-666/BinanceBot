@@ -35,28 +35,18 @@ namespace BinanceBotWpf.Services
 
         public async Task StartAsync (int port = 8765)
         {
-            _cts = new CancellationTokenSource ();
-            _listener = new HttpListener ();
-            _listener.Prefixes.Add ($"http://localhost:{port}/");
-            _listener.Start ();
-            _log.LogInformation ("Dashboard WS server started on port {Port}", port);
-
-            _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
-
-            // Авто-открытие браузера (только если ещё не открыт)
             try
             {
-                bool alreadyOpen = false;
-                try
-                {
-                    using var checkClient = new System.Net.Http.HttpClient ();
-                    checkClient.Timeout = TimeSpan.FromSeconds (2);
-                    var resp = await checkClient.GetAsync ($"http://localhost:{port}/");
-                    alreadyOpen = resp.IsSuccessStatusCode;
-                }
-                catch { }
+                _cts = new CancellationTokenSource ();
+                _listener = new HttpListener ();
+                _listener.Prefixes.Add ($"http://localhost:{port}/");
+                _listener.Start ();
+                _log.LogInformation ("Dashboard WS server started on port {Port}", port);
 
-                if (!alreadyOpen)
+                _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
+
+                // Авто-открытие браузера
+                try
                 {
                     Process.Start (new ProcessStartInfo
                     {
@@ -64,8 +54,13 @@ namespace BinanceBotWpf.Services
                         UseShellExecute = true
                     });
                 }
+                catch { }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _log.LogError (ex, "Failed to start Dashboard WS server on port {Port}", port);
+                throw;
+            }
 
             await Task.CompletedTask;
         }
