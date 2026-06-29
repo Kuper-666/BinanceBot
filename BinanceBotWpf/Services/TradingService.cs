@@ -1285,6 +1285,20 @@ namespace BinanceBotWpf.Services
                                 ["session"] = MarketSessionService.GetSessionLabel (),
                                 ["sessionFilterEnabled"] = _tradingSettings?.SessionFilterEnabled ?? false,
                                 ["tradeOnlyEuUs"] = _tradingSettings?.TradeOnlyEuUs ?? false,
+                                ["fastSma"] = _ui?.FastSma ?? 12,
+                                ["slowSma"] = _ui?.SlowSma ?? 26,
+                                ["rsiPeriod"] = _ui?.RsiPeriod ?? 14,
+                                ["stopLossPercent"] = (double)(_ui?.StopLossPercent ?? 0.005m),
+                                ["takeProfitPercent"] = (double)(_ui?.TakeProfitPercent ?? 0.008m),
+                                ["riskPerTradePercent"] = (double)(_tradingSettings?.RiskPerTradePercent ?? 0.01m),
+                                ["adaptiveAgentEnabled"] = _tradingSettings?.AdaptiveAgentEnabled ?? true,
+                                ["signalValidatorEnabled"] = _tradingSettings?.SignalValidatorEnabled ?? true,
+                                ["newsSentinelEnabled"] = _tradingSettings?.NewsSentinelEnabled ?? true,
+                                ["gridBotEnabled"] = _tradingSettings?.GridBotEnabled ?? false,
+                                ["gridSymbol"] = _tradingSettings?.GridSymbol ?? "DOGEUSDC",
+                                ["gridRangePercent"] = (double)(_tradingSettings?.GridRangePercent ?? 0.10m) * 100,
+                                ["gridLevels"] = _tradingSettings?.GridLevels ?? 10,
+                                ["gridInvestmentPercent"] = (double)(_tradingSettings?.TotalInvestmentPercent ?? 0.80m) * 100,
                             });
 
                             // Trades — last 50 from history

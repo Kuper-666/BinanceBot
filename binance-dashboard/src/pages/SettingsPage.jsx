@@ -94,11 +94,14 @@ export default function SettingsPage({ send, data }) {
     if (data.riskPerTradePercent) s.strategy.riskPerTrade = Math.round(data.riskPerTradePercent * 100);
     if (data.maxPositions) s.strategy.maxPositions = data.maxPositions;
     if (data.leverage) s.strategy.leverage = data.leverage;
-    if (data.adaptiveAgent !== undefined) s.echelons.adaptiveAgent = data.adaptiveAgent;
-    if (data.signalValidator !== undefined) s.echelons.signalValidator = data.signalValidator;
-    if (data.newsSentinel !== undefined) s.echelons.newsSentinel = data.newsSentinel;
+    if (data.adaptiveAgentEnabled !== undefined) s.echelons.adaptiveAgent = data.adaptiveAgentEnabled;
+    if (data.signalValidatorEnabled !== undefined) s.echelons.signalValidator = data.signalValidatorEnabled;
+    if (data.newsSentinelEnabled !== undefined) s.echelons.newsSentinel = data.newsSentinelEnabled;
     if (data.gridBotEnabled !== undefined) s.gridBot.enabled = data.gridBotEnabled;
-    if (data.gridBotRunning !== undefined) s.gridBot.enabled = data.gridBotRunning;
+    if (data.gridSymbol) s.gridBot.defaultPairs = data.gridSymbol;
+    if (data.gridRangePercent) s.gridBot.rangePercent = data.gridRangePercent;
+    if (data.gridLevels) s.gridBot.levels = data.gridLevels;
+    if (data.gridInvestmentPercent) s.gridBot.investmentPercent = data.gridInvestmentPercent;
     setSettings(s);
     setInitialized(true);
   }
