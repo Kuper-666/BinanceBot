@@ -24,8 +24,12 @@ namespace BinanceBotWpf.Services
         private decimal[] _buyLevels;
         private decimal[] _sellLevels;
         private readonly Dictionary<decimal, string> _activeOrderIds = new ();
+        private readonly List<Dictionary<string, object>> _filledOrders = new ();
         private readonly object _lock = new ();
         private decimal _lastBuyPrice;
+        private decimal _totalInvestment;
+        private decimal _gridRangePercent;
+        private decimal _realizedPnl;
 
         public bool IsRunning => _isRunning;
         public string Symbol => _symbol;
@@ -43,6 +47,19 @@ namespace BinanceBotWpf.Services
                 }
             }
         }
+        public List<Dictionary<string, object>> FilledOrders
+        {
+            get
+            {
+                lock (_lock)
+                {
+                    return new List<Dictionary<string, object>> (_filledOrders);
+                }
+            }
+        }
+        public decimal TotalInvestment => _totalInvestment;
+        public decimal GridRangePercent => _gridRangePercent;
+        public decimal RealizedPnl => _realizedPnl;
         public event Action<TradeLog> OnTrade;
 
         public GridBot(BinanceClient client, PositionManager positionManager, Action<string> logger)
@@ -65,6 +82,8 @@ namespace BinanceBotWpf.Services
 
             _symbol = symbol;
             _centerPrice = centerPrice;
+            _totalInvestment = totalInvestmentUsdc;
+            _gridRangePercent = gridRangePercent;
             _isRunning = true;
             _cts = new CancellationTokenSource ();
 
@@ -262,6 +281,23 @@ namespace BinanceBotWpf.Services
 
                         if (closestBuyLevel > 0)
                         {
+                            lock (_lock)
+                            {
+                                _activeOrderIds.Remove (closestBuyLevel);
+                                if (!_filledOrders.Any (o => (decimal)o["price"] == closestBuyLevel))
+                                {
+                                    _filledOrders.Add (new Dictionary<string, object>
+                                    {
+                                        ["level"] = closestBuyLevel,
+                                        ["side"] = "BUY",
+                                        ["price"] = pos.EntryPrice,
+                                        ["qty"] = pos.Quantity,
+                                        ["status"] = "filled",
+                                        ["filledAt"] = DateTime.Now.ToString ("HH:mm"),
+                                    });
+                                }
+                            }
+
                             decimal targetSellPrice = pos.EntryPrice * (1 + Math.Abs (_buyLevels[0] - _sellLevels[0]) / _centerPrice);
                             decimal stepSize = await _client.GetStepSizeAsync (_symbol);
                             decimal sellQty = Math.Floor (pos.Quantity / stepSize) * stepSize;
@@ -298,6 +334,23 @@ namespace BinanceBotWpf.Services
                             {
                                 decimal profit = (sellPrice - _lastBuyPrice) * sellQty;
                                 decimal profitPct = (sellPrice / _lastBuyPrice - 1) * 100;
+                                _realizedPnl += profit;
+                                lock (_lock)
+                                {
+                                    _activeOrderIds.Remove (sellPrice);
+                                    if (!_filledOrders.Any (o => ( decimal )o["price"] == sellPrice && ( string )o["side"] == "SELL"))
+                                    {
+                                        _filledOrders.Add (new Dictionary<string, object>
+                                        {
+                                            ["level"] = sellPrice,
+                                            ["side"] = "SELL",
+                                            ["price"] = sellPrice,
+                                            ["qty"] = sellQty,
+                                            ["status"] = "filled",
+                                            ["filledAt"] = DateTime.Now.ToString ("HH:mm"),
+                                        });
+                                    }
+                                }
                                 OnTrade?.Invoke (new TradeLog
                                 {
                                     Symbol = _symbol,

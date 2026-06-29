@@ -1210,51 +1210,80 @@ namespace BinanceBotWpf.Services
                             // Grid Bot data
                             if (_gridBot != null && _gridBot.IsRunning)
                             {
-                                var gridData = new Dictionary<string, object>
-                                {
-                                    ["enabled"] = true,
-                                    ["running"] = true,
-                                    ["pair"] = _gridBot.Symbol,
-                                    ["centerPrice"] = _gridBot.CenterPrice,
-                                    ["levels"] = _gridBot.BuyLevels?.Length ?? 0,
-                                    ["activeOrders"] = _gridBot.ActiveOrdersCount,
-                                    ["rangeLow"] = _gridBot.BuyLevels?.Length > 0 ? _gridBot.BuyLevels[^1] : 0m,
-                                    ["rangeHigh"] = _gridBot.SellLevels?.Length > 0 ? _gridBot.SellLevels[^1] : 0m,
-                                };
-                                var gridOrders = new List<Dictionary<string, object>> ();
+                                var filledOrders = _gridBot.FilledOrders;
+                                var allLevels = new List<Dictionary<string, object>> ();
+
                                 if (_gridBot.BuyLevels != null)
                                 {
                                     foreach (decimal level in _gridBot.BuyLevels)
                                     {
-                                        bool filled = _positionManager.TryGet (_gridBot.Symbol, out _);
-                                        gridOrders.Add (new Dictionary<string, object>
+                                        bool isActive = _gridBot.ActiveOrderIds.ContainsKey (level);
+                                        var filled = filledOrders.FirstOrDefault (o => ( decimal )o["price"] == level);
+                                        string status = filled != null ? "filled" : ( isActive ? "open" : "open" );
+                                        var order = new Dictionary<string, object>
                                         {
                                             ["level"] = level,
                                             ["side"] = "BUY",
                                             ["price"] = level,
-                                            ["status"] = "open",
-                                        });
+                                            ["status"] = status,
+                                        };
+                                        if (filled != null)
+                                        {
+                                            order["qty"] = filled["qty"];
+                                            order["filledAt"] = filled["filledAt"];
+                                        }
+                                        allLevels.Add (order);
                                     }
                                 }
                                 if (_gridBot.SellLevels != null)
                                 {
                                     foreach (decimal level in _gridBot.SellLevels)
                                     {
-                                        gridOrders.Add (new Dictionary<string, object>
+                                        bool isActive = _gridBot.ActiveOrderIds.ContainsKey (level);
+                                        var filled = filledOrders.FirstOrDefault (o => ( decimal )o["price"] == level);
+                                        string status = filled != null ? "filled" : ( isActive ? "open" : "open" );
+                                        var order = new Dictionary<string, object>
                                         {
                                             ["level"] = level,
                                             ["side"] = "SELL",
                                             ["price"] = level,
-                                            ["status"] = "open",
-                                        });
+                                            ["status"] = status,
+                                        };
+                                        if (filled != null)
+                                        {
+                                            order["qty"] = filled["qty"];
+                                            order["filledAt"] = filled["filledAt"];
+                                        }
+                                        allLevels.Add (order);
                                     }
                                 }
-                                gridData["orders"] = gridOrders;
-                                gridData["totalOrders"] = gridOrders.Count;
-                                gridData["filledOrders"] = _gridBot.ActiveOrdersCount > 0
-                                    ? Math.Max (0, gridOrders.Count - _gridBot.ActiveOrdersCount)
-                                    : gridOrders.Count;
-                                _dashboardServer.BroadcastGridBot (gridData);
+
+                                decimal currentPrice = _webSocketManager?.GetCurrentPrice (_gridBot.Symbol) ?? 0m;
+                                decimal unrealizedPnl = 0;
+                                if (currentPrice > 0 && _positionManager.TryGet (_gridBot.Symbol, out var gridPos))
+                                {
+                                    unrealizedPnl = ( currentPrice - gridPos.EntryPrice ) * gridPos.Quantity;
+                                }
+
+                                _dashboardServer.BroadcastGridBot (new Dictionary<string, object>
+                                {
+                                    ["enabled"] = true,
+                                    ["running"] = true,
+                                    ["pair"] = _gridBot.Symbol,
+                                    ["centerPrice"] = _gridBot.CenterPrice,
+                                    ["levels"] = _gridBot.BuyLevels?.Length ?? 0,
+                                    ["rangeLow"] = _gridBot.BuyLevels?.Length > 0 ? _gridBot.BuyLevels[^1] : 0m,
+                                    ["rangeHigh"] = _gridBot.SellLevels?.Length > 0 ? _gridBot.SellLevels[^1] : 0m,
+                                    ["investment"] = _gridBot.TotalInvestment,
+                                    ["investmentPercent"] = _tradingSettings?.TotalInvestmentPercent != 0
+                                        ? Math.Round ((_tradingSettings?.TotalInvestmentPercent ?? 0.20m) * 100)
+                                        : 20,
+                                    ["orders"] = allLevels,
+                                    ["totalOrders"] = allLevels.Count,
+                                    ["filledOrders"] = filledOrders.Count,
+                                    ["realizedPnl"] = Math.Round (_gridBot.RealizedPnl, 2),
+                                    ["unrealizedPnl"] = Math.Round (unrealizedPnl, 2),
+                                });
                             }
                         }
                         catch { }

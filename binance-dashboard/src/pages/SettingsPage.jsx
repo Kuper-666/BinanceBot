@@ -78,10 +78,30 @@ function SettingRow({ label, children }) {
   );
 }
 
-export default function SettingsPage({ send }) {
+export default function SettingsPage({ send, data }) {
   const { t } = useTranslation();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
+  const [initialized, setInitialized] = useState(false);
+
+  if (!initialized && data) {
+    const s = { ...DEFAULT_SETTINGS };
+    if (data.fastSma) s.strategy.fastSma = data.fastSma;
+    if (data.slowSma) s.strategy.slowSma = data.slowSma;
+    if (data.rsiPeriod) s.strategy.rsiPeriod = data.rsiPeriod;
+    if (data.stopLossPercent) s.strategy.stopLoss = Math.round(data.stopLossPercent * 100);
+    if (data.takeProfitPercent) s.strategy.takeProfit = Math.round(data.takeProfitPercent * 100);
+    if (data.riskPerTradePercent) s.strategy.riskPerTrade = Math.round(data.riskPerTradePercent * 100);
+    if (data.maxPositions) s.strategy.maxPositions = data.maxPositions;
+    if (data.leverage) s.strategy.leverage = data.leverage;
+    if (data.adaptiveAgent !== undefined) s.echelons.adaptiveAgent = data.adaptiveAgent;
+    if (data.signalValidator !== undefined) s.echelons.signalValidator = data.signalValidator;
+    if (data.newsSentinel !== undefined) s.echelons.newsSentinel = data.newsSentinel;
+    if (data.gridBotEnabled !== undefined) s.gridBot.enabled = data.gridBotEnabled;
+    if (data.gridBotRunning !== undefined) s.gridBot.enabled = data.gridBotRunning;
+    setSettings(s);
+    setInitialized(true);
+  }
 
   const updateStrategy = (key, value) => {
     setSettings(s => ({ ...s, strategy: { ...s.strategy, [key]: value } }));

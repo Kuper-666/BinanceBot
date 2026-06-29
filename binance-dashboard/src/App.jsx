@@ -44,7 +44,7 @@ export default function App() {
               <Route path="/grid_bot" element={<GridBotPage data={data} />} />
               <Route path="/analytics" element={<AnalyticsPage data={data} />} />
               <Route path="/backtest" element={<BacktestPage data={data} />} />
-              <Route path="/settings" element={<SettingsPage send={send} />} />
+              <Route path="/settings" element={<SettingsPage send={send} data={data} />} />
               <Route path="/logs" element={<LogsPage data={data} />} />
               <Route path="/alerts" element={<AlertsPage />} />
               <Route path="*" element={<Navigate to="/overview" replace />} />
