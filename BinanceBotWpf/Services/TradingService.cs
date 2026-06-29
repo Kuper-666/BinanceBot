@@ -318,6 +318,12 @@ namespace BinanceBotWpf.Services
             await SetLoggerAsync (vm.AddLog);
             await InitAsync ();
 
+            // Sync trailing stop from settings to protector
+            if (_ui != null && _positionProtector is PositionProtector prot)
+            {
+                prot.TrailingStopPercent = _ui.TrailingStopPercent;
+            }
+
             _ = Task.Run (() => RunLoopWithRestart (BalanceLoop, "BalanceLoop"));
             _ = Task.Run (() => RunLoopWithRestart (TradingLoop, "TradingLoop"));
             _ = Task.Run (() => RunLoopWithRestart (AutoOptimizeLoop, "AutoOptimizeLoop"));
@@ -1299,6 +1305,7 @@ namespace BinanceBotWpf.Services
                                 ["gridRangePercent"] = (double)(_tradingSettings?.GridRangePercent ?? 0.10m) * 100,
                                 ["gridLevels"] = _tradingSettings?.GridLevels ?? 10,
                                 ["gridInvestmentPercent"] = (double)(_tradingSettings?.TotalInvestmentPercent ?? 0.80m) * 100,
+                                ["trailingStopPercent"] = (double)(_ui?.TrailingStopPercent ?? 0.01m) * 100,
                             });
 
                             // Trades — last 50 from history
@@ -1412,6 +1419,12 @@ namespace BinanceBotWpf.Services
                             }
                         }
                         catch { }
+                    }
+
+                    // Sync trailing stop from UI settings
+                    if (_ui != null && _positionProtector is PositionProtector prot2)
+                    {
+                        prot2.TrailingStopPercent = _ui.TrailingStopPercent;
                     }
 
                     await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None);

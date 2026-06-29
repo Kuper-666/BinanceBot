@@ -87,7 +87,8 @@ const D = {
   fastSma:12, slowSma:26, rsiPeriod:14, stopLossPercent:0.005, takeProfitPercent:0.008,
   riskPerTradePercent:0.01, adaptiveAgentEnabled:true, signalValidatorEnabled:true,
   newsSentinelEnabled:true, gridBotEnabled:false, gridSymbol:'DOGEUSDC',
-  gridRangePercent:10, gridLevels:12, gridInvestmentPercent:80
+  gridRangePercent:10, gridLevels:12, gridInvestmentPercent:80,
+  trailingStopPercent:1
 };
 
 // ===== TABS =====
@@ -327,7 +328,8 @@ function renderOverview() {
     {l:'Сделки',v:D.totalTrades||0},
     {l:'Позиции',v:(D.openPositions||0)+'/'+(D.maxPositions||5)},
     {l:'Страх/Жадность',v:D.fearGreedValue||50,c:(D.fearGreedValue||50)>60?'#22c55e':(D.fearGreedValue||50)<40?'#ef4444':'#f59e0b',sub:D.fearGreedClassification||'Neutral'},
-    {l:'Плечо',v:(D.leverage||5)+'x',c:'#3b82f6'}
+    {l:'Плечо',v:(D.leverage||5)+'x',c:'#3b82f6'},
+    {l:'Трейлинг стоп',v:(D.trailingStopPercent||1)+'%',c:'#3b82f6'}
   ];
   cards.forEach(c => {
     const card = h('div',{class:'card stat'});
@@ -651,7 +653,8 @@ function renderSettings() {
     ['Тейк-профит %', 'takeProfitPercent', 1, 20, 0.5, '%'],
     ['Риск на сделку %', 'riskPerTradePercent', 0.1, 5, 0.1, '%'],
     ['Макс. позиций', 'maxPositions', 1, 20, 1],
-    ['Плечо', 'leverage', 1, 50, 1, 'x']
+    ['Плечо', 'leverage', 1, 50, 1, 'x'],
+    ['Трейлинг стоп %', 'trailingStopPercent', 0.5, 10, 0.5, '%']
   ];
   stratRows.forEach(([label, key, min, max, step, suffix]) => {
     let val = D[key];
@@ -700,7 +703,7 @@ function renderSettings() {
   foot.appendChild(h('button',{class:'btn btn-outline',onclick:() => wsSend({type:'command',action:'export'})},'Экспорт'));
   const saveBtn = h('button',{class:'btn btn-primary',onclick:() => {
     wsSend({type:'settings',data:{
-      strategy:{fastSma:D.fastSma,slowSma:D.slowSma,rsiPeriod:D.rsiPeriod,stopLoss:D.stopLossPercent,takeProfit:D.takeProfitPercent,riskPerTrade:D.riskPerTradePercent,maxPositions:D.maxPositions,leverage:D.leverage},
+      strategy:{fastSma:D.fastSma,slowSma:D.slowSma,rsiPeriod:D.rsiPeriod,stopLoss:D.stopLossPercent,takeProfit:D.takeProfitPercent,riskPerTrade:D.riskPerTradePercent,maxPositions:D.maxPositions,leverage:D.leverage,trailingStopPercent:D.trailingStopPercent/100},
       echelons:{adaptiveAgent:D.adaptiveAgentEnabled,signalValidator:D.signalValidatorEnabled,newsSentinel:D.newsSentinelEnabled},
       gridBot:{enabled:D.gridBotEnabled,levels:D.gridLevels,investmentPercent:D.gridInvestmentPercent,rangePercent:D.gridRangePercent}
     }});
