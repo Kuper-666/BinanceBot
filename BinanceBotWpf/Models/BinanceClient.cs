@@ -357,7 +357,7 @@ namespace BinanceBotWpf.Models
                         foreach (var b in accountInfo["balances"])
                         {
                             string a = b["asset"]?.ToString ();
-                            if (!string.IsNullOrEmpty (a) && a != "USDC" && a != "USDT" && a != "BNB" && a != "FDUSD")
+                            if (!string.IsNullOrEmpty (a) && a != "USDC" && a != "USDT" && a != "FDUSD")
                                 assets.Add (a);
                         }
                     }

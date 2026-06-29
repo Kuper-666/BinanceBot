@@ -120,6 +120,9 @@ namespace BinanceBotWpf.Services
                                         decimal maxDrawdown = perPairResults.Max (r => r.MaxDrawdown);
                                         decimal winRate = totalTrades > 0 ? (decimal) totalWins / totalTrades * 100 : 0;
 
+                                        decimal avgSharpe = perPairResults.Average (r => r.SharpeRatio);
+                                        decimal avgProfitFactor = perPairResults.Average (r => r.ProfitFactor);
+
                                         var aggregated = new BacktestEngine.BacktestResult
                                         {
                                             TotalReturn = avgReturn,
@@ -127,7 +130,9 @@ namespace BinanceBotWpf.Services
                                             TotalTrades = totalTrades,
                                             WinningTrades = totalWins,
                                             LosingTrades = totalLosses,
-                                            MaxDrawdown = maxDrawdown
+                                            MaxDrawdown = maxDrawdown,
+                                            SharpeRatio = avgSharpe,
+                                            ProfitFactor = avgProfitFactor
                                         };
 
                                         // Требуем минимум сделок по совокупности всех пар и отсекаем нереалистичные значения.

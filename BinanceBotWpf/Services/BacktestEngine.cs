@@ -71,6 +71,8 @@ namespace BinanceBotWpf.Services
 
             int winningTrades = 0;
             int losingTrades = 0;
+            decimal totalGrossProfit = 0;
+            decimal totalGrossLoss = 0;
             var equityCurve = new List<decimal> { initialCapital };
 
             for (int i = slowSmaPeriod + 5; i < closes.Count; i++)
@@ -99,44 +101,65 @@ namespace BinanceBotWpf.Services
                     }
                 }
 
-                // Торговая логика
-                if (position == 0 && buySignal)
-                {
-                    // Покупка
-                    position = capital / price;
-                    capital = 0;
-                    entryPrice = price;
-                }
-                else if (position > 0)
-                {
-                    decimal profitPercent = ( price - entryPrice ) / entryPrice;
-                    decimal stopPrice = entryPrice * ( 1 - stopLossPercent );
-                    decimal takePrice = entryPrice * ( 1 + takeProfitPercent );
+            // Торговая логика
+            if (position == 0 && buySignal)
+            {
+                // Покупка с комиссией 0.04% (maker)
+                decimal cost = capital * 0.0004m;
+                position = ( capital - cost ) / price;
+                capital = 0;
+                entryPrice = price;
+            }
+            else if (position > 0)
+            {
+                decimal profitPercent = ( price - entryPrice ) / entryPrice;
+                decimal stopPrice = entryPrice * ( 1 - stopLossPercent );
+                decimal takePrice = entryPrice * ( 1 + takeProfitPercent );
 
-                    bool stopHit = price <= stopPrice;
-                    bool takeHit = price >= takePrice;
+                bool stopHit = price <= stopPrice;
+                bool takeHit = price >= takePrice;
 
-                    if (sellSignal || stopHit || takeHit)
+                if (sellSignal || stopHit || takeHit)
+                {
+                    // Продажа с комиссией 0.04% (maker)
+                    decimal proceeds = position * price;
+                    decimal fee = proceeds * 0.0004m;
+                    capital = proceeds - fee;
+                    position = 0;
+
+                    decimal tradePnl = ( price - entryPrice ) / entryPrice;
+                    if (tradePnl > 0.0001m)
                     {
-                        // Продажа
-                        capital = position * price;
-                        position = 0;
-
-                        decimal tradePnl = ( price - entryPrice ) / entryPrice;
-                        if (tradePnl > 0)
-                            winningTrades++;
-                        else
-                            losingTrades++;
-
-                        // Обновление просадки
-                        if (capital > peakCapital)
-                            peakCapital = capital;
-
-                        decimal drawdown = ( peakCapital - capital ) / peakCapital * 100;
-                        if (drawdown > maxDrawdown)
-                            maxDrawdown = drawdown;
+                        winningTrades++;
+                        totalGrossProfit += capital - ( entryPrice * ( capital / price ) );
                     }
+                    else if (tradePnl < -0.0001m)
+                    {
+                        losingTrades++;
+                        totalGrossLoss += Math.Abs (capital - ( entryPrice * ( capital / price ) ));
+                    }
+                    else
+                    {
+                        // Break-even — не считаем ни победой, ни поражением
+                    }
+
+                    // Обновление просадки
+                    if (capital > peakCapital)
+                        peakCapital = capital;
+
+                    decimal drawdown = ( peakCapital - capital ) / peakCapital * 100;
+                    if (drawdown > maxDrawdown)
+                        maxDrawdown = drawdown;
                 }
+
+                // Обновление просадки для незакрытых позиций
+                decimal unrealizedEquity = position * price;
+                if (unrealizedEquity > peakCapital)
+                    peakCapital = unrealizedEquity;
+                decimal unrealizedDrawdown = ( peakCapital - unrealizedEquity ) / peakCapital * 100;
+                if (unrealizedDrawdown > maxDrawdown)
+                    maxDrawdown = unrealizedDrawdown;
+            }
 
                 equityCurve.Add (position > 0 ? position * price : capital);
             }
@@ -144,14 +167,16 @@ namespace BinanceBotWpf.Services
             // Закрытие последней позиции
             if (position > 0)
             {
-                capital = position * closes.Last ();
+                decimal proceeds = position * closes.Last ();
+                decimal fee = proceeds * 0.0004m;
+                capital = proceeds - fee;
             }
 
             decimal totalReturn = ( capital - initialCapital ) / initialCapital * 100;
             int totalTrades = winningTrades + losingTrades;
             decimal winRate = totalTrades > 0 ? (decimal)winningTrades / totalTrades * 100 : 0;
 
-            // Расчёт Sharpe Ratio (упрощённо)
+            // Расчёт Sharpe Ratio (годовой коэффициент зависит от таймфрейма)
             decimal sharpeRatio = 0;
             if (equityCurve.Count > 1)
             {
@@ -162,15 +187,20 @@ namespace BinanceBotWpf.Services
                 }
                 decimal avgReturn = returns.Average ();
                 decimal stdDev = CalculateStdDev (returns);
-                sharpeRatio = stdDev > 0 ? avgReturn / stdDev * (decimal)Math.Sqrt (252) : 0;
+                // 252 = дни/год для дневных свечей; для 1h: 252*24=6048
+                int annualizationFactor = 252;
+                sharpeRatio = stdDev > 0 ? avgReturn / stdDev * (decimal)Math.Sqrt (annualizationFactor) : 0;
             }
 
-            // Фактор прибыли
+            // Фактор прибыли (сумма прибылей / сумма убытков)
             decimal profitFactor = 0;
-            if (losingTrades > 0 && winningTrades > 0)
+            if (totalGrossLoss > 0 && totalGrossProfit > 0)
             {
-                // Упрощённо: (средняя прибыль * кол-во) / (средний убыток * кол-во)
-                profitFactor = ( winningTrades * 1.0m ) / ( losingTrades * 1.0m );
+                profitFactor = totalGrossProfit / totalGrossLoss;
+            }
+            else if (totalGrossProfit > 0)
+            {
+                profitFactor = 999m; // Все сделки прибыльны
             }
 
             return new BacktestResult
