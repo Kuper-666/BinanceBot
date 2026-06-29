@@ -4,7 +4,9 @@ import { useTranslation } from 'react-i18next';
 export default function GridBotPage({ data }) {
   const { t } = useTranslation();
   const grid = data.gridBot || { enabled: false, running: false, orders: [], pair: '', levels: 0, filledOrders: 0, rangeLow: 0, rangeHigh: 0 };
-  const [selectedPair, setSelectedPair] = useState(grid.pair || '');
+  const pairs = Array.isArray(data.pairs) ? data.pairs : [];
+  const orders = Array.isArray(grid.orders) ? grid.orders : [];
+  const [selectedPair, setSelectedPair] = useState(grid.pair || (pairs[0]?.pair || ''));
 
   if (!grid.enabled || !grid.running) {
     return (
@@ -58,9 +60,9 @@ export default function GridBotPage({ data }) {
         <h3>{t('grid_visualization')}</h3>
         <div style={{ overflowX: 'auto' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0', padding: '16px 0', minWidth: '600px' }}>
-            {grid.orders.map((order, i) => {
-              const currentPrice = data.pairs.find(p => p.pair === selectedPair)?.price || 0;
-              const isCurrentPrice = order.level <= currentPrice && (i === grid.orders.length - 1 || grid.orders[i + 1].level > currentPrice);
+            {orders.map((order, i) => {
+              const currentPrice = pairs.find(p => p.pair === selectedPair)?.price || 0;
+              const isCurrentPrice = order.level <= currentPrice && (i === orders.length - 1 || orders[i + 1].level > currentPrice);
               return (
                 <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', position: 'relative' }}>
                   <div style={{
@@ -103,7 +105,7 @@ export default function GridBotPage({ data }) {
               <th style={{ textAlign: 'center' }}>{t('filled_time')}</th>
             </tr></thead>
             <tbody>
-              {grid.orders.map((order, i) => (
+              {orders.map((order, i) => (
                 <tr key={i}>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>${order.price.toLocaleString()}</td>
                   <td style={{ textAlign: 'center' }}>

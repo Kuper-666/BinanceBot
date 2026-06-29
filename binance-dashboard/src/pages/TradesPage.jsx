@@ -3,8 +3,9 @@ import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, Cartes
 
 export default function TradesPage({ data }) {
   const { t } = useTranslation();
+  const trades = Array.isArray(data.trades) ? data.trades : [];
 
-  const pnlData = data.trades.map(tr => ({
+  const pnlData = trades.map(tr => ({
     name: `${tr.pair.replace('USDT', '')} ${tr.action}`,
     pnl: tr.pnl,
     pair: tr.pair,
@@ -48,7 +49,7 @@ export default function TradesPage({ data }) {
               <th style={{ textAlign: 'left' }}>{t('reason')}</th>
             </tr></thead>
             <tbody>
-              {data.trades.map((tr, i) => (
+              {trades.map((tr, i) => (
                 <tr key={i}>
                   <td style={{ color: '#aaa' }}>{tr.time}</td>
                   <td style={{ fontWeight: 600 }}>{tr.pair}</td>

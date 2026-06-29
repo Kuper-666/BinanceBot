@@ -2,17 +2,18 @@ import { useTranslation } from 'react-i18next';
 
 export default function PositionsPage({ data }) {
   const { t } = useTranslation();
+  const positions = Array.isArray(data.positions) ? data.positions : [];
 
   return (
     <div style={{ display: 'grid', gap: '16px' }}>
       <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
         <h3 style={{ fontSize: '16px', fontWeight: 700 }}>{t('open_positions')}</h3>
         <span className="badge" style={{ background: '#22c55e22', color: '#22c55e' }}>
-          {data.positions.length} / {data.maxPositions}
+          {positions.length} / {data.maxPositions}
         </span>
       </div>
 
-      {data.positions.map((pos, i) => (
+      {positions.map((pos, i) => (
         <div key={i} className="card" style={{ borderLeft: `3px solid ${pos.side === 'LONG' ? '#22c55e' : '#ef4444'}` }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
             <div>
@@ -90,7 +91,7 @@ export default function PositionsPage({ data }) {
         </div>
       ))}
 
-      {data.positions.length === 0 && (
+      {positions.length === 0 && (
         <div className="card" style={{ textAlign: 'center', padding: '40px', color: '#666' }}>
           {t('no_open_positions')}
         </div>

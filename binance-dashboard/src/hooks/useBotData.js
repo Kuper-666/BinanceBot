@@ -16,6 +16,8 @@ const POSITION_DEFAULTS = {
   echelons: { adaptive: 0, validator: 0, newsSentinel: 'unknown' },
 };
 
+const ensureArray = (value) => Array.isArray(value) ? value : (value ? [value] : []);
+
 function mapAnalysis(rp) {
   const mapped = { ...rp };
   if (rp.macdHist !== undefined) mapped.macd = rp.macdHist;
@@ -76,43 +78,34 @@ export default function useBotData() {
       const handler = (newData) => {
         setData(prev => {
           if (channel === 'prices') {
-            if (Array.isArray(newData)) {
-              return { ...prev, pairs: mergePairs(newData, prev.pairs) };
+            const prices = ensureArray(newData);
+            if (prices.length) {
+              return { ...prev, pairs: mergePairs(prices, prev.pairs) };
             }
-            return { ...prev, ...newData };
+            return prev;
           }
           if (channel === 'positions') {
-            if (Array.isArray(newData)) {
-              return { ...prev, positions: mergePositions(newData, prev.positions || []) };
-            }
-            return { ...prev, [channel]: newData };
+            const positions = ensureArray(newData);
+            return { ...prev, positions: mergePositions(positions, prev.positions || []) };
           }
           if (channel === 'stats') {
             return { ...prev, ...newData };
           }
           if (channel === 'trades') {
-            if (Array.isArray(newData)) {
-              return { ...prev, trades: newData };
-            }
-            return { ...prev, [channel]: newData };
+            const trades = ensureArray(newData);
+            return { ...prev, trades };
           }
           if (channel === 'echelons') {
             return { ...prev, echelons: newData };
           }
           if (channel === 'equity') {
-            if (Array.isArray(newData)) {
-              return { ...prev, equity: newData };
-            }
-            return { ...prev, equity: [] };
+            return { ...prev, equity: Array.isArray(newData) ? newData : [] };
           }
           if (channel === 'feargreed') {
             return { ...prev, fearGreedValue: newData.value, fearGreedClassification: newData.classification };
           }
           if (channel === 'pnl') {
-            if (Array.isArray(newData)) {
-              return { ...prev, pnlHistory: newData };
-            }
-            return { ...prev, pnlHistory: [] };
+            return { ...prev, pnlHistory: Array.isArray(newData) ? newData : [] };
           }
           if (channel === 'gridbot') {
             return { ...prev, gridBot: newData };

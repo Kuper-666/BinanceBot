@@ -15,6 +15,7 @@ const CustomTooltip = ({ active, payload, label }) => {
 export default function BacktestPage({ data }) {
   const { t } = useTranslation();
   const bt = data.backtest;
+  const equityData = Array.isArray(bt?.equity) ? bt.equity : [];
 
   if (!bt) {
     return (
@@ -60,7 +61,7 @@ export default function BacktestPage({ data }) {
         <div className="card">
           <h3>{t('equity_curve')}</h3>
           <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={bt.equity} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+            <AreaChart data={equityData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
               <defs>
                 <linearGradient id="btEqGrad" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#22c55e" stopOpacity={0.3} />

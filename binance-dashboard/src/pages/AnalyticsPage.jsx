@@ -13,17 +13,18 @@ function generateCorrelation(pairNames) {
 
 export default function AnalyticsPage({ data }) {
   const { t } = useTranslation();
+  const pairsData = Array.isArray(data.pairs) ? data.pairs : [];
 
-  const pairs = useMemo(() => data.pairs.map(p => p.pair), [data.pairs]);
+  const pairs = useMemo(() => pairsData.map(p => p.pair), [pairsData]);
   const corr = useMemo(() => generateCorrelation(pairs), [pairs]);
 
   const riskDistribution = [
-    { name: t('low_risk'), value: data.pairs.filter(p => p.risk === 'low').length, color: '#22c55e' },
-    { name: t('medium_risk'), value: data.pairs.filter(p => p.risk === 'medium').length, color: '#f59e0b' },
-    { name: t('high_risk'), value: data.pairs.filter(p => p.risk === 'high').length, color: '#ef4444' },
+    { name: t('low_risk'), value: pairsData.filter(p => p.risk === 'low').length, color: '#22c55e' },
+    { name: t('medium_risk'), value: pairsData.filter(p => p.risk === 'medium').length, color: '#f59e0b' },
+    { name: t('high_risk'), value: pairsData.filter(p => p.risk === 'high').length, color: '#ef4444' },
   ];
 
-  const scatterData = data.pairs.map(p => ({
+  const scatterData = pairsData.map(p => ({
     name: p.pair.replace('USDT', ''),
     rsi: p.rsi,
     aiScore: p.aiScore,
@@ -124,7 +125,7 @@ export default function AnalyticsPage({ data }) {
         <div className="card">
           <h3>{t('volatility_heatmap')}</h3>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(80px, 1fr))', gap: '8px' }}>
-            {data.pairs.map(p => {
+            {pairsData.map(p => {
               const vol = p.atr * 100;
               const intensity = Math.min(vol / 4, 1);
               return (
@@ -155,7 +156,7 @@ export default function AnalyticsPage({ data }) {
               <th style={{ textAlign: 'center' }}>{t('lsma')}</th>
             </tr></thead>
             <tbody>
-              {data.pairs.map(p => (
+              {pairsData.map(p => (
                 <tr key={p.pair}>
                   <td style={{ fontWeight: 600 }}>{p.pair}</td>
                   <td style={{ textAlign: 'right', fontFamily: 'monospace' }}>${p.price.toLocaleString()}</td>

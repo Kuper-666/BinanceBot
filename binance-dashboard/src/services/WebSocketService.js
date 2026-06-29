@@ -1,7 +1,7 @@
 class WebSocketService {
   constructor() {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    this.url = `${wsProtocol}//${window.location.host}`;
+    this.url = import.meta.env.VITE_WS_URL || `${wsProtocol}//${window.location.host}`;
     this.ws = null;
     this.listeners = new Map();
     this.channels = new Set();
