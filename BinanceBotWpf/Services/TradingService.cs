@@ -599,7 +599,12 @@ namespace BinanceBotWpf.Services
             decimal investmentUsdc = balance * investmentPercent;
 
             _gridBot = new GridBot (_client, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
-            _gridBot.OnTrade += trade => _ui?.AddTradeToHistory (trade);
+            _gridBot.OnTrade += async trade =>
+            {
+                _ui?.AddTradeToHistory (trade);
+                string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
+                await SendTradeNotification ($"{emoji} <b>GRID SELL</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
+            };
             await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
         }
 
@@ -656,7 +661,12 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
 
             _gridBot = new GridBot (_client, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
-            _gridBot.OnTrade += trade => _ui?.AddTradeToHistory (trade);
+            _gridBot.OnTrade += async trade =>
+            {
+                _ui?.AddTradeToHistory (trade);
+                string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
+                await SendTradeNotification ($"{emoji} <b>GRID SELL</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
+            };
             await _gridBot.StartAsync (symbol, currentPrice, grid.RangePercent, grid.Levels, investmentUsdc, grid.UseDynamicStep);
         }
 
@@ -1666,6 +1676,16 @@ namespace BinanceBotWpf.Services
                 _recentTradeTimes.Add (DateTime.UtcNow);
                 _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4} | R/R 1:{riskRewardRatio:F1}");
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
+
+                // Telegram: buy notification
+                await SendTradeNotification ($"🟢 <b>ПОКУПКА</b>\n" +
+                    $"📊 {symbol}\n" +
+                    $"💵 Цена: {limitPrice:F4}\n" +
+                    $"📦 Количество: {qty}\n" +
+                    $"🛡 SL: {slPrice:F4} (-{slPct:P2})\n" +
+                    $"🎯 TP: {tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2})\n" +
+                    $"⚖️ Риск: {riskAmount:F2} USDC ({riskPerTrade:P2})\n" +
+                    $"📐 R/R: 1:{riskRewardRatio:F1}");
             }
         }
 
@@ -1773,9 +1793,29 @@ namespace BinanceBotWpf.Services
                 _riskManager.RecordTrade (pnl);
                 await _positionManager.RemoveAsync (symbol);
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
+
+                // Telegram: sell notification
+                string emoji = pnl >= 0 ? "🟢" : "🔴";
+                await SendTradeNotification ($"{emoji} <b>ПРОДАЖА</b>\n" +
+                    $"📊 {symbol}\n" +
+                    $"💵 Вход: {pos.EntryPrice:F4} → Выход: {limitPrice:F4}\n" +
+                    $"📦 Количество: {qtyToSell}\n" +
+                    $"📈 PnL: {pnl:+F2;-F2} USDC ({pnlPct:+F2;-F2}%)\n" +
+                    $"⏱ Длительность: {(DateTime.UtcNow - pos.OpenTime):hh\\:mm}");
             }
         }
 
+        private async Task SendTradeNotification (string message)
+        {
+            try
+            {
+                if (_telegram != null && _telegram.IsEnabled)
+                {
+                    await _telegram.SendMessageAsync (message);
+                }
+            }
+            catch { }
+        }
 
         private string GetStatusText()
         {
