@@ -50,7 +50,7 @@ export default function TradesPage({ data }) {
             <tbody>
               {data.trades.map((tr, i) => (
                 <tr key={i}>
-                  <td style={{ color: '#888' }}>{tr.time}</td>
+                  <td style={{ color: '#aaa' }}>{tr.time}</td>
                   <td style={{ fontWeight: 600 }}>{tr.pair}</td>
                   <td style={{ textAlign: 'center' }}>
                     <span className="badge" style={{
@@ -63,8 +63,8 @@ export default function TradesPage({ data }) {
                   <td style={{ textAlign: 'right', color: tr.pnl > 0 ? '#22c55e' : '#ef4444', fontWeight: 600 }}>
                     {tr.pnl > 0 ? '+' : ''}{tr.pnl}%
                   </td>
-                  <td style={{ textAlign: 'center', color: '#888' }}>{tr.duration}</td>
-                  <td style={{ color: '#999', fontSize: '12px' }}>{tr.reason}</td>
+                  <td style={{ textAlign: 'center', color: '#aaa' }}>{tr.duration}</td>
+                  <td style={{ color: '#bbb', fontSize: '12px' }}>{tr.reason}</td>
                 </tr>
               ))}
             </tbody>

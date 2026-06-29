@@ -187,9 +187,9 @@ export default function OverviewPage({ data }) {
                       {t(p.signal)}
                     </span>
                   </td>
-                  <td style={{ textAlign: 'center', color: p.rsi < 30 ? '#22c55e' : p.rsi > 70 ? '#ef4444' : '#ccc' }}>{p.rsi.toFixed(1)}</td>
+                  <td style={{ textAlign: 'center', color: p.rsi < 30 ? '#22c55e' : p.rsi > 70 ? '#ef4444' : '#ddd' }}>{p.rsi.toFixed(1)}</td>
                   <td style={{ textAlign: 'center' }}>
-                    <div style={{ width: '40px', height: '6px', background: '#222', borderRadius: '3px', margin: '0 auto', overflow: 'hidden' }}>
+                    <div style={{ width: '40px', height: '6px', background: '#333', borderRadius: '3px', margin: '0 auto', overflow: 'hidden' }}>
                       <div style={{ width: `${p.aiScore * 100}%`, height: '100%', background: '#22c55e', borderRadius: '3px' }} />
                     </div>
                   </td>

@@ -63,8 +63,9 @@ body { background: #0a0a0a; color: #e5e5e5; font-family: 'Inter', -apple-system,
 }
 
 table { width: 100%; border-collapse: collapse; font-size: 13px; }
-th { text-align: left; padding: 8px; color: #666; border-bottom: 1px solid #222; font-weight: 500; }
-td { padding: 8px; border-bottom: 1px solid #1a1a1a; }
+th { text-align: left; padding: 8px; color: #999; border-bottom: 1px solid #333; font-weight: 500; background: #1a1a1a; }
+td { padding: 8px; border-bottom: 1px solid #222; color: #ddd; }
+tr:hover { background: #1a1a1a; }
 
 @media (max-width: 1024px) {
   .page-grid-2, .page-grid-3 { grid-template-columns: 1fr; }
