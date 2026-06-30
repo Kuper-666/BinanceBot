@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using BinanceBotWpf.Models;
 
-namespace BinanceBotWpf.Services
+namespace BinanceBotWpf.Services.Strategies
 {
     public interface IVolumeBreakoutStrategy
     {

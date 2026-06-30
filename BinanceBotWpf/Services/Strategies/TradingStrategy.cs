@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using BinanceBotWpf.Models;
 
-namespace BinanceBotWpf.Services
+namespace BinanceBotWpf.Services.Strategies
 {
     /// <summary>
     /// Основная торговая стратегия (SMA + RSI + MACD) с мульти-таймфрейм поддержкой

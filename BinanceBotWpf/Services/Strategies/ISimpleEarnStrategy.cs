@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 
-namespace BinanceBotWpf.Services
+namespace BinanceBotWpf.Services.Strategies
 {
     public interface ISimpleEarnStrategy
     {

@@ -4,6 +4,7 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Linq;
 using System.Windows.Input;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.IO;
@@ -62,13 +63,14 @@ namespace BinanceBotWpf.ViewModels
             PropertyChanged?.Invoke (this, new PropertyChangedEventArgs (name));
     }
 
-    public class MainWindowViewModel : INotifyPropertyChanged
+    public class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         private readonly TradingService _tradingService;
         private readonly bool _isTestnet;
         private StockPriceMonitor _stockMonitor;
         private string _walletBalance = "0.00";
         private bool _isRunning = false;
+        private CancellationTokenSource _bgCts = new ();
 
         // Параметры стратегии
         private int _fastSma = 12;
@@ -270,14 +272,19 @@ namespace BinanceBotWpf.ViewModels
             _ = Task.Run (StocksLoop);
             _ = Task.Run (StartUiUpdateLoop);
 
-            // Обновляем статус Telegram 
+            // Обновляем статус Telegram
             UpdateTelegramStatus ();
             Task.Run (async () =>
             {
-                while (true)
+                while (!_bgCts.Token.IsCancellationRequested)
                 {
-                    await Task.Delay (3000);
-                    Application.Current.Dispatcher.Invoke (() => UpdateTelegramStatus ());
+                    try
+                    {
+                        await Task.Delay (3000, _bgCts.Token);
+                        if (Application.Current != null)
+                            Application.Current.Dispatcher.Invoke (() => UpdateTelegramStatus ());
+                    }
+                    catch (OperationCanceledException) { break; }
                 }
             });
 
@@ -874,7 +881,7 @@ namespace BinanceBotWpf.ViewModels
 
         private async Task StocksLoop()
         {
-            while (true)
+            while (!_bgCts.Token.IsCancellationRequested)
             {
                 try
                 {
@@ -914,36 +921,46 @@ namespace BinanceBotWpf.ViewModels
                             }
                         }
                     });
-                    await Task.Delay (30000);
+                    await Task.Delay (30000, _bgCts.Token);
                 }
+                catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
                     AddLog ($"❌ Ошибка в StocksLoop: {ex.Message}");
-                    await Task.Delay (30000);
+                    await Task.Delay (30000, _bgCts.Token);
                 }
             }
         }
 
         private async Task StartUiUpdateLoop()
         {
-            while (true)
+            while (!_bgCts.Token.IsCancellationRequested)
             {
                 try
                 {
+                    // Fetch prices on background thread, then update UI
+                    var pairsSnapshot = PairsList.ToList ();
+                    var prices = new Dictionary<string, decimal> ();
+                    foreach (var pairItem in pairsSnapshot)
+                    {
+                        decimal price = _tradingService.GetCurrentPriceForSymbol (pairItem.Pair);
+                        if (price > 0)
+                            prices[pairItem.Pair] = price;
+                    }
                     await Application.Current.Dispatcher.InvokeAsync (() =>
                     {
                         foreach (var pairItem in PairsList)
                         {
-                            decimal price = _tradingService.GetCurrentPriceForSymbol (pairItem.Pair);
-                            if (price > 0)
+                            if (prices.TryGetValue (pairItem.Pair, out decimal price))
                                 pairItem.Price = price.ToString ("F4");
                         }
                     });
-                    await Task.Delay (2000);
+                    await Task.Delay (2000, _bgCts.Token);
                 }
+                catch (OperationCanceledException) { break; }
                 catch (Exception)
                 {
-                    await Task.Delay (10000);
+                    await Task.Delay (10000, _bgCts.Token).ContinueWith (_ => { });
                 }
             }
         }
@@ -1239,6 +1256,12 @@ namespace BinanceBotWpf.ViewModels
             {
                 return new TradingSettings ();
             }
+        }
+
+        public void Dispose ()
+        {
+            _bgCts?.Cancel ();
+            _bgCts?.Dispose ();
         }
 
         public event PropertyChangedEventHandler PropertyChanged;

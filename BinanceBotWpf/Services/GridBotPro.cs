@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -35,6 +36,8 @@ namespace BinanceBotWpf.Services
         private readonly Dictionary<decimal, string> _activeBuyOrders = new ();
         private readonly Dictionary<decimal, string> _activeSellOrders = new ();
         private readonly Dictionary<string, decimal> _filledBuyPrices = new ();
+        private readonly Dictionary<string, decimal> _sellIdToBuyPrice = new ();
+        private readonly HashSet<string> _processedOrderIds = new ();
         private readonly object _lock = new ();
 
         private decimal _totalProfit;
@@ -190,10 +193,18 @@ namespace BinanceBotWpf.Services
                         if (token.IsCancellationRequested) break;
 
                         string orderId = filled["orderId"]?.ToString ();
+
+                        // Skip already processed fills to prevent order spam
+                        lock (_lock)
+                        {
+                            if (!_processedOrderIds.Add (orderId))
+                                continue;
+                        }
+
                         string side = filled["side"]?.ToString ();
-                        decimal price = decimal.Parse (filled["price"]?.ToString () ?? "0");
-                        decimal qty = decimal.Parse (filled["executedQty"]?.ToString () ?? "0");
-                        decimal quoteQty = decimal.Parse (filled["cummulativeQuoteQty"]?.ToString () ?? "0");
+                        decimal price = decimal.Parse (filled["price"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                        decimal qty = decimal.Parse (filled["executedQty"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                        decimal quoteQty = decimal.Parse (filled["cummulativeQuoteQty"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                         decimal fillPrice = quoteQty > 0 && qty > 0 ? quoteQty / qty : price;
 
                         if (side == "BUY")
@@ -213,7 +224,11 @@ namespace BinanceBotWpf.Services
                                 if (sellOrder != null)
                                 {
                                     string newId = sellOrder["orderId"]?.ToString () ?? "";
-                                    lock (_lock) { _activeSellOrders[targetSell] = newId; }
+                                    lock (_lock)
+                                    {
+                                        _activeSellOrders[targetSell] = newId;
+                                        _sellIdToBuyPrice[newId] = fillPrice;
+                                    }
                                     _logger?.Invoke ($"📗 Buy исполнен @ {fillPrice:F6} → встречный sell {sellQty} @ {targetSell:F6}");
                                 }
                             }
@@ -226,12 +241,27 @@ namespace BinanceBotWpf.Services
                                     _activeSellOrders.Remove (kvp.Key);
                             }
 
-                            if (_filledBuyPrices.TryGetValue (orderId, out decimal buyPrice))
+                            // Use _sellIdToBuyPrice for correct profit tracking
+                            decimal buyPrice;
+                            lock (_lock)
+                            {
+                                if (!_sellIdToBuyPrice.TryGetValue (orderId, out buyPrice))
+                                {
+                                    // Fallback: try _filledBuyPrices for legacy data
+                                    _filledBuyPrices.TryGetValue (orderId, out buyPrice);
+                                }
+                            }
+
+                            if (buyPrice > 0)
                             {
                                 decimal profit = (fillPrice - buyPrice) * qty;
                                 _totalProfit += profit;
                                 _totalCycles++;
-                                _filledBuyPrices.Remove (orderId);
+                                lock (_lock)
+                                {
+                                    _sellIdToBuyPrice.Remove (orderId);
+                                    _filledBuyPrices.Remove (orderId);
+                                }
                                 _logger?.Invoke ($"📕 Sell исполнен @ {fillPrice:F6} | Профит: +{profit:F4} USDC (всего: {_totalProfit:F4}, циклов: {_totalCycles})");
                                 OnTrade?.Invoke (new TradeLog
                                 {
@@ -264,6 +294,13 @@ namespace BinanceBotWpf.Services
                     }
 
                     await CancelStaleOrders (token);
+
+                    // Periodically trim processed order IDs to avoid unbounded growth
+                    lock (_lock)
+                    {
+                        if (_processedOrderIds.Count > 200)
+                            _processedOrderIds.Clear ();
+                    }
                 }
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
@@ -337,6 +374,9 @@ namespace BinanceBotWpf.Services
                         _ = _client.CancelOrder (_symbol, oid);
                 _activeBuyOrders.Clear ();
                 _activeSellOrders.Clear ();
+                _filledBuyPrices.Clear ();
+                _sellIdToBuyPrice.Clear ();
+                _processedOrderIds.Clear ();
             }
 
             _logger?.Invoke ($"⏹️ GridBotPro остановлен | Итого профит: {_totalProfit:F4} USDC ({_totalCycles} циклов)");
@@ -345,7 +385,7 @@ namespace BinanceBotWpf.Services
 
         public void Dispose ()
         {
-            _cts?.Cancel ();
+            _ = StopAsync ();
             _cts?.Dispose ();
         }
     }

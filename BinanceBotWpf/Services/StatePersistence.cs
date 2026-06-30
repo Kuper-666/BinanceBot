@@ -64,11 +64,14 @@ namespace BinanceBotWpf.Services
                 // Prune old cooldowns (older than 1 hour)
                 DateTime cutoff = DateTime.UtcNow.AddHours(-1);
                 state.RecentTradeTimes.RemoveAll(t => t < cutoff);
+                var keysToRemove = new System.Collections.Generic.List<string>();
                 foreach (var kvp in state.LastBuyTime)
                 {
                     if (kvp.Value < cutoff)
-                        state.LastBuyTime.Remove(kvp.Key);
+                        keysToRemove.Add(kvp.Key);
                 }
+                foreach (var key in keysToRemove)
+                    state.LastBuyTime.Remove(key);
 
                 // Limit history sizes
                 if (state.TradesHistory.Count > 500)
@@ -86,12 +89,10 @@ namespace BinanceBotWpf.Services
                     if (!Directory.Exists(dir))
                         Directory.CreateDirectory(dir);
 
-                    // Write to temp file first, then rename (atomic)
+                    // Write to temp file first, then replace (atomic on NTFS)
                     string tempPath = _filePath + ".tmp";
                     File.WriteAllText(tempPath, json);
-                    if (File.Exists(_filePath))
-                        File.Delete(_filePath);
-                    File.Move(tempPath, _filePath);
+                    File.Move(tempPath, _filePath, overwrite: true);
                 }
 
                 _logger?.Invoke($"💾 Trading state saved ({state.TradesHistory.Count} trades, {state.EquityHistory.Count} equity points)");
@@ -158,7 +159,8 @@ namespace BinanceBotWpf.Services
         public void Dispose()
         {
             StopAutoSave();
-            Save(); // Final save on dispose
+            try { Save(); }
+            catch { }
         }
     }
 }

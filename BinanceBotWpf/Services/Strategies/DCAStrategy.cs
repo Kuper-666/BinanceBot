@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BinanceBotWpf.Models;
 
-namespace BinanceBotWpf.Services
+namespace BinanceBotWpf.Services.Strategies
 {
     /// <summary>
     /// DCA (Dollar Cost Averaging) стратегия по волатильности:

@@ -28,6 +28,7 @@ namespace BinanceBotWpf.Models
                 return;
             }
             _isRebalancing = true;
+            bool convertedAnything = false;
             try
             {
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
@@ -46,15 +47,23 @@ namespace BinanceBotWpf.Models
                             currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                             if (currentUsdc >= targetUsdc) return;
                             Log ($"✅ Выкуп USDC подтверждён. Новый спот баланс: {currentUsdc:F2}");
+                            convertedAnything = true;
                         }
                         else
                         {
                             Log ($"⚠️ Не удалось выкупить USDC из Earn. Пробую продать другие активы.");
                         }
                     }
-                    else
+                    else if (earnUsdc > 0.01m)
                     {
-                        Log ($"⚠️ В Earn недостаточно USDC: доступно {earnUsdc:F2}, требуется {need:F2}");
+                        Log ($"🔄 Выкупаю {earnUsdc:F2} USDC из Earn (все доступные)...");
+                        bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync ("USDC", earnUsdc);
+                        if (redeemed)
+                        {
+                            convertedAnything = true;
+                            currentUsdc = await client.GetAccountBalanceAsync ("USDC");
+                            if (currentUsdc >= targetUsdc) return;
+                        }
                     }
                 }
 
@@ -81,12 +90,16 @@ namespace BinanceBotWpf.Models
                     decimal price = klines.Last ().Close;
                     decimal estimatedValue = totalAmount * price;
 
-                    // ИСПРАВЛЕНО: минимальная сумма продажи 10 USDC (было 6)
+                    if (estimatedValue < 1.0m)
+                    {
+                        continue;
+                    }
+
                     if (estimatedValue < 10.0m)
                     {
-                        Log ($"⏭️ {asset}: стоимость {estimatedValue:F2} USDC ниже минимальной 10.0, пробую конвертировать пыль в USDC");
-                        // Пробуем сконвертировать через dust
-                        await client.ConvertDustToUsdcAsync (null);
+                        Log ($"⏭️ {asset}: стоимость {estimatedValue:F2} USDC ниже 10, пробую пыль → USDC");
+                        bool dustConverted = await client.ConvertDustToUsdcAsync (null);
+                        if (dustConverted) convertedAnything = true;
                         continue;
                     }
 
@@ -110,6 +123,7 @@ namespace BinanceBotWpf.Models
                     var order = await client.PlaceOrder (pair, "SELL", "MARKET", normalizedAmount);
                     if (order != null)
                     {
+                        convertedAnything = true;
                         Log ($"✅ Продано {normalizedAmount} {asset}");
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                         if (currentUsdc >= targetUsdc) return;
@@ -119,7 +133,20 @@ namespace BinanceBotWpf.Models
                         Log ($"❌ Ошибка при продаже {asset}. Пробую следующий...");
                     }
                 }
-                Log ("❌ Не удалось пополнить USDC: нет ликвидных активов (или все активы с открытыми позициями).");
+
+                currentUsdc = await client.GetAccountBalanceAsync ("USDC");
+                if (currentUsdc >= targetUsdc)
+                {
+                    Log ($"✅ USDC баланс достаточный: {currentUsdc:F2}");
+                }
+                else if (convertedAnything)
+                {
+                    Log ($"⚠️ Конвертация выполнена, но USDC {currentUsdc:F2} < цели {targetUsdc:F2}");
+                }
+                else
+                {
+                    Log ($"❌ Нет ликвидных активов для конвертации в USDC (текущий: {currentUsdc:F2}, цель: {targetUsdc:F2})");
+                }
             }
             catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
             finally

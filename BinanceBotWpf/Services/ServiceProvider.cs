@@ -1,13 +1,13 @@
 #nullable enable
 using System;
-using System.Collections.Generic;
+using System.Collections.Concurrent;
 
 namespace BinanceBotWpf.Services
 {
     public class ServiceRegistry
     {
-        private readonly Dictionary<Type, object> _services = new ();
-        private readonly Dictionary<Type, Func<object>> _factories = new ();
+        private readonly ConcurrentDictionary<Type, object> _services = new ();
+        private readonly ConcurrentDictionary<Type, Func<object>> _factories = new ();
 
         public void Register<T> (T service) where T : class
         {

@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
+using BinanceBotWpf.Services.Strategies;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 

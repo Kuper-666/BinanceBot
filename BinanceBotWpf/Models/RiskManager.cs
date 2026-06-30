@@ -60,7 +60,7 @@ namespace BinanceBotWpf.Risk
         }
 
         // === ПРОВЕРКА: МОЖНО ЛИ ОТКРЫТЬ НОВУЮ ПОЗИЦИЮ ===
-        public (bool Allowed, string Reason) CanOpenPosition(int currentOpenPositions, decimal orderValueUsdc, decimal tradePnL = 0)
+        public (bool Allowed, string Reason) CanOpenPosition(int currentOpenPositions, decimal orderValueUsdc, decimal currentTotalExposure = 0, decimal tradePnL = 0)
         {
             ResetDailyIfNeeded ();
 
@@ -74,8 +74,8 @@ namespace BinanceBotWpf.Risk
             if (potentialLoss < 0 && Math.Abs (potentialLoss) >= maxDailyLoss)
                 return (false, $"Дневной убыток {Math.Abs (potentialLoss):F2} USDC >= лимита {maxDailyLoss:F2} USDC ({MaxDailyLossPercent:P0})");
 
-            // 3. Общая экспозиция
-            decimal totalExposure = orderValueUsdc; // TODO: суммировать с текущими открытыми позициями
+            // 3. Общая экспозиция (сумма текущих открытых позиций + новый ордер)
+            decimal totalExposure = currentTotalExposure + orderValueUsdc;
             decimal maxExposure = BalanceUSDC * MaxExposurePercent;
             if (totalExposure > maxExposure)
                 return (false, $"Экспозиция {totalExposure:F2} USDC > лимита {maxExposure:F2} USDC ({MaxExposurePercent:P0})");

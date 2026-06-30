@@ -5,7 +5,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 
-namespace BinanceBotWpf.Services
+namespace BinanceBotWpf.Services.Strategies
 {
     public class SignalValidator
     {
@@ -176,12 +176,13 @@ namespace BinanceBotWpf.Services
             }
 
             confidence = Math.Clamp (confidence, 0f, 1f);
-            bool isValid = confidence > 0.45f && !riskFlag;
 
             if (totalFactors > 0 && positiveFactors < totalFactors * 0.3)
             {
                 riskFlag = true;
             }
+
+            bool isValid = confidence > 0.45f && !riskFlag;
 
             _logger?.Invoke ($"🔍 Эврическая валидация: valid={isValid}, conf={confidence:P0}, risk={riskFlag} ({positiveFactors}/{totalFactors} factors)");
 

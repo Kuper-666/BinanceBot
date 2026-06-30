@@ -8,6 +8,7 @@ using System.Windows.Media.Imaging;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Risk;
 using BinanceBotWpf.Services;
+using BinanceBotWpf.Services.Strategies;
 using BinanceBotWpf.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
 
@@ -263,8 +264,14 @@ namespace BinanceBotWpf
             services.AddSingleton<IFearGreedIndexProvider> (sp => new FearGreedIndexProvider (fileLogger));
             services.AddSingleton<IPriceAlertManager> (sp =>
             {
+                // Lazy price provider: resolves TradingService on first call
+                Func<string, decimal> priceProvider = null;
                 var mgr = new PriceAlertManager (
-                    (Func<string, decimal>)(sym => 0),
+                    (Func<string, decimal>)(sym =>
+                    {
+                        priceProvider ??= ((TradingService)sp.GetRequiredService<TradingService> ()).GetCurrentPriceForSymbol;
+                        return priceProvider (sym);
+                    }),
                     null,
                     fileLogger);
                 return mgr;
@@ -287,6 +294,17 @@ namespace BinanceBotWpf
             services.AddSingleton<ISimpleEarnStrategy> (sp =>
                 new SimpleEarnStrategy (
                     (BinanceClient)sp.GetRequiredService<IBinanceClient> (), fileLogger));
+
+            // Exchange layer: WebSocket data streams, kline cache, order book
+            services.AddSingleton<Exchange.MarketDataStream> (sp =>
+                new Exchange.MarketDataStream (fileLogger));
+            services.AddSingleton<Exchange.IKlineProvider> (sp =>
+                new Exchange.CompositeKlineProvider (
+                    (Exchange.IBinanceRestClient)sp.GetRequiredService<IBinanceClient> (),
+                    new Exchange.KlineCache (fileLogger),
+                    fileLogger));
+            services.AddSingleton<Exchange.IOrderBookProvider> (sp =>
+                new Exchange.OrderBookCache (fileLogger));
 
             // Main services
             services.AddSingleton<TradingService> (sp => new TradingService (
@@ -322,6 +340,22 @@ namespace BinanceBotWpf
         protected override void OnExit (ExitEventArgs e)
         {
             _fileLogger?.Info ("App", "Завершение приложения");
+
+            // Gracefully stop trading before disposing services
+            try
+            {
+                var tradingService = _serviceProvider?.GetService (typeof (TradingService)) as TradingService;
+                tradingService?.StopTrading ();
+            }
+            catch { }
+
+            // Dispose ViewModel to stop background loops
+            try
+            {
+                var viewModel = _serviceProvider?.GetService (typeof (MainWindowViewModel)) as MainWindowViewModel;
+                viewModel?.Dispose ();
+            }
+            catch { }
 
             if (_serviceProvider is IDisposable disposable)
                 disposable.Dispose ();

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
+using BinanceBotWpf.Services.Strategies;
 using Xunit;
 
 namespace BinanceBotWpf.Tests

@@ -379,7 +379,7 @@ namespace BinanceBotWpf.Services
 
         public void Dispose()
         {
-            _cts?.Cancel ();
+            _ = StopAsync ();
             _cts?.Dispose ();
         }
     }

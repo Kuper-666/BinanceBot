@@ -28,9 +28,17 @@ namespace BinanceBotWpf.Services
 
         public async Task SubscribeToSymbolsAsync(string[] symbols)
         {
+            if (_disposed) return;
             foreach (var symbol in symbols)
             {
+                if (_disposed) break;
                 if (_sockets.ContainsKey (symbol)) continue;
+
+                // Dispose old CTS if re-subscribing
+                if (_ctsDict.TryRemove (symbol, out var oldCts))
+                {
+                    try { oldCts.Cancel (); oldCts.Dispose (); } catch { }
+                }
 
                 var cts = new CancellationTokenSource ();
                 _ctsDict[symbol] = cts;
@@ -48,7 +56,7 @@ namespace BinanceBotWpf.Services
             int reconnectDelay = 1000;
             const int maxReconnectDelay = 30000;
 
-            while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested && !_disposed)
             {
                 var ws = new ClientWebSocket ();
                 _sockets[symbol] = ws;
@@ -57,7 +65,7 @@ namespace BinanceBotWpf.Services
                 {
                     await ws.ConnectAsync (new Uri (url), cancellationToken);
                     _logger?.Invoke ($"✅ WebSocket подключён к {symbol}");
-                    reconnectDelay = 1000; // Сброс задержки при успешном подключении
+                    reconnectDelay = 1000;
 
                     var buffer = new byte[4096];
 
@@ -67,9 +75,26 @@ namespace BinanceBotWpf.Services
 
                         if (result.MessageType == WebSocketMessageType.Text)
                         {
-                            var json = Encoding.UTF8.GetString (buffer, 0, result.Count);
-                            using var doc = JsonDocument.Parse (json);
+                            // Handle multi-frame messages
+                            string json;
+                            if (result.EndOfMessage)
+                            {
+                                json = Encoding.UTF8.GetString (buffer, 0, result.Count);
+                            }
+                            else
+                            {
+                                using var ms = new System.IO.MemoryStream ();
+                                ms.Write (buffer, 0, result.Count);
+                                while (!result.EndOfMessage && !cancellationToken.IsCancellationRequested)
+                                {
+                                    result = await ws.ReceiveAsync (new ArraySegment<byte> (buffer), cancellationToken);
+                                    if (result.MessageType == WebSocketMessageType.Text)
+                                        ms.Write (buffer, 0, result.Count);
+                                }
+                                json = Encoding.UTF8.GetString (ms.ToArray ());
+                            }
 
+                            using var doc = JsonDocument.Parse (json);
                             if (doc.RootElement.TryGetProperty ("c", out var priceElement))
                             {
                                 string priceStr = priceElement.GetString ();
@@ -101,11 +126,10 @@ namespace BinanceBotWpf.Services
                     try { ws.Dispose (); } catch { }
                 }
 
-                // Авто-переподключение с экспоненциальной задержкой
-                if (!cancellationToken.IsCancellationRequested)
+                if (!cancellationToken.IsCancellationRequested && !_disposed)
                 {
                     _logger?.Invoke ($"🔄 WebSocket: переподключение к {symbol} через {reconnectDelay / 1000}с...");
-                    await Task.Delay (reconnectDelay, cancellationToken);
+                    try { await Task.Delay (reconnectDelay, cancellationToken); } catch (OperationCanceledException) { break; }
                     reconnectDelay = Math.Min (reconnectDelay * 2, maxReconnectDelay);
                 }
             }
@@ -148,7 +172,7 @@ namespace BinanceBotWpf.Services
                 {
                     if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
                     {
-                        ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).Wait (1000);
+                        _ = ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
                     }
                 }
                 catch { }

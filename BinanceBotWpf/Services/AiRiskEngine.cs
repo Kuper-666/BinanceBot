@@ -173,12 +173,7 @@ namespace BinanceBotWpf.Services
             }
 
             // Инвестиции в сетку: от баланса
-            if (balance < 100)
-                grid.InvestmentPercent = 0.15m;
-            else if (balance < 500)
-                grid.InvestmentPercent = 0.20m;
-            else
-                grid.InvestmentPercent = 0.25m;
+            grid.InvestmentPercent = 0.25m;
 
             // Снижаем инвестиции при высоком ИИ-риске
             if (aiRiskLevel == 3) grid.InvestmentPercent *= 0.6m;

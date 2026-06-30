@@ -16,8 +16,9 @@ namespace BinanceBotWpf.Services
         private readonly decimal _maxRiskPercent;
         private MainWindowViewModel _ui;
         private bool _isRunning;
+        private CancellationTokenSource _cts;
         private readonly StrategyEngine _strategy = new ();
-        private List<string> _activeSymbols = new () { "BTCUSDT", "ETHUSDT", "SOLUSDT" }; // начальный список
+        private List<string> _activeSymbols = new () { "BTCUSDT", "ETHUSDT", "SOLUSDT" };
         private readonly object _symbolsLock = new object ();
         private readonly Dictionary<string, decimal> _trailingCallbackRate = new ();
         private readonly Dictionary<string, decimal> _highestProfit = new ();
@@ -37,17 +38,17 @@ namespace BinanceBotWpf.Services
         {
             _ui = vm;
             _isRunning = true;
+            _cts = new CancellationTokenSource ();
             await _client.SyncTimeAsync ();
-            // Устанавливаем плечо для каждого символа
             foreach (var sym in _activeSymbols)
                 await _client.SetLeverageAsync (sym, _leverage);
             _ui.AddLog ("✅ Фьючерсный модуль запущен");
-            await RunAsync ();
+            await RunAsync (_cts.Token);
         }
 
-        private async Task RunAsync()
+        private async Task RunAsync(CancellationToken token)
         {
-            while (_isRunning)
+            while (_isRunning && !token.IsCancellationRequested)
             {
                 try
                 {
@@ -56,20 +57,21 @@ namespace BinanceBotWpf.Services
 
                     foreach (var symbol in _activeSymbols)
                     {
-                        // Получаем цену
+                        if (token.IsCancellationRequested) break;
+
                         var klines = await _client.GetKlinesAsync (symbol, "5m", 50);
                         if (klines == null || klines.Count < 20) continue;
                         var closes = klines.Select (k => k.Close).ToList ();
                         decimal price = closes.Last ();
-                        // Анализируем сигнал
                         var signal = _strategy.AnalyzePairWithWallet (symbol, closes, 9, 21, price);
+
+                        // Use a reasonable stepSize for futures (most BTC/ETH use 0.001, most alts use 0.1 or 1)
+                        decimal stepSize = symbol.Contains ("BTC") ? 0.001m : symbol.Contains ("ETH") ? 0.01m : 0.1m;
+
                         if (signal.Action == TradeAction.Buy)
                         {
-                            // Расчёт позиции с учётом плеча
                             decimal riskAmount = balance * _maxRiskPercent;
                             decimal positionSize = ( riskAmount * _leverage ) / price;
-                            // Округление до шага лота
-                            decimal stepSize = 0.001m; // упрощённо, лучше запрашивать через API
                             positionSize = Math.Floor (positionSize / stepSize) * stepSize;
                             if (positionSize > 0)
                             {
@@ -85,7 +87,6 @@ namespace BinanceBotWpf.Services
                         }
                         else if (signal.Action == TradeAction.Sell)
                         {
-                            // Закрытие позиции (упрощённо)
                             var positions = await _client.GetPositionsAsync ();
                             var pos = positions.FirstOrDefault (p => p["symbol"].ToString () == symbol && p["positionAmt"].Value<decimal> () != 0);
                             if (pos != null)
@@ -96,10 +97,13 @@ namespace BinanceBotWpf.Services
                             }
                         }
                     }
-                    // Трейлинг-стоп для всех открытых фьючерсных позиций
+
+                    // Trailing stop for all open positions
                     var openPositions = await _client.GetPositionsAsync ();
                     foreach (var pos in openPositions)
                     {
+                        if (token.IsCancellationRequested) break;
+
                         string sym = pos["symbol"].ToString ();
                         decimal amt = pos["positionAmt"].Value<decimal> ();
                         if (amt == 0) continue;
@@ -110,25 +114,38 @@ namespace BinanceBotWpf.Services
                         decimal currentPrice = await _client.GetPriceAsync (sym);
                         if (currentPrice <= 0) continue;
 
-                        decimal profitPercent = ( currentPrice - entryPrice ) / entryPrice * _leverage;
+                        bool isLong = amt > 0;
+                        decimal profitPercent = isLong
+                            ? ( currentPrice - entryPrice ) / entryPrice * _leverage
+                            : ( entryPrice - currentPrice ) / entryPrice * _leverage;
+
                         if (profitPercent >= _trailingActivationPercent && profitPercent > _highestProfit.GetValueOrDefault (sym, 0m))
                         {
                             _highestProfit[sym] = profitPercent;
+
                             decimal callbackRate = Math.Max (1.0m, _defaultCallbackRate - profitPercent * 10m);
                             decimal qty = Math.Abs (amt);
-                            var trailingOrder = await _client.PlaceTrailingStopMarketAsync (sym, "SELL", qty, callbackRate);
+                            string closeSide = isLong ? "SELL" : "BUY";
+                            var trailingOrder = await _client.PlaceTrailingStopMarketAsync (sym, closeSide, qty, callbackRate);
                             if (trailingOrder != null)
                             {
-                                _ui.AddLog ($"📈 Фьючерс трейлинг {sym}: profit={profitPercent:P1}, callback={callbackRate:F1}%");
+                                _ui.AddLog ($"📈 Фьючерс трейлинг {sym}: profit={profitPercent:P1}, callback={callbackRate:F1}%, side={closeSide}");
                             }
                         }
                     }
-                    await Task.Delay (10000);
+                    await Task.Delay (10000, token);
                 }
-                catch (Exception ex) { _ui.AddLog ($"❌ Фьючерс ошибка: {ex.Message}"); await Task.Delay (10000); }
+                catch (OperationCanceledException) { break; }
+                catch (Exception ex) { _ui.AddLog ($"❌ Фьючерс ошибка: {ex.Message}"); await Task.Delay (10000, token); }
             }
         }
 
-        public void Stop() => _isRunning = false;
+        public void Stop()
+        {
+            _isRunning = false;
+            _cts?.Cancel ();
+            _cts?.Dispose ();
+            _cts = null;
+        }
     }
 }

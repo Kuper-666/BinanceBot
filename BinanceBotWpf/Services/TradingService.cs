@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Risk;
+using BinanceBotWpf.Services.Strategies;
 using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
@@ -41,9 +42,13 @@ namespace BinanceBotWpf.Services
         private readonly IBackupService _backupService;
         private readonly IAiRiskEngine _aiRiskEngine;
         private readonly IDashboardWebSocketServer _dashboardServer;
-        private WhaleMonitor _whaleMonitor;
         private ISimpleEarnStrategy _earnStrategy;
         private readonly IFearGreedIndexProvider _fearGreedProvider;
+
+        // Decomposed services
+        private readonly PairManager _pairManager;
+        private readonly OrderExecutor _orderExecutor;
+        private readonly BackgroundLoopManager _backgroundLoopManager;
         private readonly IPriceAlertManager _priceAlertManager;
         private readonly IRiskManager _riskManager;
         private readonly BotConfig _config;
@@ -57,10 +62,6 @@ namespace BinanceBotWpf.Services
         private CancellationTokenSource _shutdownCts;
 
         // Списки и кэш
-        private List<string> _activePairs = new ();
-        private readonly object _pairsLock = new ();
-        private readonly Dictionary<string, DateTime> _lastBuyTime = new ();
-        private readonly List<DateTime> _recentTradeTimes = new ();
         private readonly List<string> _recentErrors = new ();
         private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
         private readonly object _klinesCacheLock = new ();
@@ -76,7 +77,7 @@ namespace BinanceBotWpf.Services
         private bool _tradingLoopEnabled = true;
         private readonly List<Dictionary<string, object>> _equityHistory = new ();
         private const int MaxEquityHistory = 200;
-        private readonly Dictionary<string, Dictionary<string, object>> _lastAnalysis = new ();
+        private readonly ConcurrentDictionary<string, Dictionary<string, object>> _lastAnalysis = new ();
         private readonly List<string> _recentLogs = new ();
         private const int MaxRecentLogs = 100;
         private decimal _sessionStartBalance;
@@ -135,6 +136,15 @@ namespace BinanceBotWpf.Services
             _config = config;
             _telegramBotToken = config?.TelegramBotToken ?? "";
             _telegramChatId = config?.TelegramChatId ?? "";
+
+            // Decomposed services
+            _pairManager = new PairManager (_client, _wallet);
+            _orderExecutor = new OrderExecutor (
+                _client, _aiRiskEngine, _positionManager, _riskManager,
+                () => _shutdownCts?.Token ?? CancellationToken.None,
+                msg => SendTradeNotification (msg));
+            _orderExecutor.SetPriceProvider (sym => _webSocketManager?.GetCurrentPrice (sym) ?? 0);
+            _backgroundLoopManager = new BackgroundLoopManager (_client, _wallet, _earnStrategy, _fearGreedProvider);
 
             // State persistence
             string dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
@@ -237,7 +247,7 @@ namespace BinanceBotWpf.Services
                         _telegramHandler = new TelegramCommandHandler (
                             _telegram, _client, (WalletManager)_wallet, (PositionManager)_positionManager, _tradingSettings,
                             (MlModelManager)_mlManager, _webSocketManager, (BackupService)_backupService, (FearGreedIndexProvider)_fearGreedProvider,
-                            (PriceAlertManager)_priceAlertManager, _ui, _recentErrors, _activePairs,
+                            (PriceAlertManager)_priceAlertManager, _ui, _recentErrors, _pairManager.GetActivePairs (),
                             () => _isRunning,
                             () => { StopTrading (); return Task.CompletedTask; },
                             async (sym) => await StartAutoGridAsync (sym),
@@ -300,7 +310,7 @@ namespace BinanceBotWpf.Services
                     () => RunBacktestAndBroadcast (),
                     () => RunOptimizationAndBroadcast (),
                     () => TestTelegramAsync (),
-                    async (sym) => await ExecuteSell (sym));
+                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym));
                 _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
                 System.Diagnostics.Debug.WriteLine ("[Dashboard] Starting server on port 8765...");
                 await _dashboardServer.StartAsync (8765);
@@ -325,6 +335,12 @@ namespace BinanceBotWpf.Services
             await SetLoggerAsync (vm.AddLog);
             await InitAsync ();
 
+            // Configure decomposed services
+            _pairManager.SetViewModel (_ui);
+            _pairManager.SetWebSocketManager (_webSocketManager);
+            _orderExecutor.SetViewModel (_ui);
+            _backgroundLoopManager.Configure (_ui, _isRunning, _shutdownCts, _tradingSettings, _updateChecker, _telegram, _pairManager);
+
             // Sync trailing stop from settings to protector
             if (_ui != null && _positionProtector is PositionProtector prot)
             {
@@ -338,12 +354,12 @@ namespace BinanceBotWpf.Services
 
             _ = Task.Run (() => RunLoopWithRestart (BalanceLoop, "BalanceLoop"));
             _ = Task.Run (() => RunLoopWithRestart (TradingLoop, "TradingLoop"));
-            _ = Task.Run (() => RunLoopWithRestart (AutoOptimizeLoop, "AutoOptimizeLoop"));
-            _ = Task.Run (() => RunLoopWithRestart (PeriodicUpdateCheckLoop, "PeriodicUpdateCheck"));
-            _ = Task.Run (() => RunLoopWithRestart (DailyReportLoop, "DailyReport"));
-            _ = Task.Run (() => RunLoopWithRestart (WhaleLoop, "WhaleLoop"));
-            _ = Task.Run (() => RunLoopWithRestart (EarnOptimizeLoop, "EarnOptimize"));
-            _ = Task.Run (() => RunLoopWithRestart (FearGreedLoop, "FearGreed"));
+            _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.AutoOptimizeLoop, "AutoOptimizeLoop"));
+            _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.PeriodicUpdateCheckLoop, "PeriodicUpdateCheck"));
+            _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.DailyReportLoop, "DailyReport"));
+            _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.WhaleLoop, "WhaleLoop"));
+            _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.EarnOptimizeLoop, "EarnOptimize"));
+            _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.FearGreedLoop, "FearGreed"));
         }
 
         private async Task RunLoopWithRestart (Func<Task> loop, string name)
@@ -376,6 +392,9 @@ namespace BinanceBotWpf.Services
             _shutdownCts?.Cancel ();
             if (_ui != null) _ui.IsRunning = false;
 
+            // Update decomposed services running state
+            _backgroundLoopManager.UpdateRunningState (false, null);
+
             try { _webSocketManager?.Dispose (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки WebSocket: {ex.Message}"); }
             finally { _webSocketManager = null; }
@@ -384,10 +403,7 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки GridBot: {ex.Message}"); }
             finally { _gridBot = null; }
 
-            try { _whaleMonitor?.Dispose (); }
-            catch { }
-
-            // Неdisposing DI singletons — контейнер управляет их жизненным циклом
+            _backgroundLoopManager.DisposeWhaleMonitor ();
 
             try { _dashboardServer?.Stop (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки DashboardServer: {ex.Message}"); }
@@ -403,13 +419,16 @@ namespace BinanceBotWpf.Services
         /// </summary>
         private TradingState GetCurrentState ()
         {
-            var trades = _ui?.TradesHistory?.ToList () ?? new List<TradeLog> ();
-            return new TradingState
+            List<TradeLog> trades = _ui?.TradesHistory?.ToList () ?? new List<TradeLog> ();
+            Dictionary<string, DateTime> lastBuyTime = _orderExecutor.GetLastBuyTimes ();
+            List<DateTime> recentTradeTimes = _orderExecutor.GetRecentTradeTimes ();
             {
-                SessionStartBalance = _sessionStartBalance,
-                SessionStartBalanceCaptured = _sessionStartBalanceCaptured,
-                LastBuyTime = new Dictionary<string, DateTime> (_lastBuyTime),
-                RecentTradeTimes = new List<DateTime> (_recentTradeTimes),
+                return new TradingState
+                {
+                    SessionStartBalance = _sessionStartBalance,
+                    SessionStartBalanceCaptured = _sessionStartBalanceCaptured,
+                    LastBuyTime = lastBuyTime,
+                    RecentTradeTimes = recentTradeTimes,
                 TradesHistory = trades,
                 TotalPnL = _ui?.TotalPnL ?? 0,
                 WinRate = _ui?.WinRate ?? 0,
@@ -424,7 +443,8 @@ namespace BinanceBotWpf.Services
                 TotalLossSum = _ui?.TotalLossSum ?? 0,
                 EquityHistory = new List<Dictionary<string, object>> (_equityHistory),
                 PnlHistory = new List<Dictionary<string, object>> (_pnlHistory),
-            };
+                };
+            }
         }
 
         /// <summary>
@@ -437,20 +457,7 @@ namespace BinanceBotWpf.Services
             _sessionStartBalance = state.SessionStartBalance;
             _sessionStartBalanceCaptured = state.SessionStartBalanceCaptured;
 
-            _lastBuyTime.Clear ();
-            foreach (var kvp in state.LastBuyTime)
-            {
-                // Only restore cooldowns that haven't expired
-                if (DateTime.UtcNow - kvp.Value < TimeSpan.FromMinutes (15))
-                    _lastBuyTime[kvp.Key] = kvp.Value;
-            }
-
-            _recentTradeTimes.Clear ();
-            foreach (DateTime t in state.RecentTradeTimes)
-            {
-                if (DateTime.UtcNow - t < TimeSpan.FromHours (1))
-                    _recentTradeTimes.Add (t);
-            }
+            _orderExecutor.RestoreCooldowns (state.LastBuyTime, state.RecentTradeTimes);
 
             // Restore trade history and stats
             if (_ui != null && state.TradesHistory.Count > 0)
@@ -477,7 +484,8 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ("📊 Бэктест: загрузка исторических данных...");
 
             string[] candidates;
-            lock (_pairsLock) { candidates = _activePairs.Count > 0 ? _activePairs.ToArray () : new[] { "BTCUSDC", "ETHUSDC", "DOGEUSDC" }; }
+            List<string> activePairs = _pairManager.GetActivePairs ();
+            candidates = activePairs.Count > 0 ? activePairs.ToArray () : new[] { "BTCUSDC", "ETHUSDC", "DOGEUSDC" };
 
             List<BinanceKline> klines = null;
             string pair = null;
@@ -699,7 +707,7 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ($"🔌 WebSocket эндпоинт: {(useFutures ? "фьючерсы (fstream.binance.com)" : "спот (stream.binance.com)")}");
 
             await _wallet.UpdateBalance ();
-            await UpdatePairs ();
+            await _pairManager.UpdatePairsAsync ();
             await LoadPositions ();
             _ui?.AddLog (_client.IsTestnet ? "⚠️ ТЕСТОВАЯ СЕТЬ" : "✅ РЕАЛЬНАЯ СЕТЬ");
 
@@ -799,97 +807,6 @@ namespace BinanceBotWpf.Services
             // Dashboard уже запущен в SetLogger — пропускаем
         }
 
-        // Тир-лист пар по балансу (приоритет: чем выше — тем раньше в списке)
-        private static readonly string[] _tierLow = new[] { "DOGE", "XRP", "ADA", "SOL" };
-        private static readonly string[] _tierMid = new[] { "ETH", "BNB", "LINK", "NEAR", "SUI" };
-        private static readonly string[] _tierHigh = new[] { "BTC", "PEPE" };
-
-        private static string[] GetWhitelistForBalance (decimal balance)
-        {
-            var result = new List<string> ();
-            result.AddRange (_tierLow);
-            if (balance >= 100) result.AddRange (_tierMid);
-            if (balance >= 1000) result.AddRange (_tierHigh);
-            return result.ToArray ();
-        }
-
-        private static int GetMaxPositionsForBalance (decimal balance)
-        {
-            if (balance >= 1000) return 10;
-            if (balance >= 100) return 5;
-            return 2;
-        }
-
-        private async Task UpdatePairs()
-        {
-            try
-            {
-                if (_webSocketManager == null)
-                {
-                    _ui?.AddLog ("⚠️ WebSocket менеджер не инициализирован, пропускаю обновление пар");
-                    return;
-                }
-
-                decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
-                string quoteCurrency = _ui?.QuoteCurrency ?? "USDC";
-                string quote = quoteCurrency == "USDT" ? "USDT" : "USDC";
-
-                // Динамический белый список по балансу
-                string[] whitelist = GetWhitelistForBalance (balance);
-                int maxPositions = GetMaxPositionsForBalance (balance);
-
-                if (_ui != null) _ui.MaxConcurrentTrades = maxPositions;
-
-                var allMinNotionals = await _client.GetAllMinNotionalsAsync ();
-                var allPairs = new List<string> ();
-
-                foreach (string asset in whitelist)
-                {
-                    string pair = asset + quote;
-                    if (allMinNotionals.TryGetValue (pair, out decimal minNot))
-                    {
-                        if (balance >= minNot * 2m)
-                            allPairs.Add (pair);
-                    }
-                    else
-                    {
-                        allPairs.Add (pair);
-                    }
-                }
-
-                if (allPairs.Count > 0)
-                {
-                    lock (_pairsLock) { _activePairs = allPairs; }
-                    var subscribedSymbols = _webSocketManager.GetSubscribedSymbols ();
-
-                    if (subscribedSymbols == null || subscribedSymbols.Length == 0)
-                    {
-                        await _webSocketManager.SubscribeToSymbolsAsync (allPairs.ToArray ());
-                    }
-                    else
-                    {
-                        var newSymbols = allPairs.Except (subscribedSymbols).ToArray ();
-                        if (newSymbols.Any ())
-                            await _webSocketManager.SubscribeToSymbolsAsync (newSymbols);
-                    }
-
-                    // Логируем minNotional для отладки
-                    string minInfo = string.Join (", ", allPairs.Take (5).Select (p =>
-                    {
-                        allMinNotionals.TryGetValue (p, out decimal mn);
-                        return $"{p}={mn:F0}";
-                    }));
-                    _ui?.AddLog ($"📊 {allPairs.Count} пар (баланс: {balance:F0} USDC) | minNotional: {minInfo}");
-                }
-            }
-            catch (Exception ex) 
-            { 
-                _ui?.AddLog ($"❌ Ошибка обновления пар: {ex.Message}");
-                if (ex.InnerException != null)
-                    _ui?.AddLog ($"   Детали: {ex.InnerException.Message}");
-            }
-        }
-
         /// <summary>
         /// Загружает пары и индикаторы для отображения в таблице до старта торговли.
         /// Вызывается при запуске приложения, чтобы таблица не была пустой.
@@ -919,8 +836,8 @@ namespace BinanceBotWpf.Services
                 string quote = quoteCurrency == "USDT" ? "USDT" : "USDC";
 
                 // Динамический белый список по балансу
-                string[] whitelist = GetWhitelistForBalance (balance);
-                int maxPositions = GetMaxPositionsForBalance (balance);
+                string[] whitelist = PairManager.GetWhitelistForBalance (balance);
+                int maxPositions = PairManager.GetMaxPositionsForBalance (balance);
 
                 if (ui != null) ui.MaxConcurrentTrades = maxPositions;
 
@@ -1079,7 +996,7 @@ namespace BinanceBotWpf.Services
                     var toClose = await _positionProtector.CheckAndProtectAsync (GetCurrentPrice);
                     foreach (var sym in toClose)
                     {
-                        await ExecuteSell (sym);
+                        await _orderExecutor.ExecuteSellAsync (sym);
                     }
 
                     // 2. Проверка баланса
@@ -1094,8 +1011,7 @@ namespace BinanceBotWpf.Services
                     _riskManager.BalanceUSDC = spotBalance;
 
                     // 3. Получение списка пар
-                    List<string> pairs;
-                    lock (_pairsLock) { pairs = new List<string> (_activePairs); }
+                    List<string> pairs = _pairManager.GetActivePairs ();
                     if (pairs.Count == 0) { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
 
                     // Читаем интервал из BotConfig один раз на итерацию, не на каждую пару
@@ -1198,19 +1114,21 @@ namespace BinanceBotWpf.Services
                             else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
                             {
                                 var fgCached = await _fearGreedProvider.GetCurrentAsync ();
-                                _ui?.AddLog ($"⚠️ {sym}: BUY при Extreme Greed (FG={fgCached?.Value}), повышенный риск!");
-                                await ExecuteBuy (sym, analysis.Indicators, spotBalance);
+                                _ui?.AddLog ($"⚠️ {sym}: Extreme Greed (FG={fgCached?.Value}), снижаю размер позиции на 50%");
+                                // Снижаем размер позиции при экстремальной жадности
+                                decimal reducedSpotBalance = spotBalance * 0.5m;
+                                await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, reducedSpotBalance);
                                 traded = true;
                             }
                             else
                             {
-                                await ExecuteBuy (sym, analysis.Indicators, spotBalance);
+                                await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, spotBalance);
                                 traded = true;
                             }
                         }
                         else if (analysis.Action == TradeAction.Sell && hasPosition && confirmed)
                         {
-                            await ExecuteSell (sym);
+                            await _orderExecutor.ExecuteSellAsync (sym);
                             traded = true;
                         }
 
@@ -1220,7 +1138,7 @@ namespace BinanceBotWpf.Services
                             if (_volumeBreakout.CheckVolumeBreakout (klines))
                             {
                                 _ui?.AddLog ($"🚀 {sym}: Volume Breakout сигнал!");
-                                await ExecuteBuy (sym, analysis.Indicators, spotBalance);
+                                await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, spotBalance);
                                 traded = true;
                             }
                         }
@@ -1234,7 +1152,7 @@ namespace BinanceBotWpf.Services
                                 _ui?.AddLog ($"📊 {sym}: DCA покупка на {buyAmount:F2} USDC");
                                 var indicators = new Dictionary<string, decimal> (analysis.Indicators);
                                 indicators["dcaBuyAmount"] = buyAmount;
-                                await ExecuteBuy (sym, indicators, spotBalance);
+                                await _orderExecutor.ExecuteBuyAsync (sym, indicators, spotBalance);
                                 traded = true;
                             }
                         }
@@ -1251,8 +1169,7 @@ namespace BinanceBotWpf.Services
                     {
                         try
                         {
-                            List<string> activePairList;
-                            lock (_pairsLock) { activePairList = new List<string> (_activePairs); }
+                            List<string> activePairList = _pairManager.GetActivePairs ();
 
                             var sessionLabel = MarketSessionService.GetSessionLabel ();
                             var pricesData = activePairList.Select (sym =>
@@ -1558,258 +1475,6 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task ExecuteBuy(string symbol, Dictionary<string, decimal> indicators, decimal currentBalance)
-        {
-            if (!indicators.ContainsKey ("price")) return;
-
-            decimal price = indicators["price"];
-            decimal rsi = indicators.ContainsKey ("rsi") ? indicators["rsi"] : 50;
-            decimal fastSma = indicators.ContainsKey ("fastSma") ? indicators["fastSma"] : 0;
-            decimal slowSma = indicators.ContainsKey ("slowSma") ? indicators["slowSma"] : 0;
-            decimal macdHist = indicators.ContainsKey ("macdHist") ? indicators["macdHist"] : 0;
-            decimal bbWidth = indicators.ContainsKey ("bbWidth") ? indicators["bbWidth"] : 0.05m;
-            decimal volumeRatio = indicators.ContainsKey ("volumeRatio") ? indicators["volumeRatio"] : 1.0m;
-            decimal obv = indicators.ContainsKey ("obv") ? indicators["obv"] : 0;
-
-            // === ИИ-движок рассчитывает динамические параметры риска ===
-            var aiRisk = await _aiRiskEngine.CalculateRiskAsync (
-                symbol, currentBalance, price, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
-
-            _ui?.AddLog ($"📊 {symbol}: Risk={aiRisk.RiskPerTradePercent:P1} TP={aiRisk.TakeProfitPercent:P2} SL={aiRisk.StopLossPercent:P2} R/R={aiRisk.RiskRewardRatio:F1}");
-
-            decimal riskPerTrade = aiRisk.RiskPerTradePercent;
-            decimal riskRewardRatio = aiRisk.RiskRewardRatio;
-            decimal riskAmount = RiskCalculator.CalculateRiskAmount (currentBalance, riskPerTrade);
-
-            decimal stepSize = await _client.GetStepSizeAsync (symbol);
-            decimal minQty = 0m;
-            var (qty, qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
-
-            // P0: Защита от ордеров ниже MIN_NOTIONAL (динамический из exchangeInfo).
-            decimal symbolMinNotional = await _client.GetMinNotionalAsync (symbol);
-            decimal notional = qty * price;
-            if (notional < symbolMinNotional)
-            {
-                decimal minQtyForNotional = Math.Ceiling (symbolMinNotional / price / stepSize) * stepSize;
-                if (minQtyForNotional * price <= currentBalance)
-                {
-                    qty = minQtyForNotional;
-                    notional = qty * price;
-                    qtyResult = RiskCalculator.QuantityResult.Ok;
-                    _ui?.AddLog ($"🔧 {symbol}: поднято до {qty} ({notional:F2} USDC) для MIN_NOTIONAL ({symbolMinNotional} USDC)");
-                }
-                else
-                {
-                    _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — {currentBalance:F2} USDC < MIN_NOTIONAL ({symbolMinNotional} USDC)");
-                    return;
-                }
-            }
-
-            switch (qtyResult)
-            {
-                case RiskCalculator.QuantityResult.InsufficientBalanceForMinNotional:
-                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — баланс {currentBalance:F2} USDC ниже минимального ордера");
-                    return;
-                case RiskCalculator.QuantityResult.ZeroQuantityAfterRounding:
-                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — нулевое количество после округления");
-                    return;
-                case RiskCalculator.QuantityResult.ExceedsAvailableBalance:
-                    _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — ордер превышает доступный баланс {currentBalance:F2} USDC");
-                    return;
-            }
-
-            if (qty * price > riskAmount * 1.01m)
-                _ui?.AddLog ($"ℹ️ {symbol}: риск {riskAmount:F2} USDC ниже минимального ордера, сумма поднята до {qty * price:F2} USDC");
-
-            // Проверка минимальной прибыли: если TP < 0.4% — сделка неприбыльна даже с лимитными ордерами
-            if (aiRisk.TakeProfitPercent < 0.004m)
-            {
-                _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — TP {aiRisk.TakeProfitPercent:P2} < минимального 0.4%");
-                return;
-            }
-
-            // Кулдаун на пару — 15 минут
-            if (_lastBuyTime.TryGetValue (symbol, out var lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (15))
-            {
-                _ui?.AddLog ($"⏸ {symbol}: BUY проигнорирован — кулдаун ({(TimeSpan.FromMinutes (15) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)");
-                return;
-            }
-
-            // Глобальный кулдаун: не более 3 сделок в час
-            _recentTradeTimes.RemoveAll (t => DateTime.UtcNow - t > TimeSpan.FromHours (1));
-            if (_recentTradeTimes.Count >= 3)
-            {
-                _ui?.AddLog ($"⏸ {symbol}: BUY пропущен — глобальный лимит 3 сделки/час");
-                return;
-            }
-
-            _lastBuyTime[symbol] = DateTime.UtcNow;
-
-            // === SL/TP от ИИ с адаптивным множителем ===
-            decimal adaptiveSlMult = indicators.ContainsKey ("adaptiveSlMultiplier") ? indicators["adaptiveSlMultiplier"] : 1.0m;
-            decimal slPrice = price * (1 - aiRisk.StopLossPercent * adaptiveSlMult);
-            decimal tpPrice = price * (1 + aiRisk.TakeProfitPercent * adaptiveSlMult);
-            decimal slPct = aiRisk.StopLossPercent * adaptiveSlMult;
-
-            _ui?.AddLog ($"📐 {symbol}: Risk={riskAmount:F2} ({riskPerTrade:P2}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2}), R/R 1:{riskRewardRatio:F1}");
-
-            // Исполнение ордера — лимитный на 0.2% ниже рынка (maker fee)
-            decimal tickSize = await _client.GetTickSizeAsync (symbol);
-            decimal limitPrice = price * 0.998m;
-            if (tickSize > 0)
-                limitPrice = Math.Floor (limitPrice / tickSize) * tickSize;
-
-            _ui?.AddLog ($"💵 Покупка {qty} {symbol} | лимит {limitPrice:F4} ( рынок {price:F4}, -0.2%)");
-            var order = await _client.PlaceLimitOrder (symbol, "BUY", qty, limitPrice);
-
-            if (order != null)
-            {
-                var pos = new OpenPosition
-                {
-                    Symbol = symbol,
-                    Quantity = qty,
-                    EntryPrice = limitPrice,
-                    OpenTime = DateTime.UtcNow,
-                    StopLossPrice = slPrice,
-                    TakeProfitPrice = tpPrice,
-                    HighestPrice = limitPrice,
-                    HighestPriceSinceOpen = limitPrice,
-                    OcoOrderListId = 0
-                };
-
-                await _positionManager.AddOrUpdateAsync (symbol, pos);
-                _recentTradeTimes.Add (DateTime.UtcNow);
-                _ui?.AddLog ($"✅ Куплено {qty} {symbol} | SL={slPrice:F4} TP={tpPrice:F4} | R/R 1:{riskRewardRatio:F1}");
-                _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
-
-                // Telegram: buy notification
-                await SendTradeNotification ($"🟢 <b>ПОКУПКА</b>\n" +
-                    $"📊 {symbol}\n" +
-                    $"💵 Цена: {limitPrice:F4}\n" +
-                    $"📦 Количество: {qty}\n" +
-                    $"🛡 SL: {slPrice:F4} (-{slPct:P2})\n" +
-                    $"🎯 TP: {tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2})\n" +
-                    $"⚖️ Риск: {riskAmount:F2} USDC ({riskPerTrade:P2})\n" +
-                    $"📐 R/R: 1:{riskRewardRatio:F1}");
-            }
-        }
-
-        private async Task ExecuteSell(string symbol)
-        {
-            if (!_positionManager.TryGet (symbol, out var pos)) return;
-
-            string asset = symbol.Replace ("USDC", "");
-            decimal price = GetCurrentPrice (symbol);
-
-            // Проверяем баланс на споте
-            decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
-
-            // Если на споте мало — проверяем Earn и выкупаем
-            if (spotBalance < pos.Quantity * 0.99m)
-            {
-                _ui?.AddLog ($"🔄 {symbol}: на споте {spotBalance:F8} {asset}, нужно {pos.Quantity:F8}. Проверяю Earn...");
-
-                var earnPositions = await _client.GetFlexibleEarnBalanceAsync ();
-                if (earnPositions != null)
-                {
-                    var earnPos = earnPositions.FirstOrDefault (p => p["asset"]?.ToString () == asset);
-                    if (earnPos != null)
-                    {
-                        decimal earnAmount = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture);
-                        _ui?.AddLog ($"   💰 В Earn: {earnAmount:F8} {asset}");
-
-                        if (earnAmount > 0)
-                        {
-                            decimal needToRedeem = Math.Min (pos.Quantity - spotBalance, earnAmount);
-                            _ui?.AddLog ($"   🔄 Выкупаю {needToRedeem:F8} {asset} из Earn...");
-                            bool redeemed = await _client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
-                            if (redeemed)
-                            {
-                                await Task.Delay (2000, _shutdownCts?.Token ?? CancellationToken.None); // Ждём зачисления
-                                spotBalance = await _client.GetAccountBalanceAsync (asset);
-                                _ui?.AddLog ($"   ✅ После выкупа на споте: {spotBalance:F8} {asset}");
-                            }
-                            else
-                            {
-                                _ui?.AddLog ($"   ⚠️ Не удалось выкупить из Earn");
-                            }
-                        }
-                    }
-                }
-            }
-
-            decimal qtyToSell = Math.Min (pos.Quantity, spotBalance);
-            if (qtyToSell <= 0.000001m)
-            {
-                _ui?.AddLog ($"⚠️ {symbol}: нет актива для продажи (ни на споте, ни в Earn)");
-                await _positionManager.RemoveAsync (symbol);
-                return;
-            }
-
-            // Округляем по stepSize биржи
-            decimal stepSize = await _client.GetStepSizeAsync (symbol);
-            if (stepSize > 0)
-            {
-                qtyToSell = Math.Floor (qtyToSell / stepSize) * stepSize;
-                if (qtyToSell <= 0)
-                {
-                    _ui?.AddLog ($"⏸ {symbol}: количество {pos.Quantity} меньше шага лота {stepSize}");
-                    return;
-                }
-            }
-
-            // Отмена OCO ордера
-            if (pos.OcoOrderListId != 0)
-            {
-                await _client.CancelOcoOrder (symbol, pos.OcoOrderListId);
-            }
-
-            // Продажа — лимитный на 0.2% выше рынка (maker fee)
-            decimal tickSize = await _client.GetTickSizeAsync (symbol);
-            decimal limitPrice = price * 1.002m;
-            if (tickSize > 0)
-                limitPrice = Math.Ceiling (limitPrice / tickSize) * tickSize;
-
-            _ui?.AddLog ($"💵 Продажа {qtyToSell} {symbol} | лимит {limitPrice:F4} ( рынок {price:F4}, +0.2%)");
-            var order = await _client.PlaceLimitOrder (symbol, "SELL", qtyToSell, limitPrice);
-            if (order != null)
-            {
-                decimal pnl = ( limitPrice - pos.EntryPrice ) * qtyToSell;
-                decimal pnlPct = ( limitPrice / pos.EntryPrice - 1 ) * 100;
-
-                _ui?.AddLog ($"🔒 Закрыта {symbol}: PnL {pnl:F2} ({pnlPct:F2}%)");
-
-                var trade = new TradeLog
-                {
-                    Symbol = symbol,
-                    EntryPrice = pos.EntryPrice,
-                    ExitPrice = limitPrice,
-                    Quantity = qtyToSell,
-                    PnL = pnl,
-                    PnLPercent = pnlPct,
-                    OpenTime = pos.OpenTime,
-                    CloseTime = DateTime.UtcNow,
-                    Reason = "Signal Sell",
-                    Duration = DateTime.UtcNow - pos.OpenTime,
-                    Action = "SELL_CLOSE"
-                };
-
-                _ui.AddTradeToHistory (trade);
-                _riskManager.RecordTrade (pnl);
-                await _positionManager.RemoveAsync (symbol);
-                _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
-
-                // Telegram: sell notification
-                string emoji = pnl >= 0 ? "🟢" : "🔴";
-                await SendTradeNotification ($"{emoji} <b>ПРОДАЖА</b>\n" +
-                    $"📊 {symbol}\n" +
-                    $"💵 Вход: {pos.EntryPrice:F4} → Выход: {limitPrice:F4}\n" +
-                    $"📦 Количество: {qtyToSell}\n" +
-                    $"📈 PnL: {pnl:+F2;-F2} USDC ({pnlPct:+F2;-F2}%)\n" +
-                    $"⏱ Длительность: {(DateTime.UtcNow - pos.OpenTime):hh\\:mm}");
-            }
-        }
-
         private async Task SendTradeNotification (string message)
         {
             try
@@ -1868,195 +1533,12 @@ namespace BinanceBotWpf.Services
         }
 
         /// <summary>
-        /// Автоматическая оптимизация параметров (вызывается раз в сутки)
-        /// </summary>
-        private async Task AutoOptimizeLoop()
-        {
-            int lastTradeCount = 0;
-            while (_isRunning)
-            {
-                try
-                {
-                    await Task.Delay (TimeSpan.FromHours (24), _shutdownCts?.Token ?? CancellationToken.None);
-
-                    if (!_isRunning) break;
-
-                    int currentTradeCount = _ui?.TotalTrades ?? 0;
-                    int newTrades = currentTradeCount - lastTradeCount;
-
-                    if (newTrades < 10)
-                    {
-                        _ui?.AddLog ($"🧠 Оптимизация пропущена: только {newTrades} новых сделок (нужно минимум 10)");
-                        lastTradeCount = currentTradeCount;
-                        continue;
-                    }
-
-                    _ui?.AddLog ($"🧠 Запуск оптимизации ({newTrades} новых сделок)...");
-
-                    decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
-                    var optimizer = new StrategyOptimizer (_client, _ui, _ui.AddLog);
-                    bool success = await optimizer.RunOptimizationAsync (balance);
-
-                    if (success)
-                    {
-                        _ui?.AddLog ("✅ Оптимизация завершена");
-                    }
-                    else
-                    {
-                        _ui?.AddLog ("⚠️ Оптимизация не дала результатов");
-                    }
-
-                    lastTradeCount = currentTradeCount;
-                }
-                catch (OperationCanceledException) { break; }
-                catch (Exception ex)
-                {
-                    _ui?.AddLog ($"❌ Ошибка оптимизации: {ex.Message}");
-                    try { await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
-                }
-            }
-        }
-
-        /// <summary>
-        /// Фоновая проверка обновлений каждые 30 минут
-        /// </summary>
-        private async Task PeriodicUpdateCheckLoop()
-        {
-            // Первая проверка через 5 минут после запуска
-            await Task.Delay (TimeSpan.FromMinutes (5), _shutdownCts?.Token ?? CancellationToken.None);
-
-            while (_isRunning)
-            {
-                try
-                {
-                    if (!_isRunning) break;
-
-                    if (_updateChecker != null)
-                    {
-                        await _updateChecker.CheckForUpdatesAsync ();
-                    }
-                }
-                catch { }
-
-                // Ждём 30 минут до следующей проверки
-                await Task.Delay (TimeSpan.FromMinutes (30), _shutdownCts?.Token ?? CancellationToken.None);
-            }
-        }
-
         public bool IsTelegramEnabled() => _telegram != null && _telegram.IsEnabled;
-
-        private async Task DailyReportLoop()
-        {
-            while (_isRunning)
-            {
-                try
-                {
-                    var now = DateTime.UtcNow;
-                    var nextRun = now.Date.AddDays (1).AddHours (9);
-                    var delay = nextRun - now;
-                    if (delay.TotalMilliseconds > 0)
-                        await Task.Delay (delay, _shutdownCts?.Token ?? CancellationToken.None);
-
-                    if (!_isRunning || _telegram == null) continue;
-
-                    decimal totalPnL = _ui?.TotalPnL ?? 0;
-                    decimal winRate = _ui?.WinRate ?? 0;
-                    int totalTrades = _ui?.TotalTrades ?? 0;
-                    int winningTrades = _ui?.WinningTrades ?? 0;
-                    int losingTrades = _ui?.LosingTrades ?? 0;
-
-                    await _telegram.SendDailyReport (totalPnL, winRate, totalTrades, winningTrades, losingTrades);
-                }
-                catch { }
-            }
-        }
 
         public async Task<bool> TestTelegramAsync()
         {
             if (_telegram == null) return false;
             return await _telegram.TestConnectionAsync ();
-        }
-
-
-        private async Task WhaleLoop()
-        {
-            Action<string> log = (msg) => _ui?.AddLog (msg);
-            // Стейблкоины не информативны для whale-мониторинга: крупные сделки там — норма,
-            // а не сигнал. Фильтруем их, чтобы не засорять лог (например USDCUSDT).
-            HashSet<string> stablecoinPairs = new HashSet<string> (StringComparer.OrdinalIgnoreCase)
-            {
-                "USDCUSDT", "USDTUSDC", "BUSDUSDT", "FDUSDUSDT", "TUSDUSDT", "USDCUSDC", "DAIUSDT"
-            };
-
-            bool started = false;
-            while (_isRunning)
-            {
-                try
-                {
-                    if (started) { await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
-
-                    List<string> pairs;
-                    lock (_pairsLock) { pairs = new List<string> (_activePairs); }
-
-                    // Исключаем стейблкоин-пары из мониторинга
-                    pairs = pairs.Where (p => !stablecoinPairs.Contains (p)).ToList ();
-
-                    if (pairs.Count > 0)
-                    {
-                        _whaleMonitor = new WhaleMonitor (log, 100000);
-                        _whaleMonitor.OnWhaleDetected += whale =>
-                        {
-                            _ui?.AddLog ($"🐋 WHALE {whale.Side} {whale.Symbol}: ${whale.ValueUsdc:N0}");
-                        };
-                        await _whaleMonitor.StartAsync (pairs.ToArray ());
-                        _ui?.AddLog ($"🐋 Whale monitor запущен для {pairs.Count} пар (порог: $100k, стейблкоины исключены)");
-                        started = true;
-                    }
-                    await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None);
-                }
-                catch (OperationCanceledException) { break; }
-                catch (Exception ex)
-                {
-                    _ui?.AddLog ($"❌ Whale monitor ошибка: {ex.Message}");
-                    try { await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
-                }
-            }
-        }
-
-        private async Task EarnOptimizeLoop()
-        {
-            while (_isRunning)
-            {
-                try
-                {
-                    await Task.Delay (TimeSpan.FromHours (6), _shutdownCts?.Token ?? CancellationToken.None);
-                    if (!_isRunning) break;
-                    await _earnStrategy.OptimizeEarnAsync ();
-                }
-                catch { }
-            }
-        }
-
-        private async Task FearGreedLoop()
-        {
-            while (_isRunning)
-            {
-                try
-                {
-                    if (_fearGreedProvider != null)
-                    {
-                        var data = await _fearGreedProvider.GetCurrentAsync ();
-                        if (data != null && _ui != null)
-                        {
-                            _ui.FearGreedValue = data.Value;
-                            _ui.FearGreedClassification = data.Classification;
-                        }
-                    }
-                    await Task.Delay (TimeSpan.FromMinutes (15), _shutdownCts?.Token ?? CancellationToken.None);
-                }
-                catch (OperationCanceledException) { break; }
-                catch { try { await Task.Delay (TimeSpan.FromMinutes (15), _shutdownCts?.Token ?? CancellationToken.None); } catch { } }
-            }
         }
 
     }

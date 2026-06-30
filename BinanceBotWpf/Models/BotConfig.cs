@@ -236,7 +236,10 @@ namespace BinanceBotWpf.Models
         public void Save()
         {
             string json = JsonSerializer.Serialize (this, JsonOptions);
-            File.WriteAllText (GetConfigPath (), json);
+            string configPath = GetConfigPath ();
+            string tempPath = configPath + ".tmp";
+            File.WriteAllText (tempPath, json);
+            File.Move (tempPath, configPath, overwrite: true);
         }
 
         public static void CreateDefault()

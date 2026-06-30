@@ -404,7 +404,42 @@
                             </StackPanel>
                         </Grid>
                     </Border>
-                    <DataGrid Grid.Row="1" ItemsSource="{Binding TradesHistory}" AutoGenerateColumns="False" Background="#121212" Foreground="White" BorderThickness="0" FontSize="11" GridLinesVisibility="Horizontal" AlternationCount="2" RowHeight="28" CanUserAddRows="False" CanUserDeleteRows="False">
+                    <DataGrid Grid.Row="1" ItemsSource="{Binding TradesHistory}" AutoGenerateColumns="False" Background="#1a1a2e" Foreground="#e0e0e0" BorderThickness="0" FontSize="11" GridLinesVisibility="Horizontal" AlternationCount="2" AlternatingRowBackground="#0f3460" RowHeight="28" CanUserAddRows="False" CanUserDeleteRows="False" HeadersVisibility="Column">
+                        <DataGrid.ColumnHeaderStyle>
+                            <Style TargetType="DataGridColumnHeader">
+                                <Setter Property="Background" Value="#16213e"/>
+                                <Setter Property="Foreground" Value="#e0e0e0"/>
+                                <Setter Property="FontWeight" Value="Bold"/>
+                                <Setter Property="Padding" Value="6,5"/>
+                                <Setter Property="BorderBrush" Value="#2a2a4a"/>
+                                <Setter Property="BorderThickness" Value="0,0,1,1"/>
+                            </Style>
+                        </DataGrid.ColumnHeaderStyle>
+                        <DataGrid.RowStyle>
+                            <Style TargetType="DataGridRow">
+                                <Setter Property="Background" Value="Transparent"/>
+                                <Setter Property="Foreground" Value="#e0e0e0"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsMouseOver" Value="True">
+                                        <Setter Property="Background" Value="#1f3460"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.RowStyle>
+                        <DataGrid.CellStyle>
+                            <Style TargetType="DataGridCell">
+                                <Setter Property="Foreground" Value="#e0e0e0"/>
+                                <Setter Property="BorderThickness" Value="0"/>
+                                <Setter Property="Padding" Value="4,2"/>
+                                <Setter Property="VerticalAlignment" Value="Center"/>
+                                <Style.Triggers>
+                                    <Trigger Property="IsSelected" Value="True">
+                                        <Setter Property="Background" Value="#1f3460"/>
+                                        <Setter Property="Foreground" Value="#ffffff"/>
+                                    </Trigger>
+                                </Style.Triggers>
+                            </Style>
+                        </DataGrid.CellStyle>
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="Время" Binding="{Binding CloseTime, StringFormat=HH:mm:ss}" Width="80"/>
                             <DataGridTextColumn Header="Дата" Binding="{Binding CloseTime, StringFormat=dd.MM}" Width="60"/>
@@ -414,7 +449,7 @@
                             <DataGridTextColumn Header="Кол-во" Binding="{Binding Quantity, StringFormat=F6}" Width="90"/>
                             <DataGridTextColumn Header="PnL" Binding="{Binding PnL, StringFormat=F2}" Width="80"/>
                             <DataGridTextColumn Header="PnL %" Binding="{Binding PnLPercent, StringFormat=F2}" Width="70"/>
-                            <DataGridTextColumn Header="Длительность" Binding="{Binding Duration, StringFormat=hh\:mm\:ss}" Width="85"/>
+                            <DataGridTextColumn Header="Длит." Binding="{Binding Duration, StringFormat=hh\:mm\:ss}" Width="70"/>
                             <DataGridTextColumn Header="Причина" Binding="{Binding Reason}" Width="140"/>
                         </DataGrid.Columns>
                     </DataGrid>

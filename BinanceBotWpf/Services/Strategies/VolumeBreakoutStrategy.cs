@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using BinanceBotWpf.Models;
 
-namespace BinanceBotWpf.Services
+namespace BinanceBotWpf.Services.Strategies
 {
     /// <summary>
     /// Стратегия пробоя объёма: если объём за последнюю свечу превышает средний

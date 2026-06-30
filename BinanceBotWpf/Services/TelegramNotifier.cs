@@ -183,7 +183,8 @@ namespace BinanceBotWpf.Services
                                 "❓ Помощь" => "/help",
                                 _ => text
                             };
-                            await _commandHandler?.Invoke (command, chatId);
+                            if (!string.IsNullOrEmpty (command) && _commandHandler != null)
+                        await _commandHandler.Invoke (command, chatId);
                         }
                     }
                 }
@@ -215,8 +216,8 @@ namespace BinanceBotWpf.Services
                 "update" => "/update",
                 _ => null
             };
-            if (!string.IsNullOrEmpty (command))
-                await _commandHandler?.Invoke (command, chatId);
+            if (!string.IsNullOrEmpty (command) && _commandHandler != null)
+                await _commandHandler.Invoke (command, chatId);
         }
     }
 }

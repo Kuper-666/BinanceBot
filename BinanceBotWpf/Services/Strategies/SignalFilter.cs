@@ -4,7 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using BinanceBotWpf.Models;
 
-namespace BinanceBotWpf.Services
+namespace BinanceBotWpf.Services.Strategies
 {
     /// <summary>
     /// Фильтрация торговых сигналов с помощью дополнительных индикаторов
@@ -58,11 +58,11 @@ namespace BinanceBotWpf.Services
                 return Task.FromResult (false);
             }
 
-            // 2. RSI фильтр (не перекуплен)
-            bool rsiOk = rsi < MinRsiForBuy;
+            // 2. RSI фильтр — зона покупки: от перепроданности до перекупленности
+            bool rsiOk = rsi >= MinRsiForBuy && rsi <= MaxRsiForSell;
             if (!rsiOk)
             {
-                _logger?.Invoke ($"📊 {symbol}: RSI {rsi:F1} > {MinRsiForBuy} (перекуплен)");
+                _logger?.Invoke ($"📊 {symbol}: RSI {rsi:F1} вне диапазона [{MinRsiForBuy}..{MaxRsiForSell}]");
                 return Task.FromResult (false);
             }
 

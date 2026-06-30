@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
@@ -13,6 +14,7 @@ namespace BinanceBotWpf.Services
         private readonly Action<string> _logger;
         private readonly string _backupDir;
         private DateTime _lastBackupTime = DateTime.MinValue;
+        private int _backupInProgress = 0;
 
         private static readonly string[] FilesToBackup = new[]
         {
@@ -34,6 +36,7 @@ namespace BinanceBotWpf.Services
         public async Task CheckAndBackupAsync()
         {
             if ((DateTime.UtcNow - _lastBackupTime).TotalHours < 24) return;
+            if (Interlocked.CompareExchange(ref _backupInProgress, 1, 0) != 0) return;
 
             try
             {
@@ -43,6 +46,10 @@ namespace BinanceBotWpf.Services
             catch (Exception ex)
             {
                 _logger?.Invoke ($"❌ Ошибка бэкапа: {ex.Message}");
+            }
+            finally
+            {
+                Interlocked.Exchange (ref _backupInProgress, 0);
             }
         }
 
@@ -132,13 +139,16 @@ namespace BinanceBotWpf.Services
                 var dirs = Directory.GetDirectories (_backupDir);
                 if (dirs.Length <= 7) return;
 
-                Array.Sort (dirs, (a, b) => string.Compare (a, b)); // Старые первыми
+                Array.Sort (dirs, (a, b) => string.Compare (a, b));
                 for (int i = 0; i < dirs.Length - 7; i++)
                 {
                     Directory.Delete (dirs[i], recursive: true);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                _logger?.Invoke ($"⚠️ Ошибка очистки старых бэкапов: {ex.Message}");
+            }
         }
     }
 }
