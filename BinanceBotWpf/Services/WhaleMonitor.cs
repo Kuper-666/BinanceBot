@@ -138,6 +138,7 @@ namespace BinanceBotWpf.Services
         public void Dispose()
         {
             _cts?.Cancel ();
+            _cts?.Dispose ();
             try { _ws?.Dispose (); } catch { }
         }
     }

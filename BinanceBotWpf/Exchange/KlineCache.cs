@@ -9,6 +9,7 @@ namespace BinanceBotWpf.Exchange
     {
         private readonly ConcurrentDictionary<string, List<BinanceKline>> _realTimeData = new ();
         private readonly ConcurrentDictionary<string, DateTime> _lastUpdateTime = new ();
+        private readonly ConcurrentDictionary<string, object> _locks = new ();
         private readonly Action<string> _logger;
 
         public KlineCache (Action<string> logger)
@@ -16,14 +17,22 @@ namespace BinanceBotWpf.Exchange
             _logger = logger;
         }
 
+        private object GetLock (string key)
+        {
+            return _locks.GetOrAdd (key, _ => new object ());
+        }
+
         public System.Threading.Tasks.Task<List<BinanceKline>> GetKlinesAsync (string symbol, string interval, int limit)
         {
             string key = $"{symbol}_{interval}";
-            if (_realTimeData.TryGetValue (key, out List<BinanceKline> klines))
+            lock (GetLock (key))
             {
-                int count = Math.Min (limit, klines.Count);
-                List<BinanceKline> result = klines.Skip (klines.Count - count).Take (count).ToList ();
-                return System.Threading.Tasks.Task.FromResult (result);
+                if (_realTimeData.TryGetValue (key, out List<BinanceKline> klines))
+                {
+                    int count = Math.Min (limit, klines.Count);
+                    List<BinanceKline> result = klines.Skip (klines.Count - count).Take (count).ToList ();
+                    return System.Threading.Tasks.Task.FromResult (result);
+                }
             }
 
             return System.Threading.Tasks.Task.FromResult (new List<BinanceKline> ());
@@ -32,37 +41,40 @@ namespace BinanceBotWpf.Exchange
         public void OnKlineUpdate (KlineUpdate update)
         {
             string key = $"{update.Symbol}_{update.Interval}";
-            List<BinanceKline> klines = _realTimeData.GetOrAdd (key, _ => new List<BinanceKline> ());
-
-            if (update.IsFinal)
+            lock (GetLock (key))
             {
-                BinanceKline newKline = new BinanceKline
-                {
-                    OpenTime = update.OpenTime,
-                    Open = update.Open,
-                    High = update.High,
-                    Low = update.Low,
-                    Close = update.Close,
-                    Volume = update.Volume
-                };
+                List<BinanceKline> klines = _realTimeData.GetOrAdd (key, _ => new List<BinanceKline> ());
 
-                klines.Add (newKline);
-
-                if (klines.Count > 1000)
+                if (update.IsFinal)
                 {
-                    klines.RemoveRange (0, klines.Count - 1000);
+                    BinanceKline newKline = new BinanceKline
+                    {
+                        OpenTime = update.OpenTime,
+                        Open = update.Open,
+                        High = update.High,
+                        Low = update.Low,
+                        Close = update.Close,
+                        Volume = update.Volume
+                    };
+
+                    klines.Add (newKline);
+
+                    if (klines.Count > 1000)
+                    {
+                        klines.RemoveRange (0, klines.Count - 1000);
+                    }
                 }
-            }
-            else if (klines.Count > 0)
-            {
-                BinanceKline lastKline = klines[klines.Count - 1];
-                lastKline.High = Math.Max (lastKline.High, update.High);
-                lastKline.Low = Math.Min (lastKline.Low, update.Low);
-                lastKline.Close = update.Close;
-                lastKline.Volume = update.Volume;
-            }
+                else if (klines.Count > 0)
+                {
+                    BinanceKline lastKline = klines[klines.Count - 1];
+                    lastKline.High = Math.Max (lastKline.High, update.High);
+                    lastKline.Low = Math.Min (lastKline.Low, update.Low);
+                    lastKline.Close = update.Close;
+                    lastKline.Volume = update.Volume;
+                }
 
-            _lastUpdateTime[key] = DateTime.UtcNow;
+                _lastUpdateTime[key] = DateTime.UtcNow;
+            }
         }
 
         public void SeedFromRest (string symbol, string interval, List<BinanceKline> historical)
@@ -73,24 +85,27 @@ namespace BinanceBotWpf.Exchange
                 return;
             }
 
-            List<BinanceKline> klines = _realTimeData.GetOrAdd (key, _ => new List<BinanceKline> ());
-            foreach (BinanceKline kline in historical)
+            lock (GetLock (key))
             {
-                bool exists = klines.Any (k => k.OpenTime == kline.OpenTime);
-                if (!exists)
+                List<BinanceKline> klines = _realTimeData.GetOrAdd (key, _ => new List<BinanceKline> ());
+                foreach (BinanceKline kline in historical)
                 {
-                    klines.Add (kline);
+                    bool exists = klines.Any (k => k.OpenTime == kline.OpenTime);
+                    if (!exists)
+                    {
+                        klines.Add (kline);
+                    }
                 }
+
+                klines.Sort ((a, b) => a.OpenTime.CompareTo (b.OpenTime));
+
+                if (klines.Count > 1000)
+                {
+                    klines.RemoveRange (0, klines.Count - 1000);
+                }
+
+                _lastUpdateTime[key] = DateTime.UtcNow;
             }
-
-            klines.Sort ((a, b) => a.OpenTime.CompareTo (b.OpenTime));
-
-            if (klines.Count > 1000)
-            {
-                klines.RemoveRange (0, klines.Count - 1000);
-            }
-
-            _lastUpdateTime[key] = DateTime.UtcNow;
         }
 
         public bool HasRealTimeData (string symbol, string interval)
