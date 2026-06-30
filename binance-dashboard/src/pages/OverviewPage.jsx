@@ -122,8 +122,14 @@ export default function OverviewPage({ data }) {
                   formatter={(v, name) => name === 'pnl' ? [`$${v}`, 'PnL'] : [v, name]}
                   labelStyle={{ color: '#888' }}
                 />
-                <Area type="monotone" dataKey="pnl" stroke="#22c55e" strokeWidth={2}
-                  fill="url(#pnlGradPos)" />
+                {(() => {
+                  const lastPnl = data.pnlHistory[data.pnlHistory.length - 1]?.pnl || 0;
+                  const isNeg = lastPnl < 0;
+                  return (
+                    <Area type="monotone" dataKey="pnl" stroke={isNeg ? '#ef4444' : '#22c55e'} strokeWidth={2}
+                      fill={isNeg ? 'url(#pnlGradNeg)' : 'url(#pnlGradPos)'} />
+                  );
+                })()}
               </AreaChart>
             </ResponsiveContainer>
           ) : (

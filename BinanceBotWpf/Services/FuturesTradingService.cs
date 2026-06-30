@@ -65,8 +65,7 @@ namespace BinanceBotWpf.Services
                         decimal price = closes.Last ();
                         var signal = _strategy.AnalyzePairWithWallet (symbol, closes, 9, 21, price);
 
-                        // Use a reasonable stepSize for futures (most BTC/ETH use 0.001, most alts use 0.1 or 1)
-                        decimal stepSize = symbol.Contains ("BTC") ? 0.001m : symbol.Contains ("ETH") ? 0.01m : 0.1m;
+                        decimal stepSize = await _client.GetStepSizeAsync (symbol);
 
                         if (signal.Action == TradeAction.Buy)
                         {

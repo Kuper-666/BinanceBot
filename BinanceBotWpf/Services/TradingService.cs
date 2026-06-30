@@ -310,7 +310,8 @@ namespace BinanceBotWpf.Services
                     () => RunBacktestAndBroadcast (),
                     () => RunOptimizationAndBroadcast (),
                     () => TestTelegramAsync (),
-                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym));
+                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
+                    _tradingSettings);
                 _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
                 System.Diagnostics.Debug.WriteLine ("[Dashboard] Starting server on port 8765...");
                 await _dashboardServer.StartAsync (8765);
@@ -409,6 +410,25 @@ namespace BinanceBotWpf.Services
 
             try { _dashboardServer?.Stop (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки DashboardServer: {ex.Message}"); }
+
+            try
+            {
+                _dashboardHandler = new DashboardCommandHandler (
+                    _ui, () => _isRunning,
+                    () => { StopTrading (); return Task.CompletedTask; },
+                    async (vm) => await StartTradingAsync (vm),
+                    () => RunBacktestAndBroadcast (),
+                    () => RunOptimizationAndBroadcast (),
+                    () => TestTelegramAsync (),
+                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
+                    _tradingSettings);
+                _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
+                _ = _dashboardServer.StartAsync (8765);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка перезапуска DashboardServer: {ex.Message}");
+            }
 
             try { _shutdownCts?.Dispose (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"CTS dispose error: {ex.Message}"); }
@@ -806,8 +826,6 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ($"❌ Не удалось получить цену {gridSymbol} за 30 сек. Запустите сетку вручную.");
                 });
             }
-
-            // Dashboard уже запущен в SetLogger — пропускаем
         }
 
         /// <summary>

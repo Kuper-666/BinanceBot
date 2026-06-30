@@ -118,8 +118,7 @@ namespace BinanceBotWpf.Services
             decimal riskRewardRatio = aiRisk.RiskRewardRatio;
             decimal riskAmount = RiskCalculator.CalculateRiskAmount (currentBalance, riskPerTrade);
 
-            decimal stepSize = await _client.GetStepSizeAsync (symbol);
-            decimal minQty = 0m;
+            (decimal stepSize, decimal minQty) = await _client.GetLotSizeAsync (symbol);
             (decimal qty, RiskCalculator.QuantityResult qtyResult) = RiskCalculator.CalculatePositionQuantity (riskAmount, price, stepSize, minQty, currentBalance);
 
             decimal symbolMinNotional = await _client.GetMinNotionalAsync (symbol);

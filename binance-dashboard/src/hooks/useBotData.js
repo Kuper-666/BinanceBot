@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import WebSocketService from '../services/WebSocketService';
 import { MOCK_DATA } from '../data';
 
-const CHANNELS = ['prices', 'positions', 'trades', 'stats', 'echelons', 'equity', 'feargreed', 'pnl', 'gridbot', 'backtest'];
+const CHANNELS = ['prices', 'positions', 'trades', 'stats', 'echelons', 'equity', 'feargreed', 'pnl', 'gridbot', 'backtest', 'logs'];
 
 let mountCount = 0;
 
@@ -112,6 +112,9 @@ export default function useBotData() {
           }
           if (channel === 'backtest') {
             return { ...prev, backtest: newData };
+          }
+          if (channel === 'logs') {
+            return { ...prev, logs: typeof newData === 'string' ? newData.split('\n') : (Array.isArray(newData) ? newData : []) };
           }
           return { ...prev, [channel]: newData };
         });

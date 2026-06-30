@@ -20,5 +20,7 @@ namespace BinanceBotWpf.Exchange
         Task<JObject> PlaceTrailingStopMarketAsync (string symbol, string side, decimal quantity, decimal callbackRate);
         Task<JObject> PlaceStopMarketAsync (string symbol, string side, decimal quantity, decimal stopPrice);
         Task<decimal> GetPriceAsync (string symbol);
+        Task<decimal> GetStepSizeAsync (string symbol);
+        Task<(decimal stepSize, decimal minQty)> GetLotSizeAsync (string symbol);
     }
 }

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
+using BinanceBotWpf.Models;
 using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
@@ -17,6 +18,7 @@ namespace BinanceBotWpf.Services
         private readonly Func<Task> _runOptimization;
         private readonly Func<Task<bool>> _testTelegram;
         private readonly Func<string, Task> _closePosition;
+        private readonly TradingSettings _tradingSettings;
 
         public DashboardCommandHandler (
             MainWindowViewModel ui,
@@ -26,7 +28,8 @@ namespace BinanceBotWpf.Services
             Func<Task> runBacktest = null,
             Func<Task> runOptimization = null,
             Func<Task<bool>> testTelegram = null,
-            Func<string, Task> closePosition = null)
+            Func<string, Task> closePosition = null,
+            TradingSettings tradingSettings = null)
         {
             _ui = ui;
             _isRunning = isRunning;
@@ -36,6 +39,7 @@ namespace BinanceBotWpf.Services
             _runOptimization = runOptimization;
             _testTelegram = testTelegram;
             _closePosition = closePosition;
+            _tradingSettings = tradingSettings;
         }
 
         public async Task HandleAsync (string action, Dictionary<string, object> data)
@@ -141,7 +145,55 @@ namespace BinanceBotWpf.Services
                         break;
 
                     case "settings":
-                        _ui?.AddLog ("⚙️ Настройки обновлены из дашборда");
+                        if (_tradingSettings != null && data.ContainsKey ("strategy"))
+                        {
+                            try
+                            {
+                                int applied = 0;
+                                if (data["strategy"] is Dictionary<string, object> strat)
+                                {
+                                    if (strat.TryGetValue ("fastSma", out var v) && v is long fastSma) { _tradingSettings.FastSmaPeriod = (int)fastSma; applied++; }
+                                    if (strat.TryGetValue ("slowSma", out v) && v is long slowSma) { _tradingSettings.SlowSmaPeriod = (int)slowSma; applied++; }
+                                    if (strat.TryGetValue ("rsiPeriod", out v) && v is long rsiPeriod) { _tradingSettings.RsiPeriod = (int)rsiPeriod; applied++; }
+                                    if (strat.TryGetValue ("stopLoss", out v) && v is double stopLoss) { _tradingSettings.StopLossPercent = (decimal)(stopLoss / 100.0); applied++; }
+                                    if (strat.TryGetValue ("takeProfit", out v) && v is double takeProfit) { _tradingSettings.TakeProfitPercent = (decimal)(takeProfit / 100.0); applied++; }
+                                    if (strat.TryGetValue ("riskPerTrade", out v) && v is double riskPerTrade) { _tradingSettings.RiskPerTradePercent = (decimal)(riskPerTrade / 100.0); applied++; }
+                                    if (strat.TryGetValue ("maxPositions", out v) && v is long maxPositions) { _tradingSettings.MaxConcurrentTrades = (int)maxPositions; applied++; }
+                                    if (strat.TryGetValue ("leverage", out v) && v is long leverage) { _tradingSettings.FuturesLeverage = (int)leverage; applied++; }
+                                }
+                                if (data["echelons"] is Dictionary<string, object> ech)
+                                {
+                                    if (ech.TryGetValue ("adaptiveAgent", out var v) && v is bool adaptiveAgent) { _tradingSettings.AdaptiveAgentEnabled = adaptiveAgent; applied++; }
+                                    if (ech.TryGetValue ("adaptiveSlMult", out v) && v is double slMult) { _tradingSettings.AdaptiveSlMultiplier = (decimal)slMult; applied++; }
+                                    if (ech.TryGetValue ("adaptivePeriodMult", out v) && v is double periodMult) { _tradingSettings.AdaptivePeriodMultiplier = (decimal)periodMult; applied++; }
+                                    if (ech.TryGetValue ("signalValidator", out v) && v is bool signalValidator) { _tradingSettings.SignalValidatorEnabled = signalValidator; applied++; }
+                                    if (ech.TryGetValue ("validatorVolThreshold", out v) && v is double volThreshold) { _tradingSettings.ValidatorVolumeThreshold = (decimal)volThreshold; applied++; }
+                                    if (ech.TryGetValue ("validatorAtrThreshold", out v) && v is double atrThreshold) { _tradingSettings.ValidatorAtrThreshold = (decimal)atrThreshold; applied++; }
+                                    if (ech.TryGetValue ("validatorRsiLow", out v) && v is long rsiLow) { _tradingSettings.ValidatorRsiLow = (int)rsiLow; applied++; }
+                                    if (ech.TryGetValue ("validatorRsiHigh", out v) && v is long rsiHigh) { _tradingSettings.ValidatorRsiHigh = (int)rsiHigh; applied++; }
+                                    if (ech.TryGetValue ("newsSentinel", out v) && v is bool newsSentinel) { _tradingSettings.NewsSentinelEnabled = newsSentinel; applied++; }
+                                    if (ech.TryGetValue ("newsBlockMinutes", out v) && v is long blockMinutes) { _tradingSettings.NewsSentinelBlockMinutes = (int)blockMinutes; applied++; }
+                                }
+                                if (data["gridBot"] is Dictionary<string, object> grid)
+                                {
+                                    if (grid.TryGetValue ("enabled", out var v) && v is bool gridEnabled) { _tradingSettings.GridBotEnabled = gridEnabled; applied++; }
+                                    if (grid.TryGetValue ("levels", out v) && v is long levels) { _tradingSettings.GridLevels = (int)levels; applied++; }
+                                    if (grid.TryGetValue ("rangePercent", out v) && v is double rangePercent) { _tradingSettings.GridRangePercent = (decimal)(rangePercent / 100.0); applied++; }
+                                    if (grid.TryGetValue ("investmentPercent", out v) && v is double investPercent) { _tradingSettings.TotalInvestmentPercent = (decimal)(investPercent / 100.0); applied++; }
+                                    if (grid.TryGetValue ("defaultPairs", out v) && v is string gridSymbol) { _tradingSettings.GridSymbol = gridSymbol; applied++; }
+                                }
+                                _ = _tradingSettings.SaveAsync ();
+                                _ui?.AddLog ($"⚙️ Настройки обновлены из дашборда ({applied} параметров)");
+                            }
+                            catch (Exception ex)
+                            {
+                                _ui?.AddLog ($"❌ Ошибка применения настроек: {ex.Message}");
+                            }
+                        }
+                        else
+                        {
+                            _ui?.AddLog ("⚙️ Настройки обновлены из дашборда");
+                        }
                         break;
                 }
             }

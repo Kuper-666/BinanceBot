@@ -29,6 +29,9 @@ namespace BinanceBotWpf.Exchange
         private readonly SemaphoreSlim _throttleLock = new (1, 1);
         private readonly SemaphoreSlim _syncLock = new (1, 1);
         private DateTime _lastSyncTime = DateTime.MinValue;
+        private readonly Dictionary<string, decimal> _stepSizeCache = new ();
+        private JObject _exchangeInfoCache;
+        private DateTime _exchangeInfoCacheTime = DateTime.MinValue;
 
         public event Action<string> OnLogGenerated;
         private void Log(string msg) => OnLogGenerated?.Invoke (msg);
@@ -424,6 +427,61 @@ namespace BinanceBotWpf.Exchange
             }
             catch { }
             return 0;
+        }
+
+        private async Task<JObject> GetExchangeInfoAsync()
+        {
+            if (_exchangeInfoCache != null && (DateTime.UtcNow - _exchangeInfoCacheTime).TotalHours < 24)
+                return _exchangeInfoCache;
+
+            try
+            {
+                var request = new HttpRequestMessage (HttpMethod.Get, "/fapi/v1/exchangeInfo");
+                var response = await SendWithRetryAsync (request);
+                if (response.IsSuccessStatusCode)
+                {
+                    string body = await response.Content.ReadAsStringAsync ();
+                    _exchangeInfoCache = JObject.Parse (body);
+                    _exchangeInfoCacheTime = DateTime.UtcNow;
+                    return _exchangeInfoCache;
+                }
+            }
+            catch (Exception ex) { Log ($"GetExchangeInfoAsync error: {ex.Message}"); }
+            return null;
+        }
+
+        public async Task<decimal> GetStepSizeAsync(string symbol)
+        {
+            if (_stepSizeCache.TryGetValue(symbol, out var cached))
+                return cached;
+
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"].ToString() == symbol);
+            var lotSize = symInfo?["filters"]?.FirstOrDefault(f => f["filterType"]?.ToString() == "LOT_SIZE");
+            if (lotSize != null && lotSize["stepSize"] != null)
+            {
+                decimal step = decimal.Parse(lotSize["stepSize"].ToString(), CultureInfo.InvariantCulture);
+                _stepSizeCache[symbol] = step;
+                return step;
+            }
+            return 0.00000001m;
+        }
+
+        public async Task<(decimal stepSize, decimal minQty)> GetLotSizeAsync(string symbol)
+        {
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"].ToString() == symbol);
+            var lotSize = symInfo?["filters"]?.FirstOrDefault(f => f["filterType"]?.ToString() == "LOT_SIZE");
+            if (lotSize != null)
+            {
+                decimal step = lotSize["stepSize"] != null
+                    ? decimal.Parse(lotSize["stepSize"].ToString(), CultureInfo.InvariantCulture) : 0.00000001m;
+                decimal minQ = lotSize["minQty"] != null
+                    ? decimal.Parse(lotSize["minQty"].ToString(), CultureInfo.InvariantCulture) : 0m;
+                if (!_stepSizeCache.ContainsKey(symbol)) _stepSizeCache[symbol] = step;
+                return (step, minQ);
+            }
+            return (0.00000001m, 0m);
         }
 
         public void Dispose() => _httpClient.Dispose ();

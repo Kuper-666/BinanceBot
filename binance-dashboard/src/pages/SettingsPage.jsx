@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 
 const DEFAULT_SETTINGS = {
@@ -82,9 +82,9 @@ export default function SettingsPage({ send, data }) {
   const { t } = useTranslation();
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
-  const [initialized, setInitialized] = useState(false);
 
-  if (!initialized && data) {
+  useEffect(() => {
+    if (!data) return;
     const s = { ...DEFAULT_SETTINGS };
     if (data.fastSma) s.strategy.fastSma = data.fastSma;
     if (data.slowSma) s.strategy.slowSma = data.slowSma;
@@ -103,8 +103,7 @@ export default function SettingsPage({ send, data }) {
     if (data.gridLevels) s.gridBot.levels = data.gridLevels;
     if (data.gridInvestmentPercent) s.gridBot.investmentPercent = data.gridInvestmentPercent;
     setSettings(s);
-    setInitialized(true);
-  }
+  }, [data]);
 
   const updateStrategy = (key, value) => {
     setSettings(s => ({ ...s, strategy: { ...s.strategy, [key]: value } }));
