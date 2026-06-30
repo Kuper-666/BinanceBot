@@ -299,7 +299,17 @@ namespace BinanceBotWpf.Services
                     lock (_lock)
                     {
                         if (_processedOrderIds.Count > 200)
-                            _processedOrderIds.Clear ();
+                        {
+                            // Remove oldest half instead of clearing all to prevent duplicate processing
+                            int toRemove = _processedOrderIds.Count / 2;
+                            int removed = 0;
+                            foreach (var id in _processedOrderIds.ToList ())
+                            {
+                                if (removed >= toRemove) break;
+                                _processedOrderIds.Remove (id);
+                                removed++;
+                            }
+                        }
                     }
                 }
                 catch (OperationCanceledException) { break; }
@@ -385,8 +395,14 @@ namespace BinanceBotWpf.Services
 
         public void Dispose ()
         {
-            _ = StopAsync ();
-            _cts?.Dispose ();
+            _isRunning = false;
+            try
+            {
+                _cts?.Cancel ();
+                _cts?.Dispose ();
+            }
+            catch { }
+            _cts = null;
         }
     }
 }

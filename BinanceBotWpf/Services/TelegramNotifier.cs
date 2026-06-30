@@ -14,7 +14,7 @@ namespace BinanceBotWpf.Services
     {
         private readonly TelegramBotClient _botClient;
         private readonly string _chatId;
-        private bool _enabled;
+        private volatile bool _enabled;
         private Func<string, string, Task> _commandHandler;
         private CancellationTokenSource _cts;
 

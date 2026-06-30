@@ -86,7 +86,15 @@ namespace BinanceBotWpf.Services
             _cts?.Cancel ();
             foreach (var client in _clients.Keys.ToList ())
             {
-                try { client.CloseAsync (WebSocketCloseStatus.NormalClosure, "", CancellationToken.None).Wait (1000); } catch { }
+                try
+                {
+                    var closeTask = client.CloseAsync (WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
+                    if (!closeTask.Wait (1000))
+                    {
+                        // Timeout — force dispose
+                    }
+                }
+                catch { }
                 try { client.Dispose (); } catch { }
             }
             _clients.Clear ();

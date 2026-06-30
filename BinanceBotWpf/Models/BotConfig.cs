@@ -50,7 +50,7 @@ namespace BinanceBotWpf.Models
         public decimal MaxRiskPercent { get; set; } = 0.30m;
 
         // Настройки фьючерсов
-        public int FuturesLeverage { get; set; } = 5;
+        public int FuturesLeverage { get; set; } = 3;
         public decimal FuturesMaxRiskPercent { get; set; } = 0.10m;
 
         // Настройки ИИ-агентов (Золотая архитектура)
@@ -150,16 +150,23 @@ namespace BinanceBotWpf.Models
                 bool needsReencryption =
                     HasPlainTextValue (config.ApiKeyEncrypted) ||
                     HasPlainTextValue (config.ApiSecretEncrypted) ||
-                    HasPlainTextValue (config.TelegramBotTokenEncrypted);
+                    HasPlainTextValue (config.TelegramBotTokenEncrypted) ||
+                    HasPlainTextValue (config.FuturesApiKeyEncrypted) ||
+                    HasPlainTextValue (config.FuturesApiSecretEncrypted) ||
+                    HasPlainTextValue (config.CoinGeckoApiKeyEncrypted) ||
+                    HasPlainTextValue (config.LunarCrushApiKeyEncrypted);
 
                 if (needsReencryption)
                 {
-                    // Чтение через свойства ApiKey/ApiSecret/TelegramBotToken расшифровывает
-                    // ENC:-значения как есть и возвращает открытый текст без изменений —
-                    // присваивание обратно тем же свойствам гарантированно зашифрует всё через DPAPI.
+                    // Чтение через свойства расшифровывает ENC:-значения как есть —
+                    // присваивание обратно гарантированно зашифрует всё через DPAPI.
                     config.ApiKey = config.ApiKey;
                     config.ApiSecret = config.ApiSecret;
                     config.TelegramBotToken = config.TelegramBotToken;
+                    config.FuturesApiKey = config.FuturesApiKey;
+                    config.FuturesApiSecret = config.FuturesApiSecret;
+                    config.CoinGeckoApiKey = config.CoinGeckoApiKey;
+                    config.LunarCrushApiKey = config.LunarCrushApiKey;
                     config.Save ();
                 }
 
@@ -208,25 +215,36 @@ namespace BinanceBotWpf.Models
                 string value = parts[1].Trim ();
                 if (string.IsNullOrEmpty (value)) continue;
 
-                switch (key)
+                try
                 {
-                    case "apikey": config.ApiKey = value; break;
-                    case "apisecret": config.ApiSecret = value; break;
-                    case "istestnet": config.IsTestnet = bool.Parse (value); break;
-                    case "minusdcbalance": config.MinUsdcBalance = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "telegrambottoken": config.TelegramBotToken = value; break;
-                    case "telegramchatid": config.TelegramChatId = value; break;
-                    case "coingecooapikey":
-                    case "coingeckoapikey": config.CoinGeckoApiKey = value; break;
-                    case "lunarcrushapikey": config.LunarCrushApiKey = value; break;
-                    case "minbalanceforzeropercent": config.MinBalanceForZeroPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "targetbalanceforfullpercent": config.TargetBalanceForFullPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "maxtradepercent": config.MaxTradePercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "absolutemaxpercent": config.AbsoluteMaxPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "minbalanceforrisk": config.MinBalanceForRisk = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "maxbalanceforrisk": config.MaxBalanceForRisk = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "minriskpercent": config.MinRiskPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
-                    case "maxriskpercent": config.MaxRiskPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                    switch (key)
+                    {
+                        case "apikey": config.ApiKey = value; break;
+                        case "apisecret": config.ApiSecret = value; break;
+                        case "istestnet": config.IsTestnet = bool.Parse (value); break;
+                        case "minusdcbalance": config.MinUsdcBalance = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "telegrambottoken": config.TelegramBotToken = value; break;
+                        case "telegramchatid": config.TelegramChatId = value; break;
+                        case "coingecooapikey":
+                        case "coingeckoapikey": config.CoinGeckoApiKey = value; break;
+                        case "lunarcrushapikey": config.LunarCrushApiKey = value; break;
+                        case "minbalanceforzeropercent": config.MinBalanceForZeroPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "targetbalanceforfullpercent": config.TargetBalanceForFullPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "maxtradepercent": config.MaxTradePercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "absolutemaxpercent": config.AbsoluteMaxPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "minbalanceforrisk": config.MinBalanceForRisk = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "maxbalanceforrisk": config.MaxBalanceForRisk = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "minriskpercent": config.MinRiskPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "maxriskpercent": config.MaxRiskPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "futuresapikey": config.FuturesApiKey = value; break;
+                        case "futuresapisecret": config.FuturesApiSecret = value; break;
+                        case "futuresleverage": config.FuturesLeverage = int.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                        case "futuresmaxriskpercent": config.FuturesMaxRiskPercent = decimal.Parse (value, System.Globalization.CultureInfo.InvariantCulture); break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine ($"Config migration: failed to parse '{key}={value}': {ex.Message}");
                 }
             }
 
@@ -248,7 +266,7 @@ namespace BinanceBotWpf.Models
             {
                 ApiKey = "YOUR_API_KEY_HERE",
                 ApiSecret = "YOUR_API_SECRET_HERE",
-                IsTestnet = false
+                IsTestnet = true
             };
             config.Save ();
         }

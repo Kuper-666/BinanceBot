@@ -97,7 +97,11 @@ namespace BinanceBotWpf.Services
 
                 return (result.IsProfitable && result.Probability > 0.6f, result.Probability, riskLevel);
             }
-            catch { return (true, 1.0f, "Low Risk"); }
+            catch (Exception ex)
+            {
+                _logger?.Invoke ($"❌ Ошибка ML предсказания: {ex.Message}");
+                return (false, 0.5f, "Unknown Risk");
+            }
         }
 
         public async Task RetrainFromFeaturesAsync(List<(decimal FastSma, decimal SlowSma, decimal Rsi, decimal VolumeRatio, decimal Atr, decimal MacdHistogram, decimal BbWidth, decimal Obv, float MarketCapRank, float SentimentScore, float GalaxyScore, bool IsProfitable)> features, Action<string> logger)

@@ -27,9 +27,11 @@ namespace BinanceBotWpf.Services
             _logger = logger;
             _notifyTelegram = notifyTelegram;
             
-            // Настройки для GitHub API
-            _httpClient.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
-            _httpClient.DefaultRequestHeaders.Add("User-Agent", "BinanceBotWpf");
+            // Настройки для GitHub API — добавляем только если ещё не установлены
+            if (!_httpClient.DefaultRequestHeaders.Contains("Accept"))
+                _httpClient.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
+            if (!_httpClient.DefaultRequestHeaders.Contains("User-Agent"))
+                _httpClient.DefaultRequestHeaders.Add("User-Agent", "BinanceBotWpf");
         }
 
         /// <summary>

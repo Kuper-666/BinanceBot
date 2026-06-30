@@ -24,10 +24,18 @@ namespace BinanceBotWpf.Services
                 return encryptedText;
             if (!encryptedText.StartsWith ("ENC:"))
                 return encryptedText; // не зашифровано
-            string base64 = encryptedText.Substring (4);
-            byte[] encryptedBytes = Convert.FromBase64String (base64);
-            byte[] plainBytes = ProtectedData.Unprotect (encryptedBytes, null, DataProtectionScope.CurrentUser);
-            return Encoding.UTF8.GetString (plainBytes);
+            try
+            {
+                string base64 = encryptedText.Substring (4);
+                byte[] encryptedBytes = Convert.FromBase64String (base64);
+                byte[] plainBytes = ProtectedData.Unprotect (encryptedBytes, null, DataProtectionScope.CurrentUser);
+                return Encoding.UTF8.GetString (plainBytes);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"SecureStringHelper.Decrypt error: {ex.Message}");
+                return encryptedText;
+            }
         }
     }
 }

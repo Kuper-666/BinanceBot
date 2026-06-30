@@ -85,6 +85,7 @@ namespace BinanceBotWpf.Services
             }
 
             string cmd = command.Trim ();
+            string originalText = cmd;
 
             switch (cmd)
             {
@@ -249,7 +250,7 @@ namespace BinanceBotWpf.Services
                         await _telegram.SendMessageAsync ("⚠️ Не удалось получить Fear & Greed Index", chatId);
                     break;
                 case "/alert":
-                    string[] alertParts = cmd.Split (' ');
+                    string[] alertParts = originalText.Split (' ');
                     if (alertParts.Length >= 3)
                     {
                         string alertSymbol = alertParts[1].ToUpper ();
@@ -282,7 +283,7 @@ namespace BinanceBotWpf.Services
                     }
                     break;
                 case "/set":
-                    string[] parts = cmd.Split (' ');
+                    string[] parts = originalText.Split (' ');
                     if (parts.Length >= 3)
                     {
                         string param = parts[1].ToLower ();

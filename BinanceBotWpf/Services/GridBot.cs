@@ -206,18 +206,30 @@ namespace BinanceBotWpf.Services
             _isRunning = false;
 
             // Отменяем все активные ордера
+            var ordersToCancel = new List<long> ();
             lock (_lock)
             {
                 foreach (var kvp in _activeOrderIds)
                 {
                     if (long.TryParse (kvp.Value, out long orderId))
-                        _ = _client.CancelOrder (_symbol, orderId);
+                        ordersToCancel.Add (orderId);
                 }
                 _activeOrderIds.Clear ();
             }
 
+            foreach (long orderId in ordersToCancel)
+            {
+                try
+                {
+                    await _client.CancelOrder (_symbol, orderId);
+                }
+                catch (Exception ex)
+                {
+                    _logger?.Invoke ($"⚠️ Не удалось отменить ордер {orderId}: {ex.Message}");
+                }
+            }
+
             _logger?.Invoke ($"⏹️ GridBot остановлен для {_symbol}");
-            await Task.CompletedTask;
         }
 
         /// <summary>
@@ -379,8 +391,14 @@ namespace BinanceBotWpf.Services
 
         public void Dispose()
         {
-            _ = StopAsync ();
-            _cts?.Dispose ();
+            _isRunning = false;
+            try
+            {
+                _cts?.Cancel ();
+                _cts?.Dispose ();
+            }
+            catch { }
+            _cts = null;
         }
     }
 }

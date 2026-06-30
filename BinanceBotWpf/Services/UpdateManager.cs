@@ -23,8 +23,10 @@ namespace BinanceBotWpf.Services
         public UpdateManager(Action<string> logger)
         {
             _logger = logger;
-            _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceTradingBot/1.0");
-            _httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
+            if (!_httpClient.DefaultRequestHeaders.Contains("User-Agent"))
+                _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceTradingBot/1.0");
+            if (!_httpClient.DefaultRequestHeaders.Contains("Accept"))
+                _httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
         }
 
         /// <summary>
@@ -168,7 +170,10 @@ namespace BinanceBotWpf.Services
                 };
                 process.Start ();
                 await Task.Delay (2000);
-                Environment.Exit (0);
+                System.Windows.Application.Current?.Dispatcher.Invoke (() =>
+                {
+                    System.Windows.Application.Current.Shutdown ();
+                });
                 return true;
             }
             catch (Exception ex)

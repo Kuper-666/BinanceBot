@@ -57,7 +57,7 @@ namespace BinanceBotWpf.Services
         private DashboardCommandHandler _dashboardHandler;
 
         private MainWindowViewModel _ui;
-        private bool _isRunning;
+        private volatile bool _isRunning;
         private TelegramNotifier _telegram;
         private CancellationTokenSource _shutdownCts;
 
@@ -377,7 +377,8 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ {name} упал: {ex.Message}. Перезапуск через 10 сек...");
-                    try { await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
+                    try { await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None); }
+                    catch (OperationCanceledException) { break; }
                 }
             }
         }
@@ -387,7 +388,8 @@ namespace BinanceBotWpf.Services
             _isRunning = false;
 
             // Save state before stopping
-            try { _statePersistence?.Save (); } catch { }
+            try { _statePersistence?.Save (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"State save error: {ex.Message}"); }
 
             _shutdownCts?.Cancel ();
             if (_ui != null) _ui.IsRunning = false;
@@ -408,7 +410,8 @@ namespace BinanceBotWpf.Services
             try { _dashboardServer?.Stop (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки DashboardServer: {ex.Message}"); }
 
-            try { _shutdownCts?.Dispose (); } catch { }
+            try { _shutdownCts?.Dispose (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"CTS dispose error: {ex.Message}"); }
             _shutdownCts = null;
         }
 
@@ -721,7 +724,7 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ($"⚙️ Фьючерсы: плечо {cfg.FuturesLeverage}x, макс. риск {cfg.FuturesMaxRiskPercent:P0}");
                 }
             }
-            catch { }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Futures config error: {ex.Message}"); }
 
             // Инициализация фьючерсов (если включены)
             if (_ui?.FuturesEnabled == true)
@@ -746,7 +749,7 @@ namespace BinanceBotWpf.Services
                                 futuresSecret = cfg.ApiSecret ?? "";
                         }
                     }
-                    catch { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Futures keys read error: {ex.Message}"); }
 
                     if (string.IsNullOrEmpty (futuresKey) || string.IsNullOrEmpty (futuresSecret))
                     {
@@ -939,7 +942,8 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex)
                 {
                     _ui?.AddLog ($"❌ BalanceLoop ошибка: {ex.Message}");
-                    try { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); } catch { }
+                    try { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); }
+                    catch (OperationCanceledException) { break; }
                 }
             }
         }
@@ -1023,7 +1027,7 @@ namespace BinanceBotWpf.Services
                         if (cfg != null && !string.IsNullOrEmpty (cfg.CandleInterval))
                             candleInterval = cfg.CandleInterval;
                     }
-                    catch { }
+                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"CandleInterval read error: {ex.Message}"); }
 
                     // Мульти-таймфрейм: читаем из TradingSettings
                     if (_ui != null)
@@ -1088,17 +1092,13 @@ namespace BinanceBotWpf.Services
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         bool traded = false;
 
-                        // Диагностика: почему STRONG Buy не исполняется
+                        // Диагностика: почему Buy не исполняется
                         if (analysis.Action == TradeAction.Buy && !hasPosition && !confirmed)
                         {
-                            _ui?.AddLog ($"🔍 {sym}: STRONG Buy ЗАБЛОКИРОВАН — multi-TF подтверждение НЕ пройдено (5m)");
+                            _ui?.AddLog ($"🔍 {sym}: Buy ЗАБЛОКИРОВАН — multi-TF подтверждение НЕ пройдено (5m)");
                         }
 
-                        if (analysis.Action == TradeAction.Buy && !hasPosition && !confirmed)
-                        {
-                            // Уже залогировано выше
-                        }
-                        else if (analysis.Action == TradeAction.Buy && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
                             // Проверка лимитов RiskManager — оценка реального размера сделки
                             decimal estimatedOrderValue = spotBalance * 0.10m;
@@ -1436,7 +1436,10 @@ namespace BinanceBotWpf.Services
                                 });
                             }
                         }
-                        catch { }
+                        catch (Exception ex)
+                        {
+                            _ui?.AddLog ($"❌ TradingLoop dashboard error: {ex.Message}");
+                        }
                     }
 
                     // Sync trailing stop from UI settings
@@ -1484,7 +1487,10 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync (message);
                 }
             }
-            catch { }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"SendTradeNotification error: {ex.Message}");
+            }
         }
 
         private string GetStatusText()

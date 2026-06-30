@@ -128,6 +128,8 @@ namespace BinanceBotWpf.ViewModels
 
         // График
         private PlotModel _plotModel;
+        private string _equityChartStatus = "";
+        public string EquityChartStatus { get => _equityChartStatus; set { _equityChartStatus = value; OnPropertyChanged (); } }
 
         // Коллекции для UI
         public ObservableCollection<PairAnalysisItem> PairsList { get; set; } = new ();
@@ -349,7 +351,7 @@ namespace BinanceBotWpf.ViewModels
             IsCheckingForUpdate = true;
             try
             {
-                var httpClient = new System.Net.Http.HttpClient ();
+                var httpClient = SharedHttpClient.Instance;
                 var checker = new UpdateChecker (httpClient, AddLog);
                 checker.OnNewVersionAvailable += (version, url) =>
                 {
@@ -450,6 +452,7 @@ namespace BinanceBotWpf.ViewModels
             string timestamp = DateTime.Now.ToString ("HH:mm:ss");
             string formattedMessage = $"[{timestamp}] {message}";
 
+            if (Application.Current == null) return;
             Application.Current.Dispatcher.Invoke (() =>
             {
                 _allLogs.Add (formattedMessage);
@@ -478,6 +481,7 @@ namespace BinanceBotWpf.ViewModels
 
         private void FilterLogs()
         {
+            if (Application.Current == null) return;
             Application.Current.Dispatcher.Invoke (() =>
             {
                 SystemLogs.Clear ();
@@ -514,6 +518,7 @@ namespace BinanceBotWpf.ViewModels
 
         public void ClearLogs()
         {
+            if (Application.Current == null) return;
             Application.Current.Dispatcher.Invoke (() =>
             {
                 _allLogs.Clear ();
@@ -1237,8 +1242,15 @@ namespace BinanceBotWpf.ViewModels
 
         private async void SaveTradingSettings()
         {
-            if (_tradingSettings != null)
-                await _tradingSettings.SaveAsync ();
+            try
+            {
+                if (_tradingSettings != null)
+                    await _tradingSettings.SaveAsync ();
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine ($"SaveTradingSettings error: {ex.Message}");
+            }
         }
 
         private TradingSettings LoadTradingSettingsSync()
