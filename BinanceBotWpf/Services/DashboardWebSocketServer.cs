@@ -51,6 +51,9 @@ namespace BinanceBotWpf.Services
         {
             try
             {
+                // Проверяем порт ДО запуска слушателя — если порт занят, дашборд уже открыт
+                bool portAlreadyUsed = IsPortAlreadyListening (port);
+
                 _cts = new CancellationTokenSource ();
                 _listener = new HttpListener ();
                 _listener.Prefixes.Add ($"http://localhost:{port}/");
@@ -59,8 +62,8 @@ namespace BinanceBotWpf.Services
 
                 _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
 
-                // Авто-открытие браузера (только если порт ещё не занят другим экземпляром)
-                if (!IsPortAlreadyListening (port))
+                // Открываем браузер только если порт был свободен (новый экземпляр)
+                if (!portAlreadyUsed)
                 {
                     Process.Start (new ProcessStartInfo
                     {
