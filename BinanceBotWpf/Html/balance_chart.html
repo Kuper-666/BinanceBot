@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Balance Chart</title>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; background: #1e1e1e; overflow: hidden; }
+        #chart { width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <div id="chart"></div>
+    <script>
+        var chart = echarts.init(document.getElementById('chart'), 'dark');
+
+        var option = {
+            backgroundColor: '#1e1e1e',
+            textStyle: { color: '#ecf0f1' },
+            title: {
+                text: 'Баланс USDC',
+                left: 'center',
+                top: 10,
+                textStyle: { color: '#ecf0f1', fontSize: 16, fontWeight: 'bold' }
+            },
+            tooltip: {
+                trigger: 'axis',
+                backgroundColor: 'rgba(44, 62, 80, 0.95)',
+                borderColor: '#3498db',
+                textStyle: { color: '#ecf0f1', fontSize: 12 },
+                formatter: function (params) {
+                    var p = params[0];
+                    return '<b>' + p.axisValue + '</b><br/>Баланс: <b style="color:#2ecc71">' +
+                        parseFloat(p.value).toFixed(2) + ' USDC</b>';
+                }
+            },
+            grid: {
+                left: 60, right: 30, top: 50, bottom: 40
+            },
+            xAxis: {
+                type: 'category',
+                data: [],
+                axisLine: { lineStyle: { color: '#34495e' } },
+                axisLabel: { color: '#95a5a6', fontSize: 10, rotate: 30 },
+                splitLine: { show: false }
+            },
+            yAxis: {
+                type: 'value',
+                axisLine: { lineStyle: { color: '#34495e' } },
+                axisLabel: { color: '#95a5a6', fontSize: 11 },
+                splitLine: { lineStyle: { color: '#2c3e50', type: 'dashed' } },
+                scale: true
+            },
+            series: [{
+                name: 'Баланс',
+                type: 'line',
+                data: [],
+                smooth: true,
+                symbol: 'circle',
+                symbolSize: 4,
+                showSymbol: false,
+                lineStyle: { width: 2.5, color: '#2ecc71' },
+                areaStyle: {
+                    color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+                        { offset: 0, color: 'rgba(46, 204, 113, 0.35)' },
+                        { offset: 1, color: 'rgba(46, 204, 113, 0.02)' }
+                    ])
+                },
+                itemStyle: { color: '#2ecc71' }
+            }],
+            animation: true,
+            animationDuration: 600,
+            animationEasing: 'cubicOut'
+        };
+
+        chart.setOption(option);
+        window.addEventListener('resize', function () { chart.resize(); });
+
+        function updateChart(times, values) {
+            chart.setOption({
+                xAxis: { data: times },
+                series: [{ data: values }]
+            });
+        }
+
+        function updateSinglePoint(time, value) {
+            var opt = chart.getOption();
+            var xData = opt.xAxis[0].data;
+            var sData = opt.series[0].data;
+
+            if (xData.length > 0 && xData[xData.length - 1] === time) {
+                sData[sData.length - 1] = value;
+            } else {
+                xData.push(time);
+                sData.push(value);
+                if (xData.length > 200) {
+                    xData.shift();
+                    sData.shift();
+                }
+            }
+            chart.setOption({
+                xAxis: { data: xData },
+                series: [{ data: sData }]
+            });
+        }
+    </script>
+</body>
+</html>

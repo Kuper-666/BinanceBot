@@ -5,6 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Net;
+using System.Net.Sockets;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
@@ -24,10 +25,23 @@ namespace BinanceBotWpf.Services
         private readonly ILogger<DashboardWebSocketServer> _log;
         private const int MaxMessagesPerSecond = 50;
 
+        private static bool IsPortAlreadyListening (int port)
+        {
+            try
+            {
+                using var tcp = new TcpClient ();
+                tcp.Connect ("127.0.0.1", port);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
         public bool IsRunning => _listener?.IsListening == true;
         public int ClientCount => _clients.Count;
         public Func<string, Dictionary<string, object>, Task> OnCommand { get; set; }
-
         public DashboardWebSocketServer (ILogger<DashboardWebSocketServer> logger)
         {
             _log = logger;
@@ -45,10 +59,9 @@ namespace BinanceBotWpf.Services
 
                 _ = Task.Run (() => AcceptLoopAsync (_cts.Token));
 
-                // Авто-открытие браузера (только если ещё не открыт в этой сессии)
-                if (!_browserOpened)
+                // Авто-открытие браузера (только если порт ещё не занят другим экземпляром)
+                if (!IsPortAlreadyListening (port))
                 {
-                    _browserOpened = true;
                     Process.Start (new ProcessStartInfo
                     {
                         FileName = $"http://localhost:{port}",
@@ -76,7 +89,6 @@ namespace BinanceBotWpf.Services
             _clients.Clear ();
             try { _listener?.Stop (); } catch { }
             _listener = null;
-            _browserOpened = false;
             _log.LogInformation ("Dashboard WS server stopped");
         }
 
@@ -329,8 +341,6 @@ namespace BinanceBotWpf.Services
             }
             return false;
         }
-
-        private static bool _browserOpened;
 
         public void BroadcastGridBot (Dictionary<string, object> data)
         {

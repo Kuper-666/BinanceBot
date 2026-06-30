@@ -26,6 +26,7 @@
     <PackageReference Include="Microsoft.ML.OnnxRuntime" Version="1.19.2" />
     <PackageReference Include="Microsoft.ML.OnnxTransformer" Version="5.0.0" />
     <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.10" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.4022.49" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="OxyPlot.Wpf" Version="2.2.0" />
     <PackageReference Include="Polly" Version="8.4.1" />
@@ -48,6 +49,6 @@
     <ItemGroup>
       <DashboardFiles Include="$(MSBuildProjectDirectory)\..\binance-dashboard\dist\**\*" />
     </ItemGroup>
-    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles-&gt;'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
+    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles->'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
   </Target>
 </Project>

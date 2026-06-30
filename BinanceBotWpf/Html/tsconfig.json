@@ -1,0 +1,12 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "none",
+    "strict": true,
+    "esModuleInterop": false,
+    "outFile": "balance_chart.js",
+    "rootDir": ".",
+    "lib": ["ES2020", "DOM"]
+  },
+  "include": ["balance_chart.ts"]
+}
