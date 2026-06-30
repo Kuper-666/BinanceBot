@@ -104,11 +104,41 @@ namespace BinanceBotWpf.Services
             try
             {
                 _logger?.Invoke ($"📥 Загрузка обновления {newVersion}...");
-                string tempZip = Path.GetTempFileName ();
+                string tempZip = Path.ChangeExtension (Path.GetTempFileName (), ".zip");
+
                 using (var resp = await _httpClient.GetAsync (downloadUrl, HttpCompletionOption.ResponseHeadersRead))
-                using (var fs = new FileStream (tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
                 {
-                    await resp.Content.CopyToAsync (fs);
+                    // Проверяем Content-Type — если не application/zip, значит это не архив
+                    string contentType = resp.Content.Headers.ContentType?.MediaType ?? "";
+                    _logger?.Invoke ($"📥 Ответ сервера: {resp.StatusCode}, Content-Type: {contentType}");
+
+                    if (!resp.IsSuccessStatusCode)
+                    {
+                        _logger?.Invoke ($"❌ Сервер вернул ошибку: {resp.StatusCode}");
+                        return false;
+                    }
+
+                    // GitHub редиректит на CDN — проверяем что получили бинарный файл
+                    long? contentLength = resp.Content.Headers.ContentLength;
+                    _logger?.Invoke ($"📥 Размер файла: {contentLength ?? 0} байт");
+
+                    using (var fs = new FileStream (tempZip, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
+                    {
+                        await resp.Content.CopyToAsync (fs);
+                    }
+
+                    // Проверяем что файл — валидный ZIP (первые 2 байта = 0x50 0x4B = "PK")
+                    byte[] header = new byte[2];
+                    using (var fs = File.OpenRead (tempZip))
+                    {
+                        if (fs.Read (header, 0, 2) < 2 || header[0] != 0x50 || header[1] != 0x4B)
+                        {
+                            string preview = File.ReadAllText (tempZip).Substring (0, Math.Min (500, File.ReadAllText (tempZip).Length));
+                            _logger?.Invoke ($"❌ Скачанный файл не является ZIP. Содержимое: {preview}");
+                            try { File.Delete (tempZip); } catch { }
+                            return false;
+                        }
+                    }
                 }
 
                 string extractPath = Path.Combine (Path.GetTempPath (), "BotUpdate_" + Guid.NewGuid ());
