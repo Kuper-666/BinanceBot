@@ -63,9 +63,8 @@ namespace BinanceBotWpf.Services
             try
             {
                 var response = await _httpClient.GetStringAsync ("https://www.binance.com/bapi/composite/v1/public/cms/article/list/query?type=1&catalogId=48&pageNo=1&pageSize=20");
-                // Простой парсинг: ищем ключевые слова в заголовках
-                // В реальности нужен JSON парсинг, но для базовой фильтрации достаточно
-                _logger?.Invoke ($"📰 Загружены новости Binance");
+                // НЕ логируем содержимое ответа — только факт загрузки
+                _logger?.Invoke ($"📰 Binance: новости загружены ({response.Length} байт)");
             }
             catch
             {
@@ -79,11 +78,14 @@ namespace BinanceBotWpf.Services
             {
                 // RSS лента Google News по крипто-ключевым словам
                 var response = await _httpClient.GetStringAsync ("https://news.google.com/rss/search?q=crypto+binance+when:1d&hl=en");
-                // Парсим RSS и ищем ключевые слова
+                // НЕ логируем содержимое RSS — только факт загрузки
+                _logger?.Invoke ($"📰 Google News: загружено ({response.Length} байт)");
+
+                // Парсим RSS и ищем ключевые слова без вывода содержимого
                 if (response.Contains ("launchpool") || response.Contains ("listing") || response.Contains ("airdrop"))
                 {
                     _upcomingEvents.Add (DateTime.UtcNow.AddMinutes (30));
-                    _logger?.Invoke ("📰 Обнаружены значимые крипто-новости");
+                    _logger?.Invoke ("📰 Обнаружены значимые крипто-новости (listing/airdrop/launchpool)");
                 }
             }
             catch
