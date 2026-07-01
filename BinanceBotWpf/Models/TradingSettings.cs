@@ -105,6 +105,11 @@ namespace BinanceBotWpf.Models
         public bool TradingViewEnabled { get; set; } = false;
         public string TradingViewSecret { get; set; } = "";
 
+        // Кулдауны и лимиты
+        public int BuyCooldownMinutes { get; set; } = 15;
+        public int MaxTradesPerHour { get; set; } = 3;
+        public int MaxHoldTimeHours { get; set; } = 24;
+
         /// <summary>
         /// Сохранить настройки в файл
         /// </summary>

@@ -30,6 +30,8 @@ namespace BinanceBotWpf.Services
         private decimal _totalInvestment;
         private decimal _gridRangePercent;
         private decimal _realizedPnl;
+        private int _gridLevels;
+        private DateTime _lastRecenterCheck = DateTime.MinValue;
 
         public bool IsRunning => _isRunning;
         public string Symbol => _symbol;
@@ -84,6 +86,7 @@ namespace BinanceBotWpf.Services
             _centerPrice = centerPrice;
             _totalInvestment = totalInvestmentUsdc;
             _gridRangePercent = gridRangePercent;
+            _gridLevels = gridLevels;
             _isRunning = true;
             _cts = new CancellationTokenSource ();
 
@@ -280,6 +283,23 @@ namespace BinanceBotWpf.Services
                 try
                 {
                     await Task.Delay (5000, token);
+
+                    // Периодическое рецентрирование сетки (каждые 5 минут)
+                    if ((DateTime.UtcNow - _lastRecenterCheck).TotalMinutes >= 5)
+                    {
+                        _lastRecenterCheck = DateTime.UtcNow;
+                        decimal currentPrice = await _client.GetPriceAsync (_symbol);
+                        if (currentPrice > 0)
+                        {
+                            decimal drift = Math.Abs (currentPrice - _centerPrice) / _centerPrice;
+                            if (drift > 0.10m)
+                            {
+                                _logger?.Invoke ($"🔄 GridBot: рецентрирование (дрейф {drift:P1} > 10%)");
+                                await UpdateGridAsync (currentPrice, _gridRangePercent, _gridLevels, _totalInvestment);
+                                return; // UpdateGridAsync перезапускает цикл
+                            }
+                        }
+                    }
 
                     // Проверяем исполненные ордера через позиции
                     if (_positionManager.TryGet (_symbol, out var pos) && pos.Quantity > 0)

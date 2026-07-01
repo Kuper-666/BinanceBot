@@ -69,7 +69,7 @@ namespace BinanceBotWpf.Services
 
         public (bool IsProfitable, float Probability, string RiskLevel) PredictRisk(decimal fastSma, decimal slowSma, decimal rsi, decimal volumeRatio, decimal atr, decimal macdHist, decimal bbWidth, decimal obv, float marketCapRank = -1f, float sentimentScore = 0f, float galaxyScore = 0f)
         {
-            if (!_mlModelLoaded) return (true, 1.0f, "Low Risk");
+            if (!_mlModelLoaded) return (true, 0.5f, "Medium Risk");
             try
             {
                 var input = new ModelInput
@@ -86,7 +86,7 @@ namespace BinanceBotWpf.Services
                     SentimentScore = sentimentScore,
                     GalaxyScore = galaxyScore
                 };
-                if (_mlContext == null || _mlModel == null) return (true, 1.0f, "Low Risk");
+                if (_mlContext == null || _mlModel == null) return (true, 0.5f, "Medium Risk");
 
                 var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
                 var result = predEngine.Predict (input);

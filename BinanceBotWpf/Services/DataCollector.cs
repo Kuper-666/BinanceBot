@@ -94,7 +94,7 @@ namespace BinanceBotWpf.Services
                 {
                     try
                     {
-                        var klines = await _client.GetKlinesAsync (trade.Symbol, "5m", 50);
+                        var klines = await _client.GetKlinesAsync (trade.Symbol, "5m", 50, endTime: trade.CloseTime);
                         if (klines == null || klines.Count < Math.Max (fastSma, slowSma) + 2) continue;
                         var closes = klines.Select (k => k.Close).ToList ();
                         var volumes = klines.Select (k => k.Volume).ToList ();

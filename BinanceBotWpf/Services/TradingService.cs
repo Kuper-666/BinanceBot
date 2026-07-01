@@ -57,6 +57,7 @@ namespace BinanceBotWpf.Services
         private TelegramCommandHandler _telegramHandler;
         private DashboardCommandHandler _dashboardHandler;
         private TradingViewWebhookService _tradingViewHandler;
+        private NewsFetcher _newsFetcher;
 
         private MainWindowViewModel _ui;
         private volatile bool _isRunning;
@@ -65,8 +66,7 @@ namespace BinanceBotWpf.Services
 
         // Списки и кэш
         private readonly List<string> _recentErrors = new ();
-        private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
-        private readonly object _klinesCacheLock = new ();
+        private readonly ConcurrentDictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
 
         // Настройки
         private readonly string _telegramBotToken;
@@ -86,6 +86,12 @@ namespace BinanceBotWpf.Services
         private bool _sessionStartBalanceCaptured;
         private readonly List<Dictionary<string, object>> _pnlHistory = new ();
         private const int MaxPnlHistory = 200;
+        private CancellationTokenSource _protectorCts;
+        private Task _protectorLoopTask;
+        private int _consecutiveErrors;
+        private DateTime _circuitBreakerUntil = DateTime.MinValue;
+        private const int CircuitBreakerThreshold = 5;
+        private readonly TimeSpan CircuitBreakerCooldown = TimeSpan.FromMinutes (5);
 
         // TradingService.cs, конструктор — все зависимости через DI:
         public TradingService (
@@ -207,6 +213,10 @@ namespace BinanceBotWpf.Services
                 var newsSentinel = new NewsSentinel (wrappedLogger);
                 _strategy.SetNewsSentinel (newsSentinel, newsEnabled);
                 _ui?.AddLog ($"📰 Эшелон 3 (NewsSentinel): {(newsEnabled ? "включён" : "выключен")}");
+
+                _newsFetcher = new NewsFetcher (SharedHttpClient.Instance, newsSentinel, wrappedLogger);
+                _newsFetcher.Start ();
+                _ui?.AddLog ("📰 NewsFetcher: фоновый сбор новостей запущен");
             }
             catch (Exception ex)
             {
@@ -351,12 +361,15 @@ namespace BinanceBotWpf.Services
             _pairManager.SetViewModel (_ui);
             _pairManager.SetWebSocketManager (_webSocketManager);
             _orderExecutor.SetViewModel (_ui);
+            _orderExecutor.BuyCooldownMinutes = _tradingSettings?.BuyCooldownMinutes ?? 15;
+            _orderExecutor.MaxTradesPerHour = _tradingSettings?.MaxTradesPerHour ?? 3;
             _backgroundLoopManager.Configure (_ui, _isRunning, _shutdownCts, _tradingSettings, _updateChecker, _telegram, _pairManager);
 
             // Sync trailing stop from settings to protector
             if (_ui != null && _positionProtector is PositionProtector prot)
             {
                 prot.TrailingStopPercent = _ui.TrailingStopPercent;
+                prot.MaxHoldTime = TimeSpan.FromHours (_tradingSettings?.MaxHoldTimeHours ?? 24);
             }
 
             // Restore trading state from file
@@ -372,6 +385,45 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.WhaleLoop, "WhaleLoop"));
             _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.EarnOptimizeLoop, "EarnOptimize"));
             _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.FearGreedLoop, "FearGreed"));
+
+            // PositionProtector runs independently — survives StopTrading()
+            StartProtectorLoop ();
+        }
+
+        private void StartProtectorLoop ()
+        {
+            if (_protectorLoopTask != null && !_protectorLoopTask.IsCompleted) return;
+            _protectorCts = new CancellationTokenSource ();
+            _protectorLoopTask = Task.Run (async () =>
+            {
+                while (!_protectorCts.Token.IsCancellationRequested)
+                {
+                    try
+                    {
+                        if (_isRunning)
+                        {
+                            var toClose = await _positionProtector.CheckAndProtectAsync (GetCurrentPrice);
+                            foreach (var sym in toClose)
+                            {
+                                await _orderExecutor.ExecuteSellAsync (sym);
+                            }
+                        }
+
+                        // Sync trailing stop from UI
+                        if (_positionProtector is PositionProtector prot)
+                        {
+                            prot.TrailingStopPercent = _ui?.TrailingStopPercent ?? 0.02m;
+                            prot.MaxHoldTime = TimeSpan.FromHours (_tradingSettings?.MaxHoldTimeHours ?? 24);
+                        }
+                    }
+                    catch (OperationCanceledException) { break; }
+                    catch (Exception ex)
+                    {
+                        System.Diagnostics.Debug.WriteLine ($"⚠️ ProtectorLoop error: {ex.Message}");
+                    }
+                    await Task.Delay (10000, _protectorCts.Token);
+                }
+            });
         }
 
         private async Task RunLoopWithRestart (Func<Task> loop, string name)
@@ -417,6 +469,9 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки GridBot: {ex.Message}"); }
             finally { _gridBot = null; }
 
+            try { _newsFetcher?.Dispose (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки NewsFetcher: {ex.Message}"); }
+
             _backgroundLoopManager.DisposeWhaleMonitor ();
 
             try { _dashboardServer?.Stop (); }
@@ -453,6 +508,10 @@ namespace BinanceBotWpf.Services
             try { _shutdownCts?.Dispose (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"CTS dispose error: {ex.Message}"); }
             _shutdownCts = null;
+
+            // Protector loop survives StopTrading — only killed on app exit
+            try { _protectorCts?.Cancel (); _protectorCts?.Dispose (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Protector CTS dispose error: {ex.Message}"); }
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
@@ -994,20 +1053,14 @@ namespace BinanceBotWpf.Services
         private async Task<List<BinanceKline>> GetKlinesCachedAsync (string symbol, string interval, int limit)
         {
             string cacheKey = $"{symbol}_{interval}_{limit}";
-            lock (_klinesCacheLock)
+            if (_klinesCache.TryGetValue (cacheKey, out var cached) && DateTime.UtcNow < cached.Expiry)
             {
-                if (_klinesCache.TryGetValue (cacheKey, out var cached) && DateTime.UtcNow < cached.Expiry)
-                {
-                    return cached.Klines;
-                }
+                return cached.Klines;
             }
             var klines = await _client.GetKlinesAsync (symbol, interval, limit);
             if (klines != null)
             {
-                lock (_klinesCacheLock)
-                {
-                    _klinesCache[cacheKey] = (klines, DateTime.UtcNow + TimeSpan.FromSeconds (30));
-                }
+                _klinesCache[cacheKey] = (klines, DateTime.UtcNow + TimeSpan.FromSeconds (30));
             }
             return klines;
         }
@@ -1019,6 +1072,13 @@ namespace BinanceBotWpf.Services
                 try
                 {
                     if (!_tradingLoopEnabled) { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
+
+                    // Circuit breaker: пауза при последовательных ошибках API
+                    if (DateTime.UtcNow < _circuitBreakerUntil)
+                    {
+                        await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None);
+                        continue;
+                    }
 
                     // 0. Проверка новостей и макро-событий
                     if (_tradingSettings?.AvoidNewsTime == true
@@ -1032,13 +1092,6 @@ namespace BinanceBotWpf.Services
                             await Task.Delay (300000, _shutdownCts?.Token ?? CancellationToken.None);
                             continue;
                         }
-                    }
-
-                    // 1. Защита позиций
-                    var toClose = await _positionProtector.CheckAndProtectAsync (GetCurrentPrice);
-                    foreach (var sym in toClose)
-                    {
-                        await _orderExecutor.ExecuteSellAsync (sym);
                     }
 
                     // 2. Проверка баланса
@@ -1074,24 +1127,36 @@ namespace BinanceBotWpf.Services
                         entryInterval = _ui.EntryTimeframe ?? "5m";
                     }
 
-                    // 4. Анализ пар
-                    foreach (var sym in pairs)
+                    // 4. Анализ пар (параллельный)
+                    if (_ui != null)
                     {
-                        var klines = await GetKlinesCachedAsync (sym, candleInterval, 100);
-                        if (klines == null || klines.Count < 30) continue;
+                        _strategy.FastSmaPeriod = _ui.FastSma;
+                        _strategy.SlowSmaPeriod = _ui.SlowSma;
+                        _strategy.RsiPeriod = _ui.RsiPeriod;
+                        _strategy.MainTimeframe = _ui.MainTimeframe ?? "1h";
+                        _strategy.EntryTimeframe = _ui.EntryTimeframe ?? "5m";
+                    }
 
-                        if (_ui != null)
+                    var analysisResults = new System.Collections.Concurrent.ConcurrentBag<(string Symbol, (TradeAction Action, string Reason, Dictionary<string, decimal> Indicators) Analysis, bool HasPosition)>();
+                    using var analysisSemaphore = new SemaphoreSlim (5, 5);
+                    var analysisTasks = pairs.Select (async sym =>
+                    {
+                        await analysisSemaphore.WaitAsync ();
+                        try
                         {
-                            _strategy.FastSmaPeriod = _ui.FastSma;
-                            _strategy.SlowSmaPeriod = _ui.SlowSma;
-                            _strategy.RsiPeriod = _ui.RsiPeriod;
-                            _strategy.MainTimeframe = _ui.MainTimeframe ?? "1h";
-                            _strategy.EntryTimeframe = _ui.EntryTimeframe ?? "5m";
+                            var klines = await GetKlinesCachedAsync (sym, candleInterval, 100);
+                            if (klines == null || klines.Count < 30) return;
+
+                            var analysis = await _strategy.AnalyzeAsync (sym, klines);
+                            bool hasPosition = _positionManager.TryGet (sym, out _);
+                            analysisResults.Add ((sym, analysis, hasPosition));
                         }
+                        finally { analysisSemaphore.Release (); }
+                    });
+                    await Task.WhenAll (analysisTasks);
 
-                        var analysis = await _strategy.AnalyzeAsync (sym, klines);
-                        bool hasPosition = _positionManager.TryGet (sym, out _);
-
+                    foreach (var (sym, analysis, hasPosition) in analysisResults)
+                    {
                         // Мульти-таймфрейм: подтверждение на мелком TF
                         bool confirmed = true;
                         if (analysis.Action == TradeAction.Buy || analysis.Action == TradeAction.Sell)
@@ -1173,7 +1238,8 @@ namespace BinanceBotWpf.Services
                         // 6. Volume Breakout стратегия (если включена)
                         if (_ui?.VolumeBreakoutEnabled == true && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
-                            if (_volumeBreakout.CheckVolumeBreakout (klines))
+                            var symKlines = await GetKlinesCachedAsync (sym, candleInterval, 100);
+                            if (symKlines != null && _volumeBreakout.CheckVolumeBreakout (symKlines))
                             {
                                 _ui?.AddLog ($"🚀 {sym}: Volume Breakout сигнал!");
                                 await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, spotBalance);
@@ -1184,7 +1250,8 @@ namespace BinanceBotWpf.Services
                         // 7. DCA стратегия (если включена)
                         if (_ui?.DcaEnabled == true && !hasPosition)
                         {
-                            if (_dcaStrategy.ShouldBuy (sym, klines, spotBalance))
+                            var symKlines2 = await GetKlinesCachedAsync (sym, candleInterval, 100);
+                            if (symKlines2 != null && _dcaStrategy.ShouldBuy (sym, symKlines2, spotBalance))
                             {
                                 decimal buyAmount = _dcaStrategy.CalculateBuyAmount (spotBalance);
                                 _ui?.AddLog ($"📊 {sym}: DCA покупка на {buyAmount:F2} USDC");
@@ -1481,12 +1548,7 @@ namespace BinanceBotWpf.Services
                         }
                     }
 
-                    // Sync trailing stop from UI settings
-                    if (_ui != null && _positionProtector is PositionProtector prot2)
-                    {
-                        prot2.TrailingStopPercent = _ui.TrailingStopPercent;
-                    }
-
+                    _consecutiveErrors = 0;
                     await Task.Delay (30000, _shutdownCts?.Token ?? CancellationToken.None);
                 }
                 catch (OperationCanceledException) { break; }
@@ -1494,6 +1556,7 @@ namespace BinanceBotWpf.Services
                 {
                     string msg = ex.Message;
                     _ui?.AddLog ($"❌ TradingLoop: {msg}");
+                    _consecutiveErrors++;
 
                     // P1: Graceful shutdown на критических ошибках API.
                     // -2015 = Invalid API-key/IP (keys скомпрометированы, IP заблокирован)
@@ -1510,6 +1573,14 @@ namespace BinanceBotWpf.Services
                         _ui?.AddLog ("🚨 КРИТИЧНО: Ордер вызовет немедленное исполнение (ликвидация?). Остановка.");
                         StopTrading ();
                         return;
+                    }
+
+                    // Circuit breaker: пауза после 5 последовательных ошибок
+                    if (_consecutiveErrors >= CircuitBreakerThreshold)
+                    {
+                        _circuitBreakerUntil = DateTime.UtcNow + CircuitBreakerCooldown;
+                        _ui?.AddLog ($"⚠️ Circuit breaker: торговля приостановлена на {CircuitBreakerCooldown.TotalMinutes} мин ({_consecutiveErrors} ошибок подряд)");
+                        _ = SendTradeNotification ($"⚠️ Circuit breaker: {_consecutiveErrors} ошибок подряд, торговля приостановлена на {CircuitBreakerCooldown.TotalMinutes} мин");
                     }
 
                     await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None);

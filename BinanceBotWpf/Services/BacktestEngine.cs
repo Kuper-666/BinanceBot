@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BinanceBotWpf.Models;
+using BinanceBotWpf.Services.Strategies;
 
 namespace BinanceBotWpf.Services
 {
@@ -187,8 +188,7 @@ namespace BinanceBotWpf.Services
                 }
                 decimal avgReturn = returns.Average ();
                 decimal stdDev = CalculateStdDev (returns);
-                // 252 = дни/год для дневных свечей; для 1h: 252*24=6048
-                int annualizationFactor = 252;
+                int annualizationFactor = 6048; // 252*24 для 1h свечей
                 sharpeRatio = stdDev > 0 ? avgReturn / stdDev * (decimal)Math.Sqrt (annualizationFactor) : 0;
             }
 
@@ -202,6 +202,138 @@ namespace BinanceBotWpf.Services
             {
                 profitFactor = 999m; // Все сделки прибыльны
             }
+
+            return new BacktestResult
+            {
+                TotalReturn = totalReturn,
+                WinRate = winRate,
+                TotalTrades = totalTrades,
+                WinningTrades = winningTrades,
+                LosingTrades = losingTrades,
+                MaxDrawdown = maxDrawdown,
+                SharpeRatio = sharpeRatio,
+                ProfitFactor = profitFactor,
+                EquityCurve = equityCurve
+            };
+        }
+
+        /// <summary>
+        /// Запуск бэктеста на исторических данных с использованием реальной TradingStrategy
+        /// </summary>
+        public async Task<BacktestResult> RunWithStrategyAsync(
+            List<BinanceKline> klines,
+            TradingStrategy strategy,
+            decimal stopLossPercent,
+            decimal takeProfitPercent,
+            decimal initialCapital = 0m)
+        {
+            if (klines == null || klines.Count < strategy.SlowSmaPeriod + 10)
+            {
+                _logger?.Invoke ("⚠️ Недостаточно данных для бэктеста");
+                return null;
+            }
+
+            if (initialCapital <= 0) initialCapital = 1000m;
+
+            decimal capital = initialCapital;
+            decimal position = 0;
+            decimal entryPrice = 0;
+            decimal peakCapital = initialCapital;
+            decimal maxDrawdown = 0;
+
+            int winningTrades = 0;
+            int losingTrades = 0;
+            decimal totalGrossProfit = 0;
+            decimal totalGrossLoss = 0;
+            var equityCurve = new List<decimal> { initialCapital };
+
+            int warmup = strategy.SlowSmaPeriod + 10;
+
+            for (int i = warmup; i < klines.Count; i++)
+            {
+                var window = klines.GetRange(0, i + 1);
+                var analysis = await strategy.AnalyzeAsync("BACKTEST", window);
+                decimal price = klines[i].Close;
+
+                if (position == 0 && analysis.Action == TradeAction.Buy)
+                {
+                    decimal cost = capital * 0.0004m;
+                    position = (capital - cost) / price;
+                    capital = 0;
+                    entryPrice = price;
+                }
+                else if (position > 0)
+                {
+                    decimal stopPrice = entryPrice * (1 - stopLossPercent);
+                    decimal takePrice = entryPrice * (1 + takeProfitPercent);
+                    bool stopHit = price <= stopPrice;
+                    bool takeHit = price >= takePrice;
+
+                    if (analysis.Action == TradeAction.Sell || stopHit || takeHit)
+                    {
+                        decimal proceeds = position * price;
+                        decimal fee = proceeds * 0.0004m;
+                        capital = proceeds - fee;
+
+                        decimal tradePnl = (price - entryPrice) / entryPrice;
+                        if (tradePnl > 0.0001m)
+                        {
+                            winningTrades++;
+                            totalGrossProfit += capital - (entryPrice * (capital / price));
+                        }
+                        else if (tradePnl < -0.0001m)
+                        {
+                            losingTrades++;
+                            totalGrossLoss += Math.Abs(capital - (entryPrice * (capital / price)));
+                        }
+
+                        position = 0;
+                    }
+
+                    if (position > 0)
+                    {
+                        decimal unrealizedEquity = position * price;
+                        if (unrealizedEquity > peakCapital) peakCapital = unrealizedEquity;
+                        decimal unrealizedDrawdown = (peakCapital - unrealizedEquity) / peakCapital * 100;
+                        if (unrealizedDrawdown > maxDrawdown) maxDrawdown = unrealizedDrawdown;
+                    }
+                }
+
+                if (capital > peakCapital) peakCapital = capital;
+                decimal drawdown = (peakCapital - capital) / peakCapital * 100;
+                if (drawdown > maxDrawdown) maxDrawdown = drawdown;
+
+                equityCurve.Add(position > 0 ? position * price : capital);
+            }
+
+            if (position > 0)
+            {
+                decimal proceeds = position * klines.Last().Close;
+                decimal fee = proceeds * 0.0004m;
+                capital = proceeds - fee;
+            }
+
+            decimal totalReturn = (capital - initialCapital) / initialCapital * 100;
+            int totalTrades = winningTrades + losingTrades;
+            decimal winRate = totalTrades > 0 ? (decimal)winningTrades / totalTrades * 100 : 0;
+
+            decimal sharpeRatio = 0;
+            if (equityCurve.Count > 1)
+            {
+                var returns = new List<decimal>();
+                for (int i = 1; i < equityCurve.Count; i++)
+                    returns.Add((equityCurve[i] - equityCurve[i - 1]) / equityCurve[i - 1]);
+                decimal avgReturn = returns.Average();
+                decimal stdDev = CalculateStdDev(returns);
+                int annualizationFactor = 252;
+                sharpeRatio = stdDev > 0 ? avgReturn / stdDev * (decimal)Math.Sqrt(annualizationFactor) : 0;
+            }
+
+            decimal profitFactor = 0;
+            if (totalGrossLoss > 0 && totalGrossProfit > 0)
+                profitFactor = totalGrossProfit / totalGrossLoss;
+            else if (totalGrossProfit > 0)
+                profitFactor = 999m;
 
             return new BacktestResult
             {

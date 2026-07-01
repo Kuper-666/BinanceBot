@@ -685,10 +685,20 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
         {
+            return await GetKlinesAsync(symbol, interval, limit, endTime: null);
+        }
+
+        public async Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit, DateTime? endTime)
+        {
             var sw = Stopwatch.StartNew ();
             try
             {
                 string url = $"/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}";
+                if (endTime.HasValue)
+                {
+                    long endMs = new DateTimeOffset (endTime.Value, TimeSpan.Zero).ToUnixTimeMilliseconds ();
+                    url += $"&endTime={endMs}";
+                }
                 var request = new HttpRequestMessage (HttpMethod.Get, url);
                 var response = await SendWithRetryAsync (request);
                 if (response.IsSuccessStatusCode)

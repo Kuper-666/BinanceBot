@@ -28,6 +28,9 @@ namespace BinanceBotWpf.Services
         private readonly List<DateTime> _recentTradeTimes = new ();
         private readonly object _cooldownLock = new ();
 
+        public int BuyCooldownMinutes { get; set; } = 15;
+        public int MaxTradesPerHour { get; set; } = 3;
+
         public OrderExecutor (
             BinanceClient client,
             IAiRiskEngine aiRiskEngine,
@@ -164,16 +167,17 @@ namespace BinanceBotWpf.Services
 
             lock (_cooldownLock)
             {
-                if (_lastBuyTime.TryGetValue (symbol, out DateTime lastTime) && DateTime.UtcNow - lastTime < TimeSpan.FromMinutes (15))
+                var cooldown = TimeSpan.FromMinutes (BuyCooldownMinutes);
+                if (_lastBuyTime.TryGetValue (symbol, out DateTime lastTime) && DateTime.UtcNow - lastTime < cooldown)
                 {
-                    _ui?.AddLog ($"{symbol}: BUY проигнорирован — кулдаун ({(TimeSpan.FromMinutes (15) - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)");
+                    _ui?.AddLog ($"{symbol}: BUY проигнорирован — кулдаун ({(cooldown - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)");
                     return;
                 }
 
                 _recentTradeTimes.RemoveAll (t => DateTime.UtcNow - t > TimeSpan.FromHours (1));
-                if (_recentTradeTimes.Count >= 3)
+                if (_recentTradeTimes.Count >= MaxTradesPerHour)
                 {
-                    _ui?.AddLog ($"{symbol}: BUY пропущен — глобальный лимит 3 сделки/час");
+                    _ui?.AddLog ($"{symbol}: BUY пропущен — глобальный лимит {MaxTradesPerHour} сделок/час");
                     return;
                 }
 
