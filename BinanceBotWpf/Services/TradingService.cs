@@ -608,6 +608,10 @@ namespace BinanceBotWpf.Services
             _ui?.AddLog ($"🔌 WebSocket эндпоинт: {(useFutures ? "фьючерсы (fstream.binance.com)" : "спот (stream.binance.com)")}");
 
             await _wallet.UpdateBalance ();
+            decimal initBal = _wallet.GetTotalBalance ("USDC");
+            _ui?.UpdateWalletDisplay (initBal.ToString ("F2"));
+            _ui?.UpdateDrawdown (initBal);
+            _ui?.AddBalancePoint (DateTime.Now, initBal);
             await _pairManager.UpdatePairsAsync ();
             await LoadPositions ();
             _ui?.AddLog (_client.IsTestnet ? "⚠️ ТЕСТОВАЯ СЕТЬ" : "✅ РЕАЛЬНАЯ СЕТЬ");
