@@ -301,9 +301,6 @@ namespace BinanceBotWpf.Services
 
             // Configure services (after InitAsync creates _webSocketManager)
             _pairManager.SetViewModel (_ui);
-            _pairManager.SetWebSocketManager (_webSocketManager);
-            // Re-init pairs now that WebSocket manager is connected
-            await _pairManager.UpdatePairsAsync ();
 
             _orderExecutor.SetViewModel (_ui);
             _orderExecutor.BuyCooldownMinutes = _tradingSettings?.BuyCooldownMinutes ?? 15;
@@ -608,6 +605,7 @@ namespace BinanceBotWpf.Services
                 _webSocketManager.Dispose ();
             }
             _webSocketManager = new WebSocketPriceManager (msg => _ui?.AddLog (msg), useFutures);
+            _pairManager.SetWebSocketManager (_webSocketManager);
             _ui?.AddLog ($"🔌 WebSocket эндпоинт: {(useFutures ? "фьючерсы (fstream.binance.com)" : "спот (stream.binance.com)")}");
 
             await _wallet.UpdateBalance ();
