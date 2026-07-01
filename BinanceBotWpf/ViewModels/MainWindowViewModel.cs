@@ -758,6 +758,8 @@ namespace BinanceBotWpf.ViewModels
                     if (series.Points.Count > 200) series.Points.RemoveAt (0);
                     _plotModel.InvalidatePlot (true);
                 }
+
+                MainWindow.Instance?.PushChartPoint (time.ToString ("HH:mm:ss"), balance);
             });
         }
 
@@ -789,6 +791,8 @@ namespace BinanceBotWpf.ViewModels
                 if (_plotModel?.Series.Count > 0 && _plotModel.Series[0] is LineSeries series)
                 {
                     series.Points.Clear ();
+                    var times = new System.Collections.Generic.List<string> ();
+                    var values = new System.Collections.Generic.List<double> ();
                     foreach (var pt in points)
                     {
                         if (pt.TryGetValue ("time", out object timeObj) && pt.TryGetValue ("balance", out object balObj))
@@ -796,9 +800,16 @@ namespace BinanceBotWpf.ViewModels
                             double time = Convert.ToDouble (timeObj);
                             decimal balance = Convert.ToDecimal (balObj);
                             series.Points.Add (new DataPoint (time, (double)balance));
+                            DateTime dt = DateTimeAxis.ToDateTime (time);
+                            times.Add (dt.ToString ("HH:mm:ss"));
+                            values.Add ((double)balance);
                         }
                     }
                     _plotModel.InvalidatePlot (true);
+
+                    string timesJson = System.Text.Json.JsonSerializer.Serialize (times);
+                    string valuesJson = System.Text.Json.JsonSerializer.Serialize (values);
+                    MainWindow.Instance?.PushChartFull (timesJson, valuesJson);
                 }
             });
         }
