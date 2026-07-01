@@ -44,5 +44,9 @@
   "MinBalanceForRisk": 50,
   "MaxBalanceForRisk": 300,
   "MinRiskPercent": 0.10,
-  "MaxRiskPercent": 0.30
+  "MaxRiskPercent": 0.30,
+  "TradingViewEnabled": false,
+  "_tradingViewComment": "TradingView Webhook: принимает POST http://YOUR_IP:8765/webhook/tradingview",
+  "TradingViewSecret": "",
+  "WebhookPort": 8765
 }

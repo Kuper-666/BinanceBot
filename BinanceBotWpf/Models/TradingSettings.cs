@@ -104,6 +104,7 @@ namespace BinanceBotWpf.Models
         // TradingView Webhook
         public bool TradingViewEnabled { get; set; } = false;
         public string TradingViewSecret { get; set; } = "";
+        public int WebhookPort { get; set; } = 8765;
 
         // Кулдауны и лимиты
         public int BuyCooldownMinutes { get; set; } = 15;

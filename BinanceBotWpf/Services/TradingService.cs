@@ -55,6 +55,8 @@ namespace BinanceBotWpf.Services
         private readonly StatePersistence _statePersistence;
         private TelegramCommandHandler _telegramHandler;
         private NewsFetcher _newsFetcher;
+        private WebhookServer _webhookServer;
+        private TradingViewWebhookService _tradingViewHandler;
 
         private MainWindowViewModel _ui;
         private volatile bool _isRunning;
@@ -409,6 +411,10 @@ namespace BinanceBotWpf.Services
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки GridBot: {ex.Message}"); }
             finally { _gridBot = null; }
 
+            try { _webhookServer?.Dispose (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки WebhookServer: {ex.Message}"); }
+            finally { _webhookServer = null; _tradingViewHandler = null; }
+
             try { _newsFetcher?.Dispose (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки NewsFetcher: {ex.Message}"); }
 
@@ -662,6 +668,24 @@ namespace BinanceBotWpf.Services
             if (_updateChecker != null)
             {
                 _ = _updateChecker.CheckForUpdatesAsync ();
+            }
+
+            // ═══════════════════════════════════════════════════
+            // TradingView Webhook Server
+            // ═══════════════════════════════════════════════════
+            if (_tradingSettings?.TradingViewEnabled == true)
+            {
+                int port = _tradingSettings.WebhookPort > 0 ? _tradingSettings.WebhookPort : 8765;
+                _tradingViewHandler = new TradingViewWebhookService (
+                    _ui, _client, _tradingSettings,
+                    async (sym, indicators, balance) => await _orderExecutor.ExecuteBuyAsync (sym, indicators, balance),
+                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
+                    () => _wallet.GetTotalBalance ("USDC").ToString (CultureInfo.InvariantCulture),
+                    (sym) => _webSocketManager?.GetCurrentPrice (sym) ?? 0);
+
+                _webhookServer = new WebhookServer (port, msg => _ui?.AddLog (msg));
+                _webhookServer.Start (async (source, body) => await _tradingViewHandler.HandleWebhookAsync (source, body));
+                _ui?.AddLog ($"📡 TradingView webhook: порт {port}, секрет {(_tradingSettings.TradingViewSecret?.Length > 0 ? "настроен" : "НЕТ")}");
             }
 
             // Авто-запуск сетки с параметрами от ИИ (если включена)

@@ -1272,8 +1272,8 @@ namespace BinanceBotWpf.ViewModels
 
         public void Dispose ()
         {
-            _bgCts?.Cancel ();
-            _bgCts?.Dispose ();
+            try { _bgCts?.Cancel (); } catch (ObjectDisposedException) { }
+            try { _bgCts?.Dispose (); } catch (ObjectDisposedException) { }
         }
 
         public event PropertyChangedEventHandler PropertyChanged;
