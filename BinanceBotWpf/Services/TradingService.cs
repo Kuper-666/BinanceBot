@@ -299,9 +299,12 @@ namespace BinanceBotWpf.Services
             await SetLoggerAsync (vm.AddLog);
             await InitAsync ();
 
-            // Configure decomposed services
+            // Configure services (after InitAsync creates _webSocketManager)
             _pairManager.SetViewModel (_ui);
             _pairManager.SetWebSocketManager (_webSocketManager);
+            // Re-init pairs now that WebSocket manager is connected
+            await _pairManager.UpdatePairsAsync ();
+
             _orderExecutor.SetViewModel (_ui);
             _orderExecutor.BuyCooldownMinutes = _tradingSettings?.BuyCooldownMinutes ?? 15;
             _orderExecutor.MaxTradesPerHour = _tradingSettings?.MaxTradesPerHour ?? 3;
