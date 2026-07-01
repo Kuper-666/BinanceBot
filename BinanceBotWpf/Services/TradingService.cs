@@ -832,7 +832,9 @@ namespace BinanceBotWpf.Services
                 try
                 {
                     if (!_balanceLoopEnabled) { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
-                    await Task.Delay (60000, _shutdownCts?.Token ?? CancellationToken.None);
+
+                    int delayMs = _positionManager.Count > 0 ? 60000 : 3600000;
+                    await Task.Delay (delayMs, _shutdownCts?.Token ?? CancellationToken.None);
                     if (!_isRunning) break;
 
                     await _wallet.UpdateBalance ();
