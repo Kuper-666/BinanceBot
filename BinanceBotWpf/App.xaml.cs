@@ -286,9 +286,6 @@ namespace BinanceBotWpf
                     (MlModelManager)sp.GetRequiredService<IMlModelManager> (),
                     (BinanceClient)sp.GetRequiredService<IBinanceClient> (),
                     fileLogger));
-            services.AddSingleton<IDashboardWebSocketServer> (sp =>
-                new DashboardWebSocketServer (
-                    ServiceLogger.Instance.CreateLogger<DashboardWebSocketServer> ()));
             services.AddSingleton<WebSocketPriceManager> (sp =>
                 new WebSocketPriceManager (fileLogger));
             services.AddSingleton<ISimpleEarnStrategy> (sp =>
@@ -324,7 +321,6 @@ namespace BinanceBotWpf
                 sp.GetRequiredService<TradingSettings> (),
                 sp.GetRequiredService<IBackupService> (),
                 sp.GetRequiredService<IAiRiskEngine> (),
-                sp.GetRequiredService<IDashboardWebSocketServer> (),
                 sp.GetRequiredService<IFearGreedIndexProvider> (),
                 sp.GetRequiredService<IPriceAlertManager> (),
                 sp.GetRequiredService<IRiskManager> (),

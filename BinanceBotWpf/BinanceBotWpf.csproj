@@ -45,10 +45,4 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
-  <Target Name="CopyDashboard" AfterTargets="Build" Condition="Exists('$(MSBuildProjectDirectory)\..\binance-dashboard\dist\index.html')">
-    <ItemGroup>
-      <DashboardFiles Include="$(MSBuildProjectDirectory)\..\binance-dashboard\dist\**\*" />
-    </ItemGroup>
-    <Copy SourceFiles="@(DashboardFiles)" DestinationFiles="@(DashboardFiles-&gt;'$(OutputPath)dashboard\%(RecursiveDir)%(Filename)%(Extension)')" SkipUnchangedFiles="true" />
-  </Target>
 </Project>

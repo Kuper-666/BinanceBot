@@ -42,7 +42,6 @@ namespace BinanceBotWpf.Services
         private TradingSettings _tradingSettings;
         private readonly IBackupService _backupService;
         private readonly IAiRiskEngine _aiRiskEngine;
-        private readonly IDashboardWebSocketServer _dashboardServer;
         private ISimpleEarnStrategy _earnStrategy;
         private readonly IFearGreedIndexProvider _fearGreedProvider;
 
@@ -55,8 +54,6 @@ namespace BinanceBotWpf.Services
         private readonly BotConfig _config;
         private readonly StatePersistence _statePersistence;
         private TelegramCommandHandler _telegramHandler;
-        private DashboardCommandHandler _dashboardHandler;
-        private TradingViewWebhookService _tradingViewHandler;
         private NewsFetcher _newsFetcher;
 
         private MainWindowViewModel _ui;
@@ -77,15 +74,6 @@ namespace BinanceBotWpf.Services
         // Флаги циклов
         private bool _balanceLoopEnabled = true;
         private bool _tradingLoopEnabled = true;
-        private readonly List<Dictionary<string, object>> _equityHistory = new ();
-        private const int MaxEquityHistory = 200;
-        private readonly ConcurrentDictionary<string, Dictionary<string, object>> _lastAnalysis = new ();
-        private readonly List<string> _recentLogs = new ();
-        private const int MaxRecentLogs = 100;
-        private decimal _sessionStartBalance;
-        private bool _sessionStartBalanceCaptured;
-        private readonly List<Dictionary<string, object>> _pnlHistory = new ();
-        private const int MaxPnlHistory = 200;
         private CancellationTokenSource _protectorCts;
         private Task _protectorLoopTask;
         private int _consecutiveErrors;
@@ -111,7 +99,6 @@ namespace BinanceBotWpf.Services
             TradingSettings tradingSettings,
             IBackupService backupService,
             IAiRiskEngine aiRiskEngine,
-            IDashboardWebSocketServer dashboardServer,
             IFearGreedIndexProvider fearGreedProvider,
             IPriceAlertManager priceAlertManager,
             IRiskManager riskManager,
@@ -135,7 +122,6 @@ namespace BinanceBotWpf.Services
             _tradingSettings = tradingSettings;
             _backupService = backupService;
             _aiRiskEngine = aiRiskEngine;
-            _dashboardServer = dashboardServer;
             _fearGreedProvider = fearGreedProvider;
             _priceAlertManager = priceAlertManager;
             _riskManager = riskManager;
@@ -166,24 +152,12 @@ namespace BinanceBotWpf.Services
             if (_loggerSet) return;
             _loggerSet = true;
 
-            // Оборачиваем логгер для сбора логов для дашборда
-            Action<string> wrappedLogger = msg =>
-            {
-                logger (msg);
-                lock (_recentLogs)
-                {
-                    _recentLogs.Add ($"[{DateTime.UtcNow:HH:mm:ss}] {msg}");
-                    if (_recentLogs.Count > MaxRecentLogs)
-                        _recentLogs.RemoveAt (0);
-                }
-            };
+            ServiceLogger.Instance.SetRootLogger (logger);
 
-            ServiceLogger.Instance.SetRootLogger (wrappedLogger);
-
-            _wallet.OnLogGenerated += wrappedLogger;
-            _earn.OnLogGenerated += wrappedLogger;
-            _rebalancer.OnLogGenerated += wrappedLogger;
-            _client.OnLogGenerated += wrappedLogger;
+            _wallet.OnLogGenerated += logger;
+            _earn.OnLogGenerated += logger;
+            _rebalancer.OnLogGenerated += logger;
+            _client.OnLogGenerated += logger;
 
             _strategy.SetMlManager((MlModelManager)_mlManager);
 
@@ -202,19 +176,19 @@ namespace BinanceBotWpf.Services
                 int rsiLow = cfg?.ValidatorRsiLow ?? 20;
                 int rsiHigh = cfg?.ValidatorRsiHigh ?? 80;
 
-                var adaptiveAgent = new AdaptiveAgent (wrappedLogger, slMult, periodMult);
+                var adaptiveAgent = new AdaptiveAgent (logger, slMult, periodMult);
                 _strategy.SetAdaptiveAgent (adaptiveAgent, adaptiveEnabled);
                 _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {(adaptiveEnabled ? "включён" : "выключен")} SL×{slMult} Period×{periodMult}");
 
-                var signalValidator = new SignalValidator (wrappedLogger, volThresh, atrThresh, rsiLow, rsiHigh);
+                var signalValidator = new SignalValidator (logger, volThresh, atrThresh, rsiLow, rsiHigh);
                 _strategy.SetSignalValidator (signalValidator, validatorEnabled);
                 _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")} Vol>{volThresh} ATR>{atrThresh} RSI {rsiLow}/{rsiHigh}");
 
-                var newsSentinel = new NewsSentinel (wrappedLogger);
+                var newsSentinel = new NewsSentinel (logger);
                 _strategy.SetNewsSentinel (newsSentinel, newsEnabled);
                 _ui?.AddLog ($"📰 Эшелон 3 (NewsSentinel): {(newsEnabled ? "включён" : "выключен")}");
 
-                _newsFetcher = new NewsFetcher (SharedHttpClient.Instance, newsSentinel, wrappedLogger);
+                _newsFetcher = new NewsFetcher (SharedHttpClient.Instance, newsSentinel, logger);
                 _newsFetcher.Start ();
                 _ui?.AddLog ("📰 NewsFetcher: фоновый сбор новостей запущен");
             }
@@ -240,7 +214,7 @@ namespace BinanceBotWpf.Services
                 }
                 catch (Exception ex)
                 {
-                    wrappedLogger ($"⚠️ Не удалось прочитать config.json для Telegram: {ex.Message}");
+                    logger ($"⚠️ Не удалось прочитать config.json для Telegram: {ex.Message}");
                 }
             }
 
@@ -253,7 +227,7 @@ namespace BinanceBotWpf.Services
                         _telegram = new TelegramNotifier (tgToken, tgChatId);
                         _telegram.OnStatusChanged += (isEnabled, msg) =>
                         {
-                            wrappedLogger (isEnabled ? $"✅ Telegram: {msg}" : $"❌ Telegram: {msg}");
+                            logger (isEnabled ? $"✅ Telegram: {msg}" : $"❌ Telegram: {msg}");
                             _ui?.RefreshTelegramStatus ();
                         };
                         _telegramHandler = new TelegramCommandHandler (
@@ -268,17 +242,17 @@ namespace BinanceBotWpf.Services
                             () => GetPerformanceStats (),
                             msg => _ui?.AddLog (msg));
                         _telegram.StartListening ((cmd, chatId) => _telegramHandler.HandleAsync (cmd, chatId));
-                        wrappedLogger ("⏳ Подключение к Telegram...");
+                        logger ("⏳ Подключение к Telegram...");
                     }
                 }
                 catch (Exception ex)
                 {
-                    wrappedLogger ($"❌ Ошибка инициализации Telegram: {ex.Message}");
+                    logger ($"❌ Ошибка инициализации Telegram: {ex.Message}");
                 }
             }
             else
             {
-                wrappedLogger ("⚠️ Telegram не настроен. Уведомления отключены.");
+                logger ("⚠️ Telegram не настроен. Уведомления отключены.");
             }
 
             // Инициализация UpdateChecker для проверки обновлений на GitHub
@@ -298,11 +272,11 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ($"🎉 Новая версия {version} доступна!");
                 };
                 
-                wrappedLogger ("✅ Проверка обновлений инициализирована");
+                logger ("✅ Проверка обновлений инициализирована");
             }
             catch (Exception ex)
             {
-                wrappedLogger ($"⚠️ Ошибка инициализации UpdateChecker: {ex.Message}");
+                logger ($"⚠️ Ошибка инициализации UpdateChecker: {ex.Message}");
             }
 
             // FearGreed и PriceAlert инициализированы через DI — привязываем только обработчики
@@ -310,40 +284,6 @@ namespace BinanceBotWpf.Services
             {
                 _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} triggered!");
             };
-
-            // Запуск Dashboard WebSocket сервера сразу при старте приложения
-            try
-            {
-                System.Diagnostics.Debug.WriteLine ("[Dashboard] Creating handler...");
-                _dashboardHandler = new DashboardCommandHandler (
-                    _ui, () => _isRunning,
-                    () => { StopTrading (); return Task.CompletedTask; },
-                    async (vm) => await StartTradingAsync (vm),
-                    () => RunBacktestAndBroadcast (),
-                    () => RunOptimizationAndBroadcast (),
-                    () => TestTelegramAsync (),
-                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
-                    _tradingSettings);
-                _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
-
-                _tradingViewHandler = new TradingViewWebhookService (
-                    _ui, _client, _tradingSettings,
-                    async (sym, indicators, bal) => await _orderExecutor.ExecuteBuyAsync (sym, indicators, bal),
-                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
-                    () => { try { return (_wallet != null ? _wallet.GetTotalBalance ("USDC") : 0).ToString (CultureInfo.InvariantCulture); } catch { return "0"; } },
-                    (sym) => GetCurrentPrice (sym));
-                _dashboardServer.OnWebhook = (source, body) => _tradingViewHandler.HandleWebhookAsync (source, body);
-
-                System.Diagnostics.Debug.WriteLine ("[Dashboard] Starting server on port 8765...");
-                await _dashboardServer.StartAsync (8765);
-                System.Diagnostics.Debug.WriteLine ("[Dashboard] Server started OK");
-                _ui?.AddLog ("📡 Dashboard WebSocket доступен на http://localhost:8765");
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine ($"[Dashboard] FAILED: {ex}");
-                _ui?.AddLog ($"⚠️ Dashboard WS не запущен: {ex.Message}");
-            }
         }
 
         public async Task StartTradingAsync(MainWindowViewModel vm)
@@ -474,37 +414,6 @@ namespace BinanceBotWpf.Services
 
             _backgroundLoopManager.DisposeWhaleMonitor ();
 
-            try { _dashboardServer?.Stop (); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка остановки DashboardServer: {ex.Message}"); }
-
-            try
-            {
-                _dashboardHandler = new DashboardCommandHandler (
-                    _ui, () => _isRunning,
-                    () => { StopTrading (); return Task.CompletedTask; },
-                    async (vm) => await StartTradingAsync (vm),
-                    () => RunBacktestAndBroadcast (),
-                    () => RunOptimizationAndBroadcast (),
-                    () => TestTelegramAsync (),
-                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
-                    _tradingSettings);
-                _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
-
-                _tradingViewHandler = new TradingViewWebhookService (
-                    _ui, _client, _tradingSettings,
-                    async (sym, indicators, bal) => await _orderExecutor.ExecuteBuyAsync (sym, indicators, bal),
-                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
-                    () => { try { return (_wallet != null ? _wallet.GetTotalBalance ("USDC") : 0).ToString (CultureInfo.InvariantCulture); } catch { return "0"; } },
-                    (sym) => GetCurrentPrice (sym));
-                _dashboardServer.OnWebhook = (source, body) => _tradingViewHandler.HandleWebhookAsync (source, body);
-
-                _ = _dashboardServer.StartAsync (8765);
-            }
-            catch (Exception ex)
-            {
-                System.Diagnostics.Debug.WriteLine ($"⚠️ Ошибка перезапуска DashboardServer: {ex.Message}");
-            }
-
             try { _shutdownCts?.Dispose (); }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"CTS dispose error: {ex.Message}"); }
             _shutdownCts = null;
@@ -527,8 +436,6 @@ namespace BinanceBotWpf.Services
             {
                 return new TradingState
                 {
-                    SessionStartBalance = _sessionStartBalance,
-                    SessionStartBalanceCaptured = _sessionStartBalanceCaptured,
                     LastBuyTime = lastBuyTime,
                     RecentTradeTimes = recentTradeTimes,
                 TradesHistory = trades,
@@ -543,8 +450,6 @@ namespace BinanceBotWpf.Services
                 MaxDrawdown = _ui?.MaxDrawdown ?? 0,
                 TotalProfitSum = _ui?.TotalProfitSum ?? 0,
                 TotalLossSum = _ui?.TotalLossSum ?? 0,
-                EquityHistory = new List<Dictionary<string, object>> (_equityHistory),
-                PnlHistory = new List<Dictionary<string, object>> (_pnlHistory),
                 };
             }
         }
@@ -555,9 +460,6 @@ namespace BinanceBotWpf.Services
         private void RestoreState (TradingState state)
         {
             if (state == null) return;
-
-            _sessionStartBalance = state.SessionStartBalance;
-            _sessionStartBalanceCaptured = state.SessionStartBalanceCaptured;
 
             _orderExecutor.RestoreCooldowns (state.LastBuyTime, state.RecentTradeTimes);
 
@@ -570,123 +472,7 @@ namespace BinanceBotWpf.Services
                 }
             }
 
-            _equityHistory.Clear ();
-            _equityHistory.AddRange (state.EquityHistory);
-
-            _pnlHistory.Clear ();
-            _pnlHistory.AddRange (state.PnlHistory);
-
-            _ui?.AddLog ($"📂 Состояние восстановлено: {state.TradesHistory.Count} сделок, баланс сессии ${state.SessionStartBalance:F2}");
-        }
-
-        private async Task RunBacktestAndBroadcast ()
-        {
-            if (_dashboardServer == null || !_dashboardServer.IsRunning) return;
-
-            _ui?.AddLog ("📊 Бэктест: загрузка исторических данных...");
-
-            string[] candidates;
-            List<string> activePairs = _pairManager.GetActivePairs ();
-            candidates = activePairs.Count > 0 ? activePairs.ToArray () : new[] { "BTCUSDC", "ETHUSDC", "DOGEUSDC" };
-
-            List<BinanceKline> klines = null;
-            string pair = null;
-            foreach (string candidate in candidates)
-            {
-                klines = await GetKlinesCachedAsync (candidate, "1h", 1000);
-                if (klines != null && klines.Count >= 100)
-                {
-                    pair = candidate;
-                    break;
-                }
-                _ui?.AddLog ($"⚠️ Бэктест: {candidate} — мало данных, пробуем следующую...");
-            }
-
-            if (klines == null || klines.Count < 100 || pair == null)
-            {
-                _ui?.AddLog ("❌ Бэктест: недостаточно данных ни для одной пары");
-                return;
-            }
-
-            var engine = new BacktestEngine (msg => _ui?.AddLog (msg));
-            decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 1000m;
-            if (balance <= 0) balance = 1000m;
-
-            var result = engine.Run (
-                klines,
-                _ui?.FastSma ?? 12,
-                _ui?.SlowSma ?? 26,
-                _ui?.RsiPeriod ?? 14,
-                _ui?.StopLossPercent ?? 0.02m,
-                _ui?.TakeProfitPercent ?? 0.06m,
-                balance);
-
-            if (result == null)
-            {
-                _ui?.AddLog ("❌ Бэктест: не удалось выполнить");
-                return;
-            }
-
-            decimal[] eqArray = result.EquityCurve?.ToArray () ?? Array.Empty<decimal> ();
-            int step = Math.Max (1, eqArray.Length / 30);
-            var equityCurve = new List<Dictionary<string, object>> ();
-            for (int i = 0; i < eqArray.Length; i += step)
-            {
-                equityCurve.Add (new Dictionary<string, object>
-                {
-                    ["date"] = i.ToString (),
-                    ["value"] = Math.Round (eqArray[i], 2),
-                });
-            }
-            if (eqArray.Length > 0)
-            {
-                equityCurve.Add (new Dictionary<string, object>
-                {
-                    ["date"] = ( eqArray.Length - 1 ).ToString (),
-                    ["value"] = Math.Round (eqArray[^1], 2),
-                });
-            }
-
-            decimal avgWin = result.WinningTrades > 0
-                ? Math.Round (result.TotalReturn / result.WinningTrades, 2)
-                : 0;
-            decimal avgLoss = result.LosingTrades > 0
-                ? -Math.Round (Math.Abs (result.TotalReturn / result.LosingTrades), 2)
-                : 0;
-
-            _dashboardServer.BroadcastBacktest (new Dictionary<string, object>
-            {
-                ["startDate"] = klines.First ().OpenTime.ToString ("yyyy-MM-dd"),
-                ["endDate"] = klines.Last ().OpenTime.ToString ("yyyy-MM-dd"),
-                ["initialBalance"] = balance,
-                ["finalBalance"] = Math.Round (balance * ( 1 + result.TotalReturn / 100m ), 2),
-                ["totalReturn"] = Math.Round (result.TotalReturn, 1),
-                ["maxDrawdown"] = Math.Round (result.MaxDrawdown, 1),
-                ["sharpeRatio"] = Math.Round (result.SharpeRatio, 2),
-                ["winRate"] = Math.Round (result.WinRate, 1),
-                ["totalTrades"] = result.TotalTrades,
-                ["profitFactor"] = Math.Round (result.ProfitFactor, 2),
-                ["avgWin"] = avgWin,
-                ["avgLoss"] = avgLoss,
-                ["equity"] = equityCurve,
-                ["monthlyReturns"] = new List<object> (),
-                ["strategyParams"] = new Dictionary<string, string>
-                {
-                    ["fastSma"] = (_ui?.FastSma ?? 12).ToString (),
-                    ["slowSma"] = (_ui?.SlowSma ?? 26).ToString (),
-                    ["rsiPeriod"] = (_ui?.RsiPeriod ?? 14).ToString (),
-                    ["stopLoss"] = $"ATR × 1.5",
-                    ["takeProfit"] = $"SL × 3",
-                    ["adaptiveSl"] = "0.4x",
-                },
-            });
-
-            _ui?.AddLog ($"✅ Бэктест завершён: доходность {result.TotalReturn:F1}%, винрейт {result.WinRate:F1}%, сделок {result.TotalTrades}");
-        }
-
-        private async Task RunOptimizationAndBroadcast ()
-        {
-            await RunBacktestAndBroadcast ();
+            _ui?.AddLog ($"📂 Состояние восстановлено: {state.TradesHistory.Count} сделок");
         }
 
         /// <summary>
@@ -1182,16 +968,6 @@ namespace BinanceBotWpf.Services
                                 MarketSessionService.GetSessionLabel ());
                         }
 
-                        // Cache analysis for dashboard
-                        var cached = new Dictionary<string, object> ();
-                        foreach (var kvp in analysis.Indicators)
-                        {
-                            cached[kvp.Key] = kvp.Value;
-                        }
-                        cached["signal"] = analysis.Action.ToString ().ToLower ();
-                        cached["action"] = analysis.Action.ToString ();
-                        _lastAnalysis[sym] = cached;
-
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         bool traded = false;
 
@@ -1266,285 +1042,6 @@ namespace BinanceBotWpf.Services
                         if (traded)
                         {
                             spotBalance = await _client.GetAccountBalanceAsync ("USDC");
-                        }
-                    }
-
-                    // Push data to dashboard
-                    if (_dashboardServer?.IsRunning == true)
-                    {
-                        try
-                        {
-                            List<string> activePairList = _pairManager.GetActivePairs ();
-
-                            var sessionLabel = MarketSessionService.GetSessionLabel ();
-                            var pricesData = activePairList.Select (sym =>
-                            {
-                                var pairData = new Dictionary<string, object>
-                                {
-                                    ["pair"] = sym,
-                                    ["price"] = _webSocketManager?.GetCurrentPrice (sym) ?? 0m,
-                                    ["hasPosition"] = _positionManager.TryGet (sym, out _),
-                                    ["session"] = sessionLabel
-                                };
-                                if (_lastAnalysis.TryGetValue (sym, out var indicators))
-                                {
-                                    foreach (var kvp in indicators)
-                                    {
-                                        pairData[kvp.Key] = kvp.Value;
-                                    }
-                                }
-                                return pairData;
-                            }).ToList ();
-                            _dashboardServer.BroadcastPrices (pricesData);
-
-                            var positionsData = _positionManager.Positions.Select (kvp =>
-                            {
-                                var pos = kvp.Value;
-                                decimal currentPrice = _webSocketManager?.GetCurrentPrice (kvp.Key) ?? pos.EntryPrice;
-                                decimal pnl = currentPrice > 0 ? (currentPrice - pos.EntryPrice) * pos.Quantity : 0;
-                                decimal pnlPercent = pos.EntryPrice > 0 ? (currentPrice / pos.EntryPrice - 1) * 100 : 0;
-                                decimal slPercent = pos.EntryPrice > 0 ? (1 - pos.StopLossPrice / pos.EntryPrice) * 100 : 0;
-                                decimal tpPercent = pos.EntryPrice > 0 ? (pos.TakeProfitPrice / pos.EntryPrice - 1) * 100 : 0;
-                                return new Dictionary<string, object>
-                                {
-                                    ["pair"] = kvp.Key,
-                                    ["side"] = "LONG",
-                                    ["entry"] = pos.EntryPrice,
-                                    ["current"] = currentPrice,
-                                    ["qty"] = pos.Quantity,
-                                    ["sl"] = pos.StopLossPrice,
-                                    ["tp"] = pos.TakeProfitPrice,
-                                    ["pnl"] = Math.Round (pnl, 2),
-                                    ["pnlPercent"] = Math.Round (pnlPercent, 2),
-                                    ["slPercent"] = Math.Round (slPercent, 2),
-                                    ["tpPercent"] = Math.Round (tpPercent, 2),
-                                    ["margin"] = Math.Round (pos.EntryPrice * pos.Quantity, 2),
-                                    ["leverage"] = 1,
-                                    ["openTime"] = pos.OpenTime.ToString ("HH:mm"),
-                                    ["duration"] = (DateTime.UtcNow - pos.OpenTime).TotalMinutes >= 60
-                                        ? $"{(int)(DateTime.UtcNow - pos.OpenTime).TotalHours}h {(DateTime.UtcNow - pos.OpenTime).Minutes}m"
-                                        : $"{(int)(DateTime.UtcNow - pos.OpenTime).TotalMinutes}m"
-                                };
-                            }).ToList ();
-                            _dashboardServer.BroadcastPositions (positionsData);
-
-                            _dashboardServer.BroadcastEchelons (new Dictionary<string, object>
-                            {
-                                ["adaptive"] = _tradingSettings?.AdaptiveAgentEnabled ?? true,
-                                ["validator"] = _tradingSettings?.SignalValidatorEnabled ?? true,
-                                ["newsSentinel"] = _tradingSettings?.NewsSentinelEnabled ?? true
-                            });
-
-                            // Equity curve live
-                            _equityHistory.Add (new Dictionary<string, object>
-                            {
-                                ["time"] = DateTime.UtcNow.ToString ("MM-dd HH:mm"),
-                                ["value"] = spotBalance
-                            });
-                            if (_equityHistory.Count > MaxEquityHistory)
-                            {
-                                _equityHistory.RemoveAt (0);
-                            }
-                            _dashboardServer.BroadcastEquity (new List<Dictionary<string, object>> (_equityHistory));
-
-                            // PnL curve: разница от начального баланса сессии
-                            if (!_sessionStartBalanceCaptured && spotBalance > 0)
-                            {
-                                _sessionStartBalance = spotBalance;
-                                _sessionStartBalanceCaptured = true;
-                            }
-                            if (_sessionStartBalanceCaptured && _sessionStartBalance > 0)
-                            {
-                                decimal sessionPnl = spotBalance - _sessionStartBalance;
-                                decimal sessionPnlPercent = _sessionStartBalance > 0 ? sessionPnl / _sessionStartBalance * 100 : 0;
-                                _pnlHistory.Add (new Dictionary<string, object>
-                                {
-                                    ["time"] = DateTime.UtcNow.ToString ("MM-dd HH:mm"),
-                                    ["pnl"] = Math.Round (sessionPnl, 2),
-                                    ["pnlPercent"] = Math.Round (sessionPnlPercent, 2),
-                                    ["balance"] = spotBalance,
-                                    ["startBalance"] = _sessionStartBalance
-                                });
-                                if (_pnlHistory.Count > MaxPnlHistory)
-                                    _pnlHistory.RemoveAt (0);
-                                _dashboardServer.BroadcastPnl (new List<Dictionary<string, object>> (_pnlHistory));
-                            }
-
-                            // Stats — real balance (Spot + Simple Earn), PnL, win rate, positions
-                            decimal totalPnL = _ui?.TotalPnL ?? 0;
-                            decimal winRate = _ui?.WinRate ?? 0;
-                            int totalTrades = _ui?.TotalTrades ?? 0;
-                            int openPosCount = _positionManager.Count;
-                            int maxPos = _ui?.MaxPositions ?? _tradingSettings?.MaxConcurrentTrades ?? 3;
-                            decimal realBalance = _wallet?.GetTotalBalance ("USDC") ?? spotBalance;
-                            decimal ddStr = 0;
-                            if (decimal.TryParse ((_ui?.MaxDrawdownDisplay ?? "0").Replace ("%", "").Replace (",", "."), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out decimal ddParsed))
-                            {
-                                ddStr = Math.Abs (ddParsed);
-                            }
-
-                            FearGreedData fearGreedData = _fearGreedProvider != null
-                                ? await _fearGreedProvider.GetCurrentAsync ()
-                                : null;
-
-                            _dashboardServer.BroadcastStats (new Dictionary<string, object>
-                            {
-                                ["balance"] = realBalance,
-                                ["pnl"] = totalPnL,
-                                ["pnlPercent"] = realBalance > 0 ? Math.Round (totalPnL / realBalance * 100, 1) : 0,
-                                ["winRate"] = winRate,
-                                ["maxDrawdown"] = ddStr,
-                                ["totalTrades"] = totalTrades,
-                                ["openPositions"] = openPosCount,
-                                ["maxPositions"] = maxPos,
-                                ["leverage"] = _tradingSettings?.FuturesLeverage ?? 5,
-                                ["winningTrades"] = _ui?.WinningTrades ?? 0,
-                                ["losingTrades"] = _ui?.LosingTrades ?? 0,
-                                ["bestPnL"] = _ui?.BestPnL ?? 0,
-                                ["worstPnL"] = _ui?.WorstPnL ?? 0,
-                                ["fearGreedValue"] = fearGreedData?.Value ?? 50,
-                                ["fearGreedClassification"] = fearGreedData?.Classification ?? "Neutral",
-                                ["dcaEnabled"] = _tradingSettings?.DcaEnabled ?? false,
-                                ["dcaIntervalDays"] = _tradingSettings?.DcaIntervalDays ?? 3,
-                                ["dcaMaxDrawdownPercent"] = (double)(_tradingSettings?.DcaMaxDrawdownPercent ?? 0.30m) * 100,
-                                ["dcaBuyPercent"] = (double)(_tradingSettings?.DcaBuyPercent ?? 0.10m) * 100,
-                                ["futuresEnabled"] = _tradingSettings?.FuturesEnabled ?? false,
-                                ["gridBotRunning"] = _gridBot?.IsRunning ?? false,
-                                ["telegramStatus"] = _telegram?.IsEnabled == true ? "connected" : "disconnected",
-                                ["session"] = MarketSessionService.GetSessionLabel (),
-                                ["sessionFilterEnabled"] = _tradingSettings?.SessionFilterEnabled ?? false,
-                                ["tradeOnlyEuUs"] = _tradingSettings?.TradeOnlyEuUs ?? false,
-                                ["fastSma"] = _ui?.FastSma ?? 12,
-                                ["slowSma"] = _ui?.SlowSma ?? 26,
-                                ["rsiPeriod"] = _ui?.RsiPeriod ?? 14,
-                                ["stopLossPercent"] = (double)(_ui?.StopLossPercent ?? 0.005m),
-                                ["takeProfitPercent"] = (double)(_ui?.TakeProfitPercent ?? 0.008m),
-                                ["riskPerTradePercent"] = (double)(_tradingSettings?.RiskPerTradePercent ?? 0.01m),
-                                ["adaptiveAgentEnabled"] = _tradingSettings?.AdaptiveAgentEnabled ?? true,
-                                ["signalValidatorEnabled"] = _tradingSettings?.SignalValidatorEnabled ?? true,
-                                ["newsSentinelEnabled"] = _tradingSettings?.NewsSentinelEnabled ?? true,
-                                ["gridBotEnabled"] = _tradingSettings?.GridBotEnabled ?? false,
-                                ["gridSymbol"] = _tradingSettings?.GridSymbol ?? "DOGEUSDC",
-                                ["gridRangePercent"] = (double)(_tradingSettings?.GridRangePercent ?? 0.10m) * 100,
-                                ["gridLevels"] = _tradingSettings?.GridLevels ?? 10,
-                                ["gridInvestmentPercent"] = (double)(_tradingSettings?.TotalInvestmentPercent ?? 0.80m) * 100,
-                                ["trailingStopPercent"] = (double)(_ui?.TrailingStopPercent ?? 0.01m) * 100,
-                                ["tradingViewEnabled"] = _tradingSettings?.TradingViewEnabled ?? false,
-                            });
-
-                            // Trades — last 50 from history
-                            var tradesHistory = _ui?.TradesHistory;
-                            if (tradesHistory != null && tradesHistory.Count > 0)
-                            {
-                                var recentTrades = tradesHistory.TakeLast (Math.Min (50, tradesHistory.Count))
-                                    .Reverse ()
-                                    .Select (t => new Dictionary<string, object>
-                                    {
-                                        ["time"] = t.CloseTime.ToString ("HH:mm"),
-                                        ["pair"] = t.Symbol,
-                                        ["action"] = t.IsLong ? "BUY" : "SELL",
-                                        ["entry"] = t.EntryPrice,
-                                        ["exit"] = t.ExitPrice,
-                                        ["pnl"] = t.PnLPercent,
-                                        ["duration"] = t.Duration.TotalMinutes >= 60
-                                            ? $"{(int)t.Duration.TotalHours}h {t.Duration.Minutes}m"
-                                            : $"{(int)t.Duration.TotalMinutes}m",
-                                        ["reason"] = t.Reason
-                                    }).ToList ();
-                                _dashboardServer.BroadcastTrades (recentTrades);
-                            }
-
-                            // Logs — last 50
-                            lock (_recentLogs)
-                            {
-                                if (_recentLogs.Count > 0)
-                                {
-                                    _dashboardServer.BroadcastLogs (string.Join ("\n", _recentLogs.TakeLast (50)));
-                                }
-                            }
-
-                            // Grid Bot data
-                            if (_gridBot != null && _gridBot.IsRunning)
-                            {
-                                var filledOrders = _gridBot.FilledOrders;
-                                var allLevels = new List<Dictionary<string, object>> ();
-
-                                if (_gridBot.BuyLevels != null)
-                                {
-                                    foreach (decimal level in _gridBot.BuyLevels)
-                                    {
-                                        bool isActive = _gridBot.ActiveOrderIds.ContainsKey (level);
-                                        var filled = filledOrders.FirstOrDefault (o => ( decimal )o["price"] == level);
-                                        string status = filled != null ? "filled" : ( isActive ? "open" : "open" );
-                                        var order = new Dictionary<string, object>
-                                        {
-                                            ["level"] = level,
-                                            ["side"] = "BUY",
-                                            ["price"] = level,
-                                            ["status"] = status,
-                                        };
-                                        if (filled != null)
-                                        {
-                                            order["qty"] = filled["qty"];
-                                            order["filledAt"] = filled["filledAt"];
-                                        }
-                                        allLevels.Add (order);
-                                    }
-                                }
-                                if (_gridBot.SellLevels != null)
-                                {
-                                    foreach (decimal level in _gridBot.SellLevels)
-                                    {
-                                        bool isActive = _gridBot.ActiveOrderIds.ContainsKey (level);
-                                        var filled = filledOrders.FirstOrDefault (o => ( decimal )o["price"] == level);
-                                        string status = filled != null ? "filled" : ( isActive ? "open" : "open" );
-                                        var order = new Dictionary<string, object>
-                                        {
-                                            ["level"] = level,
-                                            ["side"] = "SELL",
-                                            ["price"] = level,
-                                            ["status"] = status,
-                                        };
-                                        if (filled != null)
-                                        {
-                                            order["qty"] = filled["qty"];
-                                            order["filledAt"] = filled["filledAt"];
-                                        }
-                                        allLevels.Add (order);
-                                    }
-                                }
-
-                                decimal currentPrice = _webSocketManager?.GetCurrentPrice (_gridBot.Symbol) ?? 0m;
-                                decimal unrealizedPnl = 0;
-                                if (currentPrice > 0 && _positionManager.TryGet (_gridBot.Symbol, out var gridPos))
-                                {
-                                    unrealizedPnl = ( currentPrice - gridPos.EntryPrice ) * gridPos.Quantity;
-                                }
-
-                                _dashboardServer.BroadcastGridBot (new Dictionary<string, object>
-                                {
-                                    ["enabled"] = true,
-                                    ["running"] = true,
-                                    ["pair"] = _gridBot.Symbol,
-                                    ["centerPrice"] = _gridBot.CenterPrice,
-                                    ["levels"] = _gridBot.BuyLevels?.Length ?? 0,
-                                    ["rangeLow"] = _gridBot.BuyLevels?.Length > 0 ? _gridBot.BuyLevels[^1] : 0m,
-                                    ["rangeHigh"] = _gridBot.SellLevels?.Length > 0 ? _gridBot.SellLevels[^1] : 0m,
-                                    ["investment"] = _gridBot.TotalInvestment,
-                                    ["investmentPercent"] = _tradingSettings?.TotalInvestmentPercent != 0
-                                        ? Math.Round ((_tradingSettings?.TotalInvestmentPercent ?? 0.20m) * 100)
-                                        : 20,
-                                    ["orders"] = allLevels,
-                                    ["totalOrders"] = allLevels.Count,
-                                    ["filledOrders"] = filledOrders.Count,
-                                    ["realizedPnl"] = Math.Round (_gridBot.RealizedPnl, 2),
-                                    ["unrealizedPnl"] = Math.Round (unrealizedPnl, 2),
-                                });
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            _ui?.AddLog ($"❌ TradingLoop dashboard error: {ex.Message}");
                         }
                     }
 
