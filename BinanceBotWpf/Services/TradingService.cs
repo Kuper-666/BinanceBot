@@ -737,11 +737,8 @@ namespace BinanceBotWpf.Services
         {
             try
             {
-                decimal balance = _wallet?.GetTotalBalance ("USDC") ?? 0;
-                if (balance <= 0)
-                {
-                    try { balance = await _client.GetAccountBalanceAsync ("USDC"); } catch { }
-                }
+                await _wallet.UpdateBalance ();
+                decimal balance = _wallet.GetTotalBalance ("USDC");
 
                 Dictionary<string, decimal> allMinNotionals;
                 try
