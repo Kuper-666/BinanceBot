@@ -115,7 +115,7 @@ namespace BinanceBotWpf.Services
             AiRiskResult aiRisk = await _aiRiskEngine.CalculateRiskAsync (
                 symbol, currentBalance, price, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
 
-            _ui?.AddLog ($"{symbol}: Risk={aiRisk.RiskPerTradePercent:P1} TP={aiRisk.TakeProfitPercent:P2} SL={aiRisk.StopLossPercent:P2} R/R={aiRisk.RiskRewardRatio:F1}");
+            _ui?.AddLog ($"{symbol}: Риск={aiRisk.RiskPerTradePercent:P1} TP={aiRisk.TakeProfitPercent:P2} SL={aiRisk.StopLossPercent:P2} R/R={aiRisk.RiskRewardRatio:F1}");
 
             decimal riskPerTrade = aiRisk.RiskPerTradePercent;
             decimal riskRewardRatio = aiRisk.RiskRewardRatio;
@@ -190,7 +190,7 @@ namespace BinanceBotWpf.Services
             decimal tpPrice = price * (1 + aiRisk.TakeProfitPercent * adaptiveSlMult);
             decimal slPct = aiRisk.StopLossPercent * adaptiveSlMult;
 
-            _ui?.AddLog ($"{symbol}: Risk={riskAmount:F2} ({riskPerTrade:P2}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2}), R/R 1:{riskRewardRatio:F1}");
+            _ui?.AddLog ($"{symbol}: Риск={riskAmount:F2} ({riskPerTrade:P2}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2}), R/R 1:{riskRewardRatio:F1}");
 
             decimal tickSize = await _client.GetTickSizeAsync (symbol);
             decimal limitPrice = price * 0.998m;
@@ -330,7 +330,7 @@ namespace BinanceBotWpf.Services
                     PnLPercent = pnlPct,
                     OpenTime = pos.OpenTime,
                     CloseTime = DateTime.UtcNow,
-                    Reason = "Signal Sell",
+                    Reason = "Сигнал Продажа",
                     Duration = DateTime.UtcNow - pos.OpenTime,
                     Action = "SELL_CLOSE"
                 };

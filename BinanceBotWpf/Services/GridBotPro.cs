@@ -273,7 +273,7 @@ namespace BinanceBotWpf.Services
                                     PnLPercent = (fillPrice / buyPrice - 1) * 100,
                                     OpenTime = DateTime.UtcNow,
                                     CloseTime = DateTime.UtcNow,
-                                    Reason = "GridPro Cycle",
+                                    Reason = "СеткаПро цикл",
                                     Action = "GRID_SELL"
                                 });
                             }

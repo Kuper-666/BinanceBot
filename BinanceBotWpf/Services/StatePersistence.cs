@@ -95,11 +95,11 @@ namespace BinanceBotWpf.Services
                     File.Move(tempPath, _filePath, overwrite: true);
                 }
 
-                _logger?.Invoke($"💾 Trading state saved ({state.TradesHistory.Count} trades, {state.EquityHistory.Count} equity points)");
+                    _logger?.Invoke($"💾 Состояние сохранено ({state.TradesHistory.Count} сделок, {state.EquityHistory.Count} точек графика)");
             }
             catch (Exception ex)
             {
-                _logger?.Invoke($"❌ Failed to save trading state: {ex.Message}");
+                    _logger?.Invoke($"❌ Ошибка сохранения состояния: {ex.Message}");
             }
         }
 
@@ -112,7 +112,7 @@ namespace BinanceBotWpf.Services
             {
                 if (!File.Exists(_filePath))
                 {
-                    _logger?.Invoke("ℹ️ No saved trading state found, starting fresh");
+                    _logger?.Invoke("ℹ️ Сохранённое состояние не найдено, начинаем с нуля");
                     return null;
                 }
 
@@ -125,13 +125,13 @@ namespace BinanceBotWpf.Services
                 TradingState state = JsonSerializer.Deserialize<TradingState>(json, JsonOptions);
                 if (state != null)
                 {
-                    _logger?.Invoke($"📂 Trading state loaded: saved {state.SavedAt:yyyy-MM-dd HH:mm}, {state.TradesHistory.Count} trades");
+                    _logger?.Invoke($"📂 Состояние загружено: сохранено {state.SavedAt:yyyy-MM-dd HH:mm}, {state.TradesHistory.Count} сделок");
                 }
                 return state;
             }
             catch (Exception ex)
             {
-                _logger?.Invoke($"⚠️ Failed to load trading state: {ex.Message}");
+                _logger?.Invoke($"⚠️ Ошибка загрузки состояния: {ex.Message}");
                 return null;
             }
         }

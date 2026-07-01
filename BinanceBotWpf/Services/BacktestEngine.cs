@@ -389,7 +389,7 @@ namespace BinanceBotWpf.Services
                                     bestParams["StopLossPercent"] = sl;
                                     bestParams["TakeProfitPercent"] = tp;
 
-                                    _logger?.Invoke ($"📊 Новый лучший результат: доходность {result.TotalReturn:F2}%, win rate {result.WinRate:F1}%, сделок {result.TotalTrades}");
+                                    _logger?.Invoke ($"📊 Новый лучший результат: доходность {result.TotalReturn:F2}%, винрейт {result.WinRate:F1}%, сделок {result.TotalTrades}");
                                 }
 
                                 if (current % 50 == 0)

@@ -284,7 +284,7 @@ namespace BinanceBotWpf.Services
             // FearGreed и PriceAlert инициализированы через DI — привязываем только обработчики
             _priceAlertManager.OnAlertTriggered += alert =>
             {
-                _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} triggered!");
+                _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} сработал!");
             };
         }
 
@@ -456,6 +456,7 @@ namespace BinanceBotWpf.Services
                 MaxDrawdown = _ui?.MaxDrawdown ?? 0,
                 TotalProfitSum = _ui?.TotalProfitSum ?? 0,
                 TotalLossSum = _ui?.TotalLossSum ?? 0,
+                EquityHistory = _ui?.GetBalanceHistory () ?? new List<Dictionary<string, object>> (),
                 };
             }
         }
@@ -479,6 +480,12 @@ namespace BinanceBotWpf.Services
             }
 
             _ui?.AddLog ($"📂 Состояние восстановлено: {state.TradesHistory.Count} сделок");
+
+            if (state.EquityHistory.Count > 0)
+            {
+                _ui?.RestoreBalanceHistory (state.EquityHistory);
+                _ui?.AddLog ($"📈 График баланса: восстановлено {state.EquityHistory.Count} точек");
+            }
         }
 
         /// <summary>
@@ -507,7 +514,7 @@ namespace BinanceBotWpf.Services
             {
                 _ui?.AddTradeToHistory (trade);
                 string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
-                await SendTradeNotification ($"{emoji} <b>GRID SELL</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
+                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
             };
             await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
         }
@@ -569,7 +576,7 @@ namespace BinanceBotWpf.Services
             {
                 _ui?.AddTradeToHistory (trade);
                 string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
-                await SendTradeNotification ($"{emoji} <b>GRID SELL</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
+                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
             };
             await _gridBot.StartAsync (symbol, currentPrice, grid.RangePercent, grid.Levels, investmentUsdc, grid.UseDynamicStep);
         }
@@ -655,7 +662,7 @@ namespace BinanceBotWpf.Services
 
                         int leverage = _tradingSettings?.FuturesLeverage ?? 5;
                         await futuresClient.SetLeverageAsync ("BTCUSDT", leverage);
-                        _ui?.AddLog ($"✅ Фьючерсы: Isolated Margin, Hedge Mode, плечо {leverage}x");
+                        _ui?.AddLog ($"✅ Фьючерсы: Изолированная маржа, Hedge Mode, плечо {leverage}x");
                     }
                 }
                 catch (Exception ex)
@@ -996,9 +1003,16 @@ namespace BinanceBotWpf.Services
                         bool traded = false;
 
                         // Диагностика: почему Buy не исполняется
-                        if (analysis.Action == TradeAction.Buy && !hasPosition && !confirmed)
+                        if (analysis.Action == TradeAction.Buy && !hasPosition)
                         {
-                            _ui?.AddLog ($"🔍 {sym}: Buy ЗАБЛОКИРОВАН — multi-TF подтверждение НЕ пройдено (5m)");
+                            if (!confirmed)
+                            {
+                                _ui?.AddLog ($"🔍 {sym}: Buy ЗАБЛОКИРОВАН — multi-TF подтверждение НЕ пройдено ({entryInterval})");
+                            }
+                            else if (_positionManager.Count >= (_ui?.MaxConcurrentTrades ?? 3))
+                            {
+                                _ui?.AddLog ($"🔍 {sym}: Buy ЗАБЛОКИРОВАН — макс. позиций {_positionManager.Count}/{_ui?.MaxConcurrentTrades ?? 3}");
+                            }
                         }
 
                         if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
@@ -1017,7 +1031,7 @@ namespace BinanceBotWpf.Services
                             else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
                             {
                                 var fgCached = await _fearGreedProvider.GetCurrentAsync ();
-                                _ui?.AddLog ($"⚠️ {sym}: Extreme Greed (FG={fgCached?.Value}), снижаю размер позиции на 50%");
+                                _ui?.AddLog ($"⚠️ {sym}: Экстремальная жадность (FG={fgCached?.Value}), снижаю размер позиции на 50%");
                                 // Снижаем размер позиции при экстремальной жадности
                                 decimal reducedSpotBalance = spotBalance * 0.5m;
                                 await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, reducedSpotBalance);
@@ -1041,7 +1055,7 @@ namespace BinanceBotWpf.Services
                             var symKlines = await GetKlinesCachedAsync (sym, candleInterval, 100);
                             if (symKlines != null && _volumeBreakout.CheckVolumeBreakout (symKlines))
                             {
-                                _ui?.AddLog ($"🚀 {sym}: Volume Breakout сигнал!");
+                                _ui?.AddLog ($"🚀 {sym}: Прорыв объёма — сигнал!");
                                 await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, spotBalance);
                                 traded = true;
                             }
@@ -1076,7 +1090,7 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex)
                 {
                     string msg = ex.Message;
-                    _ui?.AddLog ($"❌ TradingLoop: {msg}");
+                    _ui?.AddLog ($"❌ Торговый цикл: {msg}");
                     _consecutiveErrors++;
 
                     // P1: Graceful shutdown на критических ошибках API.
@@ -1100,8 +1114,8 @@ namespace BinanceBotWpf.Services
                     if (_consecutiveErrors >= CircuitBreakerThreshold)
                     {
                         _circuitBreakerUntil = DateTime.UtcNow + CircuitBreakerCooldown;
-                        _ui?.AddLog ($"⚠️ Circuit breaker: торговля приостановлена на {CircuitBreakerCooldown.TotalMinutes} мин ({_consecutiveErrors} ошибок подряд)");
-                        _ = SendTradeNotification ($"⚠️ Circuit breaker: {_consecutiveErrors} ошибок подряд, торговля приостановлена на {CircuitBreakerCooldown.TotalMinutes} мин");
+                        _ui?.AddLog ($"⚠️ Обрыв цепи: торговля приостановлена на {CircuitBreakerCooldown.TotalMinutes} мин ({_consecutiveErrors} ошибок подряд)");
+                        _ = SendTradeNotification ($"⚠️ Обрыв цепи: {_consecutiveErrors} ошибок подряд, торговля приостановлена на {CircuitBreakerCooldown.TotalMinutes} мин");
                     }
 
                     await Task.Delay (10000, _shutdownCts?.Token ?? CancellationToken.None);
@@ -1148,7 +1162,7 @@ namespace BinanceBotWpf.Services
                 {
                     decimal currentPrice = _webSocketManager?.GetCurrentPrice (kvp.Key) ?? 0;
                     decimal profit = currentPrice > 0 ? ( currentPrice - kvp.Value.EntryPrice ) / kvp.Value.EntryPrice * 100 : 0;
-                    posDetails += $"\n  • {kvp.Key}: Entry={kvp.Value.EntryPrice:F4}, PnL={profit:+F2;-F2}%";
+                    posDetails += $"\n  • {kvp.Key}: Вход={kvp.Value.EntryPrice:F4}, PnL={profit:+F2;-F2}%";
                 }
             }
 
@@ -1156,7 +1170,7 @@ namespace BinanceBotWpf.Services
                    $"💰 *USDC:* {balance:F2}\n" +
                    $"📊 *Позиций:* {posCount}{posDetails}\n" +
                    $"📈 *PnL:* {pnl:+F2;-F2} USDC\n" +
-                   $"🎯 *Win Rate:* {winRate:F1}% ({totalTrades} сделок)" +
+                   $"🎯 *Винрейт:* {winRate:F1}% ({totalTrades} сделок)" +
                    echelonStatus;
         }
 

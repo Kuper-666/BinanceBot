@@ -761,6 +761,48 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
+        public List<Dictionary<string, object>> GetBalanceHistory ()
+        {
+            var result = new List<Dictionary<string, object>> ();
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                if (_plotModel?.Series.Count > 0 && _plotModel.Series[0] is LineSeries series)
+                {
+                    foreach (var pt in series.Points)
+                    {
+                        result.Add (new Dictionary<string, object>
+                        {
+                            ["time"] = DateTimeAxis.ToDouble (pt.X),
+                            ["balance"] = (decimal)pt.Y
+                        });
+                    }
+                }
+            });
+            return result;
+        }
+
+        public void RestoreBalanceHistory (List<Dictionary<string, object>> points)
+        {
+            if (points == null || points.Count == 0) return;
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                if (_plotModel?.Series.Count > 0 && _plotModel.Series[0] is LineSeries series)
+                {
+                    series.Points.Clear ();
+                    foreach (var pt in points)
+                    {
+                        if (pt.TryGetValue ("time", out object timeObj) && pt.TryGetValue ("balance", out object balObj))
+                        {
+                            double time = Convert.ToDouble (timeObj);
+                            decimal balance = Convert.ToDecimal (balObj);
+                            series.Points.Add (new DataPoint (time, (double)balance));
+                        }
+                    }
+                    _plotModel.InvalidatePlot (true);
+                }
+            });
+        }
+
         public void UpdateMarketTable(string pair, string price, bool hasPosition, TradeAction signal, decimal fastSma, decimal slowSma, decimal? marketCap = null, decimal? sentiment = null, decimal rsi = 50, decimal macdHist = 0, string session = "")
         {
             Application.Current.Dispatcher.Invoke (() =>

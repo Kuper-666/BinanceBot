@@ -51,8 +51,8 @@ namespace BinanceBotWpf.Services
 
             var prediction = _mlManager != null
                 ? _mlManager.PredictRisk (fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv)
-                : (IsProfitable: true, Probability: 1.0f, RiskLevel: "Low Risk");
-            int aiRiskLevel = prediction.RiskLevel == "Low Risk" ? 1 : (prediction.RiskLevel == "Medium Risk" ? 2 : 3);
+                : (IsProfitable: true, Probability: 1.0f, RiskLevel: "Низкий риск");
+            int aiRiskLevel = prediction.RiskLevel == "Низкий риск" ? 1 : (prediction.RiskLevel == "Средний риск" ? 2 : 3);
 
             // 2. Волатильность市场的
             decimal volatility = bbWidth > 0 ? bbWidth : 0.05m;

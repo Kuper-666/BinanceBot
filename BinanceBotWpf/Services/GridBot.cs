@@ -393,7 +393,7 @@ namespace BinanceBotWpf.Services
                                     PnLPercent = profitPct,
                                     OpenTime = DateTime.UtcNow,
                                     CloseTime = DateTime.UtcNow,
-                                    Reason = "Grid Cycle",
+                                    Reason = "Сетка цикл",
                                     Action = "GRID_SELL"
                                 });
                                 _lastBuyPrice = 0;

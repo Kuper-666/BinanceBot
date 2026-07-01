@@ -179,7 +179,7 @@ namespace BinanceBotWpf.Services.Strategies
                     var riskPrediction = _mlManager.PredictRisk (fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv);
                     result.Indicators["aiProbability"] = (decimal)riskPrediction.Probability;
 
-                    decimal riskVal = riskPrediction.RiskLevel == "Low Risk" ? 1 : (riskPrediction.RiskLevel == "Medium Risk" ? 2 : 3);
+                    decimal riskVal = riskPrediction.RiskLevel == "Низкий риск" ? 1 : (riskPrediction.RiskLevel == "Средний риск" ? 2 : 3);
                     result.Indicators["aiRiskLevel"] = riskVal;
                 }
 
@@ -193,34 +193,34 @@ namespace BinanceBotWpf.Services.Strategies
                     if (rsi < 35 && lsma > 0 && currentPrice > lsma)
                     {
                         baseSignal.Action = TradeAction.Buy;
-                        baseSignal.Reason = $"RSI oversold ({rsi:F1}) + LSMA uptrend";
+                        baseSignal.Reason = $"RSI перепродан ({rsi:F1}) + LSMA uptrend";
                     }
                     else if (rsi > 65 && lsma > 0 && currentPrice < lsma)
                     {
                         baseSignal.Action = TradeAction.Sell;
-                        baseSignal.Reason = $"RSI overbought ({rsi:F1}) + LSMA downtrend";
+                        baseSignal.Reason = $"RSI перекуплен ({rsi:F1}) + LSMA downtrend";
                     }
                     // MACD histogram reversal (расширенные пороги RSI)
                     else if (macdHist > 0 && prevMacdHist <= 0 && rsi < 50)
                     {
                         baseSignal.Action = TradeAction.Buy;
-                        baseSignal.Reason = $"MACD cross up + RSI={rsi:F1}";
+                        baseSignal.Reason = $"MACD пересечение вверх + RSI={rsi:F1}";
                     }
                     else if (macdHist < 0 && prevMacdHist >= 0 && rsi > 50)
                     {
                         baseSignal.Action = TradeAction.Sell;
-                        baseSignal.Reason = $"MACD cross down + RSI={rsi:F1}";
+                        baseSignal.Reason = $"MACD пересечение вниз + RSI={rsi:F1}";
                     }
                     // BB bounce (расширенные пороги)
                     else if (currentPrice <= bbLower * 1.005m && rsi < 40)
                     {
                         baseSignal.Action = TradeAction.Buy;
-                        baseSignal.Reason = $"BB bounce lower + RSI={rsi:F1}";
+                        baseSignal.Reason = $"BB отскок от нижней + RSI={rsi:F1}";
                     }
                     else if (currentPrice >= bbUpper * 0.995m && rsi > 60)
                     {
                         baseSignal.Action = TradeAction.Sell;
-                        baseSignal.Reason = $"BB bounce upper + RSI={rsi:F1}";
+                        baseSignal.Reason = $"BB отскок от верхней + RSI={rsi:F1}";
                     }
                     // SMA trend direction (всегда показываем направление)
                     else if (fastSma > slowSma)
@@ -244,12 +244,12 @@ namespace BinanceBotWpf.Services.Strategies
                     if (bbOversold || macdBullish || rsiOversold)
                     {
                         result.Action = TradeAction.Buy;
-                        result.Reason = $"SMA Buy + {(bbOversold ? "BB " : "")}{(macdBullish ? "MACD " : "")}{(rsiOversold ? "RSI" : "")}";
+                        result.Reason = $"SMA Покупка + {(bbOversold ? "BB " : "")}{(macdBullish ? "MACD " : "")}{(rsiOversold ? "RSI" : "")}";
                     }
                     else
                     {
                         result.Action = TradeAction.Hold;
-                        result.Reason = "SMA Buy but no confirmation";
+                        result.Reason = "SMA Покупка без подтверждения";
                     }
                 }
                 else if (isSmaCrossover && baseSignal.Action == TradeAction.Sell)
@@ -261,12 +261,12 @@ namespace BinanceBotWpf.Services.Strategies
                     if (bbOverbought || macdBearish || rsiOverbought)
                     {
                         result.Action = TradeAction.Sell;
-                        result.Reason = $"SMA Sell + {(bbOverbought ? "BB " : "")}{(macdBearish ? "MACD " : "")}{(rsiOverbought ? "RSI" : "")}";
+                        result.Reason = $"SMA Продажа + {(bbOverbought ? "BB " : "")}{(macdBearish ? "MACD " : "")}{(rsiOverbought ? "RSI" : "")}";
                     }
                     else
                     {
                         result.Action = TradeAction.Hold;
-                        result.Reason = "SMA Sell but no confirmation";
+                        result.Reason = "SMA Продажа без подтверждения";
                     }
                 }
                 else if (baseSignal.Action != TradeAction.Hold)
@@ -303,7 +303,7 @@ namespace BinanceBotWpf.Services.Strategies
                     if (!validation.IsValid)
                     {
                         result.Action = TradeAction.Hold;
-                        result.Reason = $"Blocked by validator (conf={validation.Confidence:P0}, risk={validation.RiskFlag})";
+                        result.Reason = $"Заблокировано валидатором (уверенность={validation.Confidence:P0}, риск={validation.RiskFlag})";
                     }
                     else if (validation.RiskFlag)
                     {
