@@ -9,6 +9,7 @@ namespace BinanceBotWpf.Services
         bool IsRunning { get; }
         int ClientCount { get; }
         Func<string, Dictionary<string, object>, Task> OnCommand { get; set; }
+        Func<string, string, Task<string>> OnWebhook { get; set; }
 
         Task StartAsync (int port = 8765);
         void Stop ();

@@ -182,6 +182,11 @@ namespace BinanceBotWpf.Services
                                     if (grid.TryGetValue ("investmentPercent", out v) && v is double investPercent) { _tradingSettings.TotalInvestmentPercent = (decimal)(investPercent / 100.0); applied++; }
                                     if (grid.TryGetValue ("defaultPairs", out v) && v is string gridSymbol) { _tradingSettings.GridSymbol = gridSymbol; applied++; }
                                 }
+                                if (data.ContainsKey ("tradingView") && data["tradingView"] is Dictionary<string, object> tv)
+                                {
+                                    if (tv.TryGetValue ("enabled", out var v) && v is bool tvEnabled) { _tradingSettings.TradingViewEnabled = tvEnabled; applied++; }
+                                    if (tv.TryGetValue ("secret", out v) && v is string tvSecret) { _tradingSettings.TradingViewSecret = tvSecret; applied++; }
+                                }
                                 _ = _tradingSettings.SaveAsync ();
                                 _ui?.AddLog ($"⚙️ Настройки обновлены из дашборда ({applied} параметров)");
                             }

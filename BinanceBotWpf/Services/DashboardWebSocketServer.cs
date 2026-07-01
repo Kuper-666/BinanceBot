@@ -42,6 +42,7 @@ namespace BinanceBotWpf.Services
         public bool IsRunning => _listener?.IsListening == true;
         public int ClientCount => _clients.Count;
         public Func<string, Dictionary<string, object>, Task> OnCommand { get; set; }
+        public Func<string, string, Task<string>> OnWebhook { get; set; }
         public DashboardWebSocketServer (ILogger<DashboardWebSocketServer> logger)
         {
             _log = logger;
@@ -218,7 +219,15 @@ namespace BinanceBotWpf.Services
                     }
                     else
                     {
-                        ServeStaticFile (ctx);
+                        string path = ctx.Request.Url?.AbsolutePath?.ToLower () ?? "";
+                        if (ctx.Request.HttpMethod == "POST" && path.StartsWith ("/webhook/"))
+                        {
+                            await HandleWebhookAsync (ctx, path);
+                        }
+                        else
+                        {
+                            ServeStaticFile (ctx);
+                        }
                     }
                 }
                 catch (ObjectDisposedException)
@@ -467,6 +476,48 @@ namespace BinanceBotWpf.Services
             ctx.Response.ContentLength64 = fileBytes.Length;
             ctx.Response.OutputStream.Write (fileBytes, 0, fileBytes.Length);
             ctx.Response.Close ();
+        }
+
+        private async Task HandleWebhookAsync (HttpListenerContext ctx, string path)
+        {
+            try
+            {
+                string body;
+                using (var reader = new StreamReader (ctx.Request.InputStream, ctx.Request.ContentEncoding))
+                {
+                    body = await reader.ReadToEndAsync ();
+                }
+
+                string source = path.Replace ("/webhook/", "").TrimEnd ('/');
+                string result = null;
+
+                if (OnWebhook != null)
+                {
+                    result = await OnWebhook (source, body);
+                }
+
+                string response = result ?? "{\"status\":\"ok\"}";
+                byte[] bytes = Encoding.UTF8.GetBytes (response);
+                ctx.Response.StatusCode = 200;
+                ctx.Response.ContentType = "application/json";
+                ctx.Response.ContentLength64 = bytes.Length;
+                ctx.Response.OutputStream.Write (bytes, 0, bytes.Length);
+                ctx.Response.Close ();
+            }
+            catch (Exception ex)
+            {
+                _log.LogError (ex, "Webhook error");
+                try
+                {
+                    byte[] errBytes = Encoding.UTF8.GetBytes ($"{{\"error\":\"{ex.Message}\"}}");
+                    ctx.Response.StatusCode = 500;
+                    ctx.Response.ContentType = "application/json";
+                    ctx.Response.ContentLength64 = errBytes.Length;
+                    ctx.Response.OutputStream.Write (errBytes, 0, errBytes.Length);
+                    ctx.Response.Close ();
+                }
+                catch { }
+            }
         }
     }
 }

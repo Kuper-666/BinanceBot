@@ -31,6 +31,10 @@ const DEFAULT_SETTINGS = {
     levels: 8,
     rangePercent: 5.0,
   },
+  tradingView: {
+    enabled: false,
+    secret: '',
+  },
 };
 
 function Toggle({ value, onChange }) {
@@ -102,6 +106,7 @@ export default function SettingsPage({ send, data }) {
     if (data.gridRangePercent) s.gridBot.rangePercent = data.gridRangePercent;
     if (data.gridLevels) s.gridBot.levels = data.gridLevels;
     if (data.gridInvestmentPercent) s.gridBot.investmentPercent = data.gridInvestmentPercent;
+    if (data.tradingViewEnabled !== undefined) s.tradingView.enabled = data.tradingViewEnabled;
     setSettings(s);
   }, [data]);
 
@@ -115,6 +120,10 @@ export default function SettingsPage({ send, data }) {
   };
   const updateGrid = (key, value) => {
     setSettings(s => ({ ...s, gridBot: { ...s.gridBot, [key]: value } }));
+    setSaved(false);
+  };
+  const updateTradingView = (key, value) => {
+    setSettings(s => ({ ...s, tradingView: { ...s.tradingView, [key]: value } }));
     setSaved(false);
   };
 
@@ -196,6 +205,22 @@ export default function SettingsPage({ send, data }) {
         <SettingRow label={t('pairs')}>
           <span style={{ fontSize: '12px', fontFamily: 'monospace', color: '#22c55e' }}>{settings.gridBot.defaultPairs}</span>
         </SettingRow>
+      </div>
+
+      <div className="card">
+        <h3>TradingView Webhook</h3>
+        <SettingRow label={t('enabled')}>
+          <Toggle value={settings.tradingView.enabled} onChange={v => updateTradingView('enabled', v)} />
+        </SettingRow>
+        <SettingRow label="Secret">
+          <input type="text" value={settings.tradingView.secret} onChange={e => updateTradingView('secret', e.target.value)}
+            placeholder="optional secret key"
+            style={{ width: '160px', padding: '4px 8px', borderRadius: '4px', border: '1px solid #333', background: '#1a1a1a', color: '#e5e5e5', fontSize: '12px', fontFamily: 'monospace', outline: 'none' }} />
+        </SettingRow>
+        <div style={{ fontSize: '11px', color: '#666', marginTop: '8px', lineHeight: 1.5 }}>
+          Webhook URL: <code style={{ color: '#22c55e' }}>http://YOUR_IP:8765/webhook/tradingview</code><br/>
+          Alert JSON: <code style={{ color: '#aaa' }}>{'{"action":"buy","symbol":"BTCUSDC","price":106500}'}</code>
+        </div>
       </div>
 
       <div className="card" style={{ display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}>

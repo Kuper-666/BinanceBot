@@ -101,6 +101,10 @@ namespace BinanceBotWpf.Models
         public bool DynamicPositionSizing { get; set; } = true;
         public decimal MaxPositionPercent { get; set; } = 0.25m; // Макс 25% баланса
 
+        // TradingView Webhook
+        public bool TradingViewEnabled { get; set; } = false;
+        public string TradingViewSecret { get; set; } = "";
+
         /// <summary>
         /// Сохранить настройки в файл
         /// </summary>

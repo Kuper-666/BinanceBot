@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.IO.Compression;
 using System.Net.Http;
@@ -55,6 +56,7 @@ namespace BinanceBotWpf.Services
         private readonly StatePersistence _statePersistence;
         private TelegramCommandHandler _telegramHandler;
         private DashboardCommandHandler _dashboardHandler;
+        private TradingViewWebhookService _tradingViewHandler;
 
         private MainWindowViewModel _ui;
         private volatile bool _isRunning;
@@ -313,6 +315,15 @@ namespace BinanceBotWpf.Services
                     async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
                     _tradingSettings);
                 _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
+
+                _tradingViewHandler = new TradingViewWebhookService (
+                    _ui, _client, _tradingSettings,
+                    async (sym, indicators, bal) => await _orderExecutor.ExecuteBuyAsync (sym, indicators, bal),
+                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
+                    () => { try { return (_wallet != null ? _wallet.GetTotalBalance ("USDC") : 0).ToString (CultureInfo.InvariantCulture); } catch { return "0"; } },
+                    (sym) => GetCurrentPrice (sym));
+                _dashboardServer.OnWebhook = (source, body) => _tradingViewHandler.HandleWebhookAsync (source, body);
+
                 System.Diagnostics.Debug.WriteLine ("[Dashboard] Starting server on port 8765...");
                 await _dashboardServer.StartAsync (8765);
                 System.Diagnostics.Debug.WriteLine ("[Dashboard] Server started OK");
@@ -423,6 +434,15 @@ namespace BinanceBotWpf.Services
                     async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
                     _tradingSettings);
                 _dashboardServer.OnCommand = (action, data) => _dashboardHandler.HandleAsync (action, data);
+
+                _tradingViewHandler = new TradingViewWebhookService (
+                    _ui, _client, _tradingSettings,
+                    async (sym, indicators, bal) => await _orderExecutor.ExecuteBuyAsync (sym, indicators, bal),
+                    async (sym) => await _orderExecutor.ExecuteSellAsync (sym),
+                    () => { try { return (_wallet != null ? _wallet.GetTotalBalance ("USDC") : 0).ToString (CultureInfo.InvariantCulture); } catch { return "0"; } },
+                    (sym) => GetCurrentPrice (sym));
+                _dashboardServer.OnWebhook = (source, body) => _tradingViewHandler.HandleWebhookAsync (source, body);
+
                 _ = _dashboardServer.StartAsync (8765);
             }
             catch (Exception ex)
@@ -1342,6 +1362,7 @@ namespace BinanceBotWpf.Services
                                 ["gridLevels"] = _tradingSettings?.GridLevels ?? 10,
                                 ["gridInvestmentPercent"] = (double)(_tradingSettings?.TotalInvestmentPercent ?? 0.80m) * 100,
                                 ["trailingStopPercent"] = (double)(_ui?.TrailingStopPercent ?? 0.01m) * 100,
+                                ["tradingViewEnabled"] = _tradingSettings?.TradingViewEnabled ?? false,
                             });
 
                             // Trades — last 50 from history
