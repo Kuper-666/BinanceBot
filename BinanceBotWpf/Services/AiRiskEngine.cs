@@ -157,25 +157,23 @@ namespace BinanceBotWpf.Services
         private GridParameters CalculateGridParameters(decimal balance, decimal volatility, decimal atr, decimal price, int aiRiskLevel)
         {
             var grid = new GridParameters ();
-            decimal minNotional = 5m; // Default, будет перезаписан из exchangeInfo
+            decimal minNotional = 5m;
 
-            // GridBot требует минимум 500 USDC — иначе сетка из 1-2 уровней бессмысленна,
-            // комиссии съедают всю прибыль, и баланс не покрывает minNotional на все уровни.
-            const decimal MinGridBalance = 500m;
-            if (balance < MinGridBalance)
+            // Минимум для сетки: 2 уровня * 2 стороны * minNotional
+            decimal minGridUsdc = minNotional * 2 * 2;
+            if (balance < minGridUsdc)
             {
                 grid.Levels = 0;
                 grid.InvestmentPercent = 0;
                 grid.RangePercent = 0;
                 grid.UseDynamicStep = false;
-                _logger?.Invoke ($"⛔ Сетка отключена: баланс {balance:F2} USDC < минимума {MinGridBalance} USDC");
+                _logger?.Invoke ($"⛔ Сетка отключена: баланс {balance:F2} USDC < минимума {minGridUsdc:F2} USDC");
                 return grid;
             }
 
-            // Инвестиции в сетку: от баланса
+            // Инвестиции в сетку
             grid.InvestmentPercent = 0.25m;
 
-            // Снижаем инвестиции при высоком ИИ-риске
             if (aiRiskLevel == 3) grid.InvestmentPercent *= 0.6m;
             else if (aiRiskLevel == 2) grid.InvestmentPercent *= 0.8m;
 
@@ -183,9 +181,7 @@ namespace BinanceBotWpf.Services
 
             decimal investmentUsdc = balance * grid.InvestmentPercent;
 
-            // Диапазон сетки: от волатильности.
-            // Для малых балансов (< 200 USDC) используем узкий диапазон (1.5%–3%),
-            // чтобы не раздувать ордера за пределы реальной волатильности.
+            // Диапазон сетки
             if (balance < 200)
             {
                 grid.RangePercent = volatility <= 0.03m ? 0.015m : (volatility <= 0.06m ? 0.025m : 0.035m);
@@ -199,14 +195,12 @@ namespace BinanceBotWpf.Services
             else
                 grid.RangePercent = 0.15m;
 
-            // Количество уровней: 10–20 в каждую сторону.
-            // Для 500 USDC с плечом 5x (2500 покуп. способность) — 15 уровней по ~8 USDC/ордер.
-            // minNotional = 6 USDC (Binance минимум). Каждый ордер = buy + sell →总投资/(levels*2) >= minNotional.
+            // Количество уровней: динамически от баланса
             int maxLevelsByFunds = Math.Max (1, (int)(investmentUsdc / (minNotional * 2)));
-            int minLevelsForGrid = balance < 1000 ? 10 : 15;
-            grid.Levels = Math.Clamp (Math.Max (maxLevelsByFunds, minLevelsForGrid), 10, 20);
+            int minLevelsForGrid = balance < 100 ? 2 : (balance < 500 ? 5 : (balance < 1000 ? 10 : 15));
+            grid.Levels = Math.Clamp (Math.Max (maxLevelsByFunds, minLevelsForGrid), 2, 20);
 
-            // Если инвестиций не хватает на минимальный набор уровней — подтягиваем до минимума
+            // Если инвестиций не хватает — подтягиваем
             decimal perLevel = investmentUsdc / (grid.Levels * 2);
             if (perLevel < minNotional)
             {
@@ -218,11 +212,9 @@ namespace BinanceBotWpf.Services
 
             grid.UseDynamicStep = atr > 0 && volatility > 0.03m;
 
-            // Корректируем диапазон чтобы stepPercent = rangePercent/levels был в 0.5%–1.5%.
-            // Если шаг слишком мелкий — расширяем диапазон; если слишком крупный — сужаем.
             decimal calculatedStep = grid.RangePercent / grid.Levels;
-            const decimal MinStep = 0.005m; // 0.5%
-            const decimal MaxStep = 0.015m; // 1.5%
+            const decimal MinStep = 0.005m;
+            const decimal MaxStep = 0.015m;
             if (calculatedStep < MinStep)
                 grid.RangePercent = MinStep * grid.Levels;
             else if (calculatedStep > MaxStep)

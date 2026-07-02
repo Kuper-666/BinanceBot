@@ -37,10 +37,10 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public async System.Threading.Tasks.Task CalculateRiskAsync_GridDisabled_Below500USDC ()
         {
-            // GridBot requires min 500 USDC
+            // GridBot requires min ~20 USDC (2 levels * 2 sides * 5 minNotional)
             var result = await _engine.CalculateRiskAsync (
                 symbol: "ETHUSDC",
-                balance: 200m,
+                balance: 10m,
                 price: 3000m,
                 fastSma: 2950m,
                 slowSma: 2900m,
