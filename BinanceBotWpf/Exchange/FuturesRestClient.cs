@@ -530,6 +530,134 @@ namespace BinanceBotWpf.Exchange
             return (1m, 0m);
         }
 
+        public async Task<decimal> GetTickSizeAsync(string symbol)
+        {
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
+            var priceFilter = symInfo?["filters"]?.FirstOrDefault(f => f["filterType"]?.ToString() == "PRICE_FILTER");
+            if (priceFilter != null && priceFilter["tickSize"] != null)
+            {
+                return decimal.Parse(priceFilter["tickSize"].ToString(), CultureInfo.InvariantCulture);
+            }
+            return 0.0001m;
+        }
+
+        public async Task<decimal> GetMinNotionalAsync(string symbol)
+        {
+            var exchangeInfo = await GetExchangeInfoAsync ();
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
+            var notionalFilter = symInfo?["filters"]?.FirstOrDefault(
+                f => f["filterType"]?.ToString() == "NOTIONAL" || f["filterType"]?.ToString() == "MIN_NOTIONAL");
+            decimal minNotional = 5m;
+            if (notionalFilter != null)
+            {
+                if (notionalFilter["minNotional"] != null)
+                    minNotional = decimal.Parse(notionalFilter["minNotional"].ToString(), CultureInfo.InvariantCulture);
+                else if (notionalFilter["notional"] != null)
+                    minNotional = decimal.Parse(notionalFilter["notional"].ToString(), CultureInfo.InvariantCulture);
+            }
+            return minNotional;
+        }
+
+        public async Task<JObject> PlaceLimitOrder(string symbol, string side, decimal quantity, decimal price)
+        {
+            string sym = NormalizeSymbol(symbol);
+            try
+            {
+                (decimal stepSize, decimal minQty) = await GetLotSizeAsync(sym);
+                if (stepSize > 0)
+                    quantity = Math.Floor(quantity / stepSize) * stepSize;
+                if (quantity < minQty)
+                    quantity = minQty;
+                if (quantity <= 0)
+                {
+                    Log($"PlaceLimitOrder SKIP {sym}: quantity=0 (stepSize={stepSize}, minQty={minQty})");
+                    return null;
+                }
+                long timestamp = GetTimestamp();
+                string query = $"symbol={sym}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString(CultureInfo.InvariantCulture)}&price={price.ToString(CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+                string signature = CreateSignature(query);
+                var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage(HttpMethod.Post, "/fapi/v1/order") { Content = content };
+                var response = await SendWithRetryAsync(request);
+                string body = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                    return JObject.Parse(body);
+                Log($"PlaceLimitOrder Futures ERROR for {symbol}: {body}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log($"PlaceLimitOrder Futures EXCEPTION: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<bool> CancelOrder(string symbol, long orderId)
+        {
+            string sym = NormalizeSymbol(symbol);
+            try
+            {
+                long timestamp = GetTimestamp();
+                string query = $"symbol={sym}&orderId={orderId}&timestamp={timestamp}";
+                string signature = CreateSignature(query);
+                var request = new HttpRequestMessage(HttpMethod.Delete, MakeUri($"/fapi/v1/order?{query}&signature={signature}"));
+                var response = await SendWithRetryAsync(request);
+                return response.IsSuccessStatusCode;
+            }
+            catch (Exception ex)
+            {
+                Log($"CancelOrder Futures exception: {ex.Message}");
+                return false;
+            }
+        }
+
+        public async Task<List<JObject>> GetAllOrdersAsync(string symbol, int limit = 50)
+        {
+            string sym = NormalizeSymbol(symbol);
+            try
+            {
+                long timestamp = GetTimestamp();
+                string query = $"symbol={sym}&timestamp={timestamp}&limit={limit}";
+                string signature = CreateSignature(query);
+                var request = new HttpRequestMessage(HttpMethod.Get, MakeUri($"/fapi/v1/allOrders?{query}&signature={signature}"));
+                var response = await SendWithRetryAsync(request);
+                string body = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                    return JArray.Parse(body).ToObject<List<JObject>>();
+                Log($"GetAllOrders Futures error for {symbol}: {body}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log($"GetAllOrders Futures exception: {ex.Message}");
+                return null;
+            }
+        }
+
+        public async Task<decimal> GetATRAsync(string symbol, int period = 14, string interval = "1h")
+        {
+            try
+            {
+                var klines = await GetKlinesAsync(symbol, interval, period + 1);
+                if (klines == null || klines.Count < period) return 0;
+                decimal atr = 0;
+                for (int i = 1; i <= period; i++)
+                {
+                    decimal tr = Math.Max(klines[i].High - klines[i].Low,
+                        Math.Max(Math.Abs(klines[i].High - klines[i - 1].Close),
+                                 Math.Abs(klines[i].Low - klines[i - 1].Close)));
+                    atr += tr;
+                }
+                return atr / period;
+            }
+            catch (Exception ex)
+            {
+                Log($"GetATRAsync Futures error: {ex.Message}");
+                return 0;
+            }
+        }
+
         public void Dispose() => _httpClient.Dispose ();
     }
 }

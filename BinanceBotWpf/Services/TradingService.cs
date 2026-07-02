@@ -35,6 +35,7 @@ namespace BinanceBotWpf.Services
         private WebSocketPriceManager _webSocketManager;
         private UpdateChecker _updateChecker;
         private GridBot _gridBot;
+        private BinanceFuturesClient _futuresClient;
         private readonly IVolumeBreakoutStrategy _volumeBreakout;
         private readonly IDcaStrategy _dcaStrategy;
         private readonly INewsProvider _newsProvider;
@@ -509,7 +510,12 @@ namespace BinanceBotWpf.Services
             decimal balance = _wallet.GetTotalBalance ("USDC");
             decimal investmentUsdc = balance * investmentPercent;
 
-            _gridBot = new GridBot (_client, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
+            if (_futuresClient == null)
+            {
+                _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. Сетка требует фьючерсный аккаунт.");
+                return;
+            }
+            _gridBot = new GridBot (_futuresClient, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
             _gridBot.OnTrade += async trade =>
             {
                 _ui?.AddTradeToHistory (trade);
@@ -578,10 +584,16 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
+            if (_futuresClient == null)
+            {
+                _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. ИИ-сетка требует фьючерсный аккаунт.");
+                return;
+            }
+
             _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Баланс: {balance:F2} USDC");
             _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
 
-            _gridBot = new GridBot (_client, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
+            _gridBot = new GridBot (_futuresClient, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
             _gridBot.OnTrade += async trade =>
             {
                 _ui?.AddTradeToHistory (trade);
@@ -671,6 +683,7 @@ namespace BinanceBotWpf.Services
                     else
                     {
                         var futuresClient = new BinanceFuturesClient (futuresKey, futuresSecret);
+                        _futuresClient = futuresClient;
                         await futuresClient.SyncTimeAsync ();
                         await futuresClient.SetMarginTypeAsync ("BTCUSDT", "ISOLATED");
                         await futuresClient.SetPositionModeAsync (true); // Hedge Mode

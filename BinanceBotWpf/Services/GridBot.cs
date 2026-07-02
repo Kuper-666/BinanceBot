@@ -4,17 +4,18 @@ using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using BinanceBotWpf.Exchange;
 using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {
     /// <summary>
-    /// Спотовый сеточный бот: автоматическая расстановка лимитных ордеров выше и ниже текущей цены.
-    /// При исполнении buy-ордера выставляется встречный sell-ордера на уровень выше (и наоборот).
+    /// Сеточный бот (фьючерсы): автоматическая расстановка лимитных ордеров выше и ниже текущей цены.
+    /// При исполнении buy-ордера выставляется встречный sell-ордер на уровень выше (и наоборот).
     /// </summary>
     public class GridBot : IDisposable
     {
-        private readonly BinanceClient _client;
+        private readonly IBinanceFuturesClient _client;
         private readonly PositionManager _positionManager;
         private readonly Action<string> _logger;
 
@@ -65,7 +66,7 @@ namespace BinanceBotWpf.Services
         public decimal RealizedPnl => _realizedPnl;
         public event Action<TradeLog> OnTrade;
 
-        public GridBot(BinanceClient client, PositionManager positionManager, Action<string> logger)
+        public GridBot(IBinanceFuturesClient client, PositionManager positionManager, Action<string> logger)
         {
             _client = client;
             _positionManager = positionManager;
@@ -252,7 +253,7 @@ namespace BinanceBotWpf.Services
                 decimal qty = Math.Floor (balance / stepSize) * stepSize;
                 if (qty > 0)
                 {
-                    await _client.PlaceOrder (_symbol, "SELL", "MARKET", qty);
+                    await _client.PlaceMarketOrder (_symbol, "SELL", qty);
                     _logger?.Invoke ($"   🔴 Продано {qty} {baseAsset} по рыночной цене");
                 }
             }

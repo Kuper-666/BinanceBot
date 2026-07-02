@@ -22,5 +22,11 @@ namespace BinanceBotWpf.Exchange
         Task<decimal> GetPriceAsync (string symbol);
         Task<decimal> GetStepSizeAsync (string symbol);
         Task<(decimal stepSize, decimal minQty)> GetLotSizeAsync (string symbol);
+        Task<decimal> GetTickSizeAsync (string symbol);
+        Task<decimal> GetMinNotionalAsync (string symbol);
+        Task<JObject> PlaceLimitOrder (string symbol, string side, decimal quantity, decimal price);
+        Task<bool> CancelOrder (string symbol, long orderId);
+        Task<List<JObject>> GetAllOrdersAsync (string symbol, int limit = 50);
+        Task<decimal> GetATRAsync (string symbol, int period = 14, string interval = "1h");
     }
 }
