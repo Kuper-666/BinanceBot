@@ -678,7 +678,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public async Task<JArray> TransferToFuturesAsync(string asset, decimal amount)
+        public async Task<JObject> TransferToFuturesAsync(string asset, decimal amount)
         {
             try
             {
@@ -688,13 +688,12 @@ namespace BinanceBotWpf.Exchange
                 string signature = CreateSignature(query);
                 var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_sapiClient.BaseAddress, $"/sapi/v1/asset/transfer")) { Content = content };
-                request.Headers.Add("X-MBX-APIKEY", _apiKey);
                 var response = await _sapiClient.SendAsync(request);
                 string body = await response.Content.ReadAsStringAsync();
                 if (response.IsSuccessStatusCode)
                 {
                     Log($"✅ Перевод {amount} {asset} из спота в фьючерсы: {body}");
-                    return JArray.Parse(body);
+                    return JObject.Parse(body);
                 }
                 Log($"⚠️ Ошибка перевода на фьючерсы: {body}");
                 return null;

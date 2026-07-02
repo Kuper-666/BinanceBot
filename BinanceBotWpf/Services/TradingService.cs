@@ -721,6 +721,11 @@ namespace BinanceBotWpf.Services
                 {
                     tempFuturesKey = cfg.FuturesApiKey ?? "";
                     tempFuturesSecret = cfg.FuturesApiSecret ?? "";
+                    // Фоллбэк на спот-ключи
+                    if (string.IsNullOrEmpty (tempFuturesKey))
+                        tempFuturesKey = cfg.ApiKey ?? "";
+                    if (string.IsNullOrEmpty (tempFuturesSecret))
+                        tempFuturesSecret = cfg.ApiSecret ?? "";
                 }
             }
             catch { }
@@ -736,11 +741,6 @@ namespace BinanceBotWpf.Services
                 {
                     string futuresKey = tempFuturesKey;
                     string futuresSecret = tempFuturesSecret;
-                    // Фоллбэк на спот-ключи если фьючерсные не заданы
-                    if (string.IsNullOrEmpty (futuresKey))
-                        futuresKey = _config?.ApiKey ?? "";
-                    if (string.IsNullOrEmpty (futuresSecret))
-                        futuresSecret = _config?.ApiSecret ?? "";
 
                     if (string.IsNullOrEmpty (futuresKey) || string.IsNullOrEmpty (futuresSecret))
                     {
