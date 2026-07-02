@@ -715,7 +715,8 @@ namespace BinanceBotWpf.Exchange
                         OpenTime = DateTimeOffset.FromUnixTimeMilliseconds ((long)item[0]).DateTime
                     }).ToList ();
                 }
-                Log ($"❌ GetKlinesAsync {symbol}: HTTP {(int)response.StatusCode} — {response.ReasonPhrase}");
+                string errorBody = await response.Content.ReadAsStringAsync ();
+                Log ($"❌ GetKlinesAsync {symbol}: HTTP {(int)response.StatusCode} — {errorBody}");
                 return new List<BinanceKline> ();
             }
             catch (Exception ex)
