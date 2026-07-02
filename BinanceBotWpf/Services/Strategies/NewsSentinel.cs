@@ -8,8 +8,9 @@ namespace BinanceBotWpf.Services.Strategies
 {
     public class NewsSentinel
     {
-        private readonly Action<string> _logger;
         private readonly string _dbPath;
+        private readonly Action<string> _logger;
+        private bool _diskFull;
         private readonly int _maxNewsAgeHours = 6;
         private readonly int _highImpactThreshold = 3;
 
@@ -134,6 +135,7 @@ namespace BinanceBotWpf.Services.Strategies
 
         public int InsertNews (string title, string source, string sentiment, int impact, string symbols)
         {
+            if (_diskFull) return 0;
             try
             {
                 using var connection = new SqliteConnection ($"Data Source={_dbPath}");
@@ -153,7 +155,10 @@ namespace BinanceBotWpf.Services.Strategies
             }
             catch (Exception ex)
             {
-                _logger?.Invoke ($"⚠️ NewsSentinel insert error: {ex.Message}");
+                string msg = ex.Message;
+                _logger?.Invoke ($"⚠️ NewsSentinel insert error: {msg}");
+                if (msg.Contains ("disk is full") || msg.Contains ("database or disk is full"))
+                    _diskFull = true;
                 return 0;
             }
         }
