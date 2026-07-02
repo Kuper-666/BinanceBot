@@ -1159,8 +1159,11 @@ namespace BinanceBotWpf.Exchange
                     string json = await response.Content.ReadAsStringAsync ();
                     _exchangeInfo = JObject.Parse (json);
                     _exchangeInfoExpiry = DateTime.UtcNow.AddHours (24);
+                    var symbols = _exchangeInfo ["symbols"];
+                    Log ($"📊 Spot exchangeInfo: {symbols?.Count () ?? 0} символов загружено");
                     return _exchangeInfo;
                 }
+                Log ($"⚠️ Spot exchangeInfo: HTTP {(int)response.StatusCode} — используется пустой JObject");
                 return new JObject ();
             }
             finally { _exchangeInfoLock.Release (); }
