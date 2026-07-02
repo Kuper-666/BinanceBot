@@ -123,6 +123,7 @@ namespace BinanceBotWpf.Services
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             decimal tickSize = await _client.GetTickSizeAsync (symbol);
             decimal minNotional = await _client.GetMinNotionalAsync (symbol);
+            _logger?.Invoke ($"📐 Фильтры {symbol}: stepSize={stepSize}, tickSize={tickSize}, minNotional={minNotional}");
 
             // Автоподстройка: уменьшаем уровни пока каждый ордер не будет >= minNotional
             while (perLevelUsdc < minNotional && gridLevels > 1)

@@ -591,6 +591,16 @@ namespace BinanceBotWpf.Exchange
             string sym = NormalizeSymbol (symbol);
             try
             {
+                (decimal stepSize, decimal minQty) = await GetLotSizeAsync (sym);
+                if (stepSize > 0)
+                    quantity = Math.Floor (quantity / stepSize) * stepSize;
+                if (quantity < minQty)
+                    quantity = minQty;
+                if (quantity <= 0)
+                {
+                    Log ($"PlaceLimitOrder SKIP {sym}: quantity=0 (stepSize={stepSize}, minQty={minQty})");
+                    return null;
+                }
                 string query = $"symbol={sym}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&price={price.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
