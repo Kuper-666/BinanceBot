@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
@@ -29,7 +30,8 @@ namespace BinanceBotWpf.Exchange
         private readonly SemaphoreSlim _throttleLock = new (1, 1);
         private readonly SemaphoreSlim _syncLock = new (1, 1);
         private DateTime _lastSyncTime = DateTime.MinValue;
-        private readonly Dictionary<string, decimal> _stepSizeCache = new ();
+        private readonly ConcurrentDictionary<string, decimal> _stepSizeCache = new ();
+        private readonly SemaphoreSlim _exchangeInfoLock = new (1, 1);
         private JObject _exchangeInfoCache;
         private DateTime _exchangeInfoCacheTime = DateTime.MinValue;
 
@@ -39,6 +41,11 @@ namespace BinanceBotWpf.Exchange
         private Uri MakeUri (string path)
         {
             return new Uri (_httpClient.BaseAddress, path);
+        }
+
+        private static string NormalizeSymbol (string symbol)
+        {
+            return symbol?.Trim ().ToUpperInvariant () ?? string.Empty;
         }
 
         public FuturesRestClient(string apiKey, string apiSecret)
@@ -75,7 +82,13 @@ namespace BinanceBotWpf.Exchange
         }
 
         private long GetTimestamp() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds () + _serverTimeOffset;
-        private string CreateSignature(string query) => BitConverter.ToString (new HMACSHA256 (Encoding.UTF8.GetBytes (_apiSecret)).ComputeHash (Encoding.UTF8.GetBytes (query))).Replace ("-", "").ToLower ();
+        private string CreateSignature(string query)
+        {
+            using (var hmac = new HMACSHA256 (Encoding.UTF8.GetBytes (_apiSecret)))
+            {
+                return BitConverter.ToString (hmac.ComputeHash (Encoding.UTF8.GetBytes (query))).Replace ("-", "").ToLower ();
+            }
+        }
 
         public async Task SyncTimeAsync()
         {
@@ -288,8 +301,9 @@ namespace BinanceBotWpf.Exchange
 
         public async Task SetLeverageAsync(string symbol, int leverage)
         {
+            string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={symbol}&leverage={leverage}&timestamp={timestamp}";
+            string query = $"symbol={sym}&leverage={leverage}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/leverage") { Content = content };
@@ -303,8 +317,9 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<JObject> PlaceMarketOrder(string symbol, string side, decimal quantity)
         {
+            string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={symbol}&side={side}&type=MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string query = $"symbol={sym}&side={side}&type=MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
@@ -356,8 +371,9 @@ namespace BinanceBotWpf.Exchange
 
         public async Task SetMarginTypeAsync(string symbol, string marginType)
         {
+            string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={symbol}&marginType={marginType}&timestamp={timestamp}";
+            string query = $"symbol={sym}&marginType={marginType}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/marginType") { Content = content };
@@ -387,8 +403,9 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<JObject> PlaceTrailingStopMarketAsync(string symbol, string side, decimal quantity, decimal callbackRate)
         {
+            string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={symbol}&side={side}&type=TRAILING_STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&callbackRate={callbackRate.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string query = $"symbol={sym}&side={side}&type=TRAILING_STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&callbackRate={callbackRate.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
@@ -403,8 +420,9 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<JObject> PlaceStopMarketAsync(string symbol, string side, decimal quantity, decimal stopPrice)
         {
+            string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={symbol}&side={side}&type=STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&stopPrice={stopPrice.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string query = $"symbol={sym}&side={side}&type=STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&stopPrice={stopPrice.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
@@ -439,9 +457,13 @@ namespace BinanceBotWpf.Exchange
             if (_exchangeInfoCache != null && (DateTime.UtcNow - _exchangeInfoCacheTime).TotalHours < 24)
                 return _exchangeInfoCache;
 
+            await _exchangeInfoLock.WaitAsync ();
             try
             {
-                var request = new HttpRequestMessage (HttpMethod.Get, "/fapi/v1/exchangeInfo");
+                if (_exchangeInfoCache != null && (DateTime.UtcNow - _exchangeInfoCacheTime).TotalHours < 24)
+                    return _exchangeInfoCache;
+
+                var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ("/fapi/v1/exchangeInfo"));
                 var response = await SendWithRetryAsync (request);
                 if (response.IsSuccessStatusCode)
                 {
@@ -452,6 +474,7 @@ namespace BinanceBotWpf.Exchange
                 }
             }
             catch (Exception ex) { Log ($"GetExchangeInfoAsync error: {ex.Message}"); }
+            finally { _exchangeInfoLock.Release (); }
             return null;
         }
 

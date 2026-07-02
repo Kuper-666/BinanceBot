@@ -52,6 +52,11 @@ namespace BinanceBotWpf.Exchange
             return new Uri (_httpClient.BaseAddress, path);
         }
 
+        private static string NormalizeSymbol (string symbol)
+        {
+            return symbol?.Trim ().ToUpperInvariant () ?? string.Empty;
+        }
+
         private readonly SemaphoreSlim _rateLimiter = new (10, 10);
         private readonly Queue<DateTime> _requestTimes = new ();
         private readonly int _maxRequestsPerSecond = 10;
@@ -240,9 +245,10 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<JObject> PlaceOrder(string symbol, string side, string type, decimal quantity)
         {
+            string sym = NormalizeSymbol (symbol);
             try
             {
-                string query = $"symbol={symbol}&side={side}&type={type}&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
+                string query = $"symbol={sym}&side={side}&type={type}&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order") { Content = content };
@@ -271,10 +277,11 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<List<JObject>> GetAllOrdersAsync(string symbol, long startTime = 0, long endTime = 0, int limit = 500)
         {
+            string sym = NormalizeSymbol (symbol);
             try
             {
                 long timestamp = GetTimestamp ();
-                string query = $"symbol={symbol}&timestamp={timestamp}&limit={limit}";
+                string query = $"symbol={sym}&timestamp={timestamp}&limit={limit}";
                 if (startTime > 0) query += $"&startTime={startTime}";
                 if (endTime > 0) query += $"&endTime={endTime}";
                 string signature = CreateSignature (query);
@@ -514,13 +521,14 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<JObject> PlaceOcoOrder(string symbol, decimal quantity, decimal stopPrice, decimal limitPrice)
         {
+            string sym = NormalizeSymbol (symbol);
             try
             {
                 long timestamp = GetTimestamp ();
-                decimal tickSize = await GetTickSizeAsync (symbol);
+                decimal tickSize = await GetTickSizeAsync (sym);
                 decimal roundedLimitPrice = Math.Round (limitPrice / tickSize) * tickSize;
                 decimal roundedStopPrice = Math.Round (stopPrice / tickSize) * tickSize;
-                string query = $"symbol={symbol}&side=SELL&quantity={quantity.ToString (CultureInfo.InvariantCulture)}" +
+                string query = $"symbol={sym}&side=SELL&quantity={quantity.ToString (CultureInfo.InvariantCulture)}" +
                                $"&price={roundedLimitPrice.ToString (CultureInfo.InvariantCulture)}" +
                                $"&stopPrice={roundedStopPrice.ToString (CultureInfo.InvariantCulture)}" +
                                $"&timestamp={timestamp}";
@@ -551,10 +559,11 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<bool> CancelOcoOrder(string symbol, long orderListId)
         {
+            string sym = NormalizeSymbol (symbol);
             try
             {
                 long timestamp = GetTimestamp ();
-                string query = $"symbol={symbol}&orderListId={orderListId}&timestamp={timestamp}";
+                string query = $"symbol={sym}&orderListId={orderListId}&timestamp={timestamp}";
                 string signature = CreateSignature (query);
                 var request = new HttpRequestMessage (HttpMethod.Delete, MakeUri ($"/api/v3/orderList?{query}&signature={signature}"));
                 var response = await SendWithRetryAsync (request);
@@ -579,9 +588,10 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<JObject> PlaceLimitOrder(string symbol, string side, decimal quantity, decimal price)
         {
+            string sym = NormalizeSymbol (symbol);
             try
             {
-                string query = $"symbol={symbol}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&price={price.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
+                string query = $"symbol={sym}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&price={price.ToString (CultureInfo.InvariantCulture)}&timestamp={GetTimestamp ()}";
                 string signature = CreateSignature (query);
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage (HttpMethod.Post, "/api/v3/order") { Content = content };
@@ -603,10 +613,11 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<bool> CancelOrder(string symbol, long orderId)
         {
+            string sym = NormalizeSymbol (symbol);
             try
             {
                 long timestamp = GetTimestamp ();
-                string query = $"symbol={symbol}&orderId={orderId}&timestamp={timestamp}";
+                string query = $"symbol={sym}&orderId={orderId}&timestamp={timestamp}";
                 string signature = CreateSignature (query);
                 var request = new HttpRequestMessage (HttpMethod.Delete, MakeUri ($"/api/v3/order?{query}&signature={signature}"));
                 var response = await SendWithRetryAsync (request);
