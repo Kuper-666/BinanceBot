@@ -515,6 +515,36 @@ namespace BinanceBotWpf.Services
                 _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. Сетка требует фьючерсный аккаунт.");
                 return;
             }
+
+            // Проверяем баланс на фьючерсах и переводим со спота при необходимости
+            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDC");
+            _ui?.AddLog ($"💰 Фьючерсный баланс USDC: {futuresBalance:F2}");
+            if (futuresBalance < investmentUsdc)
+            {
+                decimal toTransfer = investmentUsdc - futuresBalance + 1m; // +1 USDC запас на комиссии
+                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                if (spotBalance >= toTransfer)
+                {
+                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} USDC из спота в фьючерсы...");
+                    var transferResult = await _futuresClient.TransferToFuturesAsync ("USDC", toTransfer);
+                    if (transferResult != null)
+                    {
+                        _ui?.AddLog ($"✅ Перевод выполнен");
+                        await Task.Delay (2000); // Ждём обновления баланса
+                    }
+                    else
+                    {
+                        _ui?.AddLog ("❌ Ошибка перевода. Проверьте баланс на фьючерсах.");
+                        return;
+                    }
+                }
+                else
+                {
+                    _ui?.AddLog ($"⚠️ Недостаточно USDC на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
+                    return;
+                }
+            }
+
             _gridBot = new GridBot (_futuresClient, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
             _gridBot.OnTrade += async trade =>
             {
@@ -588,6 +618,35 @@ namespace BinanceBotWpf.Services
             {
                 _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. ИИ-сетка требует фьючерсный аккаунт.");
                 return;
+            }
+
+            // Проверяем баланс на фьючерсах и переводим со спота при необходимости
+            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDC");
+            _ui?.AddLog ($"💰 Фьючерсный баланс USDC: {futuresBalance:F2}");
+            if (futuresBalance < investmentUsdc)
+            {
+                decimal toTransfer = investmentUsdc - futuresBalance + 1m;
+                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                if (spotBalance >= toTransfer)
+                {
+                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} USDC из спота в фьючерсы...");
+                    var transferResult = await _futuresClient.TransferToFuturesAsync ("USDC", toTransfer);
+                    if (transferResult != null)
+                    {
+                        _ui?.AddLog ($"✅ Перевод выполнен");
+                        await Task.Delay (2000);
+                    }
+                    else
+                    {
+                        _ui?.AddLog ("❌ Ошибка перевода. Проверьте баланс на фьючерсах.");
+                        return;
+                    }
+                }
+                else
+                {
+                    _ui?.AddLog ($"⚠️ Недостаточно USDC на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
+                    return;
+                }
             }
 
             _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Баланс: {balance:F2} USDC");

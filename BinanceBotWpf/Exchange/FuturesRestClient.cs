@@ -20,6 +20,7 @@ namespace BinanceBotWpf.Exchange
         private readonly string _apiKey;
         private readonly string _apiSecret;
         private readonly HttpClient _httpClient;
+        private readonly HttpClient _sapiClient;
         private long _serverTimeOffset = 0;
         private readonly SemaphoreSlim _rateLimiter = new (10, 10);
         private readonly Queue<DateTime> _requestTimes = new ();
@@ -79,6 +80,25 @@ namespace BinanceBotWpf.Exchange
             _httpClient.DefaultRequestHeaders.Add ("X-MBX-APIKEY", _apiKey);
             _httpClient.DefaultRequestHeaders.Add ("Accept", "application/json");
             _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf/1.0");
+
+            var sapiHandler = new HttpClientHandler
+            {
+                ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) =>
+                {
+                    #if DEBUG
+                    return true;
+                    #else
+                    return sslPolicyErrors == System.Net.Security.SslPolicyErrors.None;
+                    #endif
+                },
+                AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
+            };
+            _sapiClient = new HttpClient (sapiHandler);
+            _sapiClient.Timeout = TimeSpan.FromSeconds (30);
+            _sapiClient.BaseAddress = new Uri ("https://api.binance.com");
+            _sapiClient.DefaultRequestHeaders.Add ("X-MBX-APIKEY", _apiKey);
+            _sapiClient.DefaultRequestHeaders.Add ("Accept", "application/json");
+            _sapiClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf/1.0");
         }
 
         private long GetTimestamp() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds () + _serverTimeOffset;
@@ -658,6 +678,38 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public void Dispose() => _httpClient.Dispose ();
+        public async Task<JArray> TransferToFuturesAsync(string asset, decimal amount)
+        {
+            try
+            {
+                long timestamp = GetTimestamp();
+                string type = "MAIN_UMFUTURE";
+                string query = $"type={type}&asset={asset}&amount={amount.ToString(CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+                string signature = CreateSignature(query);
+                var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_sapiClient.BaseAddress, $"/sapi/v1/asset/transfer")) { Content = content };
+                request.Headers.Add("X-MBX-APIKEY", _apiKey);
+                var response = await _sapiClient.SendAsync(request);
+                string body = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                {
+                    Log($"✅ Перевод {amount} {asset} из спота в фьючерсы: {body}");
+                    return JArray.Parse(body);
+                }
+                Log($"⚠️ Ошибка перевода на фьючерсы: {body}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ TransferToFutures ошибка: {ex.Message}");
+                return null;
+            }
+        }
+
+        public void Dispose()
+        {
+            _httpClient.Dispose();
+            _sapiClient?.Dispose();
+        }
     }
 }
