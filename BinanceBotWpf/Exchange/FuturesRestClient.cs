@@ -470,8 +470,11 @@ namespace BinanceBotWpf.Exchange
                     string body = await response.Content.ReadAsStringAsync ();
                     _exchangeInfoCache = JObject.Parse (body);
                     _exchangeInfoCacheTime = DateTime.UtcNow;
+                    var symbols = _exchangeInfoCache ["symbols"];
+                    Log ($"📊 Futures exchangeInfo: {symbols?.Count () ?? 0} символов загружено");
                     return _exchangeInfoCache;
                 }
+                Log ($"⚠️ Futures exchangeInfo: HTTP {(int)response.StatusCode}");
             }
             catch (Exception ex) { Log ($"GetExchangeInfoAsync error: {ex.Message}"); }
             finally { _exchangeInfoLock.Release (); }
@@ -487,7 +490,8 @@ namespace BinanceBotWpf.Exchange
             var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"].ToString() == symbol);
             if (symInfo == null)
             {
-                Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo, используется fallback stepSize=1");
+                var symbolNames = exchangeInfo?["symbols"]?.Select (s => s ["symbol"]?.ToString ())?.Where (s => s != null)?.Take (10)?.ToList ();
+                Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo (всего {exchangeInfo?["symbols"]?.Count () ?? 0}, первые: {string.Join (", ", symbolNames ?? new List<string> ())}), используется fallback stepSize=1");
                 _stepSizeCache[symbol] = 1m;
                 return 1m;
             }
