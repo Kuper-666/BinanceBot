@@ -1004,6 +1004,12 @@ namespace BinanceBotWpf.Exchange
 
             var exchangeInfo = await GetExchangeInfoAsync ();
             var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            if (symInfo == null)
+            {
+                Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo, используется fallback stepSize=1");
+                _stepSizeCache[symbol] = 1m;
+                return 1m;
+            }
             var lotSize = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "LOT_SIZE");
             if (lotSize != null && lotSize["stepSize"] != null)
             {
@@ -1011,7 +1017,9 @@ namespace BinanceBotWpf.Exchange
                 _stepSizeCache[symbol] = step;
                 return step;
             }
-            return 0.00000001m;
+            Log ($"⚠️ GetStepSizeAsync: LOT_SIZE фильтр не найден для {symbol}, используется fallback stepSize=1");
+            _stepSizeCache[symbol] = 1m;
+            return 1m;
         }
 
         /// <summary>
@@ -1022,17 +1030,23 @@ namespace BinanceBotWpf.Exchange
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
             var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            if (symInfo == null)
+            {
+                Log ($"⚠️ GetLotSizeAsync: символ {symbol} не найден в exchangeInfo, используется fallback stepSize=1");
+                return (1m, 0m);
+            }
             var lotSize = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "LOT_SIZE");
             if (lotSize != null)
             {
                 decimal step = lotSize["stepSize"] != null
-                    ? decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture) : 0.00000001m;
+                    ? decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture) : 1m;
                 decimal minQ = lotSize["minQty"] != null
                     ? decimal.Parse (lotSize["minQty"].ToString (), CultureInfo.InvariantCulture) : 0m;
                 if (!_stepSizeCache.ContainsKey (symbol)) _stepSizeCache[symbol] = step;
                 return (step, minQ);
             }
-            return (0.00000001m, 0m);
+            Log ($"⚠️ GetLotSizeAsync: LOT_SIZE фильтр не найден для {symbol}, используется fallback stepSize=1");
+            return (1m, 0m);
         }
 
         /// <summary>
