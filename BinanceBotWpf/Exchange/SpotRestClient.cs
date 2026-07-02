@@ -693,13 +693,15 @@ namespace BinanceBotWpf.Exchange
             var sw = Stopwatch.StartNew ();
             try
             {
-                string url = $"/api/v3/klines?symbol={symbol}&interval={interval}&limit={limit}";
+                string cleanSymbol = symbol.Trim ().ToUpperInvariant ();
+                string query = $"/api/v3/klines?symbol={cleanSymbol}&interval={interval}&limit={limit}";
                 if (endTime.HasValue)
                 {
                     long endMs = new DateTimeOffset (endTime.Value, TimeSpan.Zero).ToUnixTimeMilliseconds ();
-                    url += $"&endTime={endMs}";
+                    query += $"&endTime={endMs}";
                 }
-                var request = new HttpRequestMessage (HttpMethod.Get, url);
+                var requestUri = new Uri (_httpClient.BaseAddress, query);
+                var request = new HttpRequestMessage (HttpMethod.Get, requestUri);
                 var response = await SendWithRetryAsync (request);
                 if (response.IsSuccessStatusCode)
                 {
