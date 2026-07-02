@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -359,8 +360,8 @@ namespace BinanceBotWpf.Services
 
                         foreach (var sell in filledSells)
                         {
-                            decimal sellPrice = decimal.Parse (sell["price"]?.ToString () ?? "0");
-                            decimal sellQty = decimal.Parse (sell["executedQty"]?.ToString () ?? "0");
+                            decimal sellPrice = decimal.Parse (sell["price"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                            decimal sellQty = decimal.Parse (sell["executedQty"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
 
                             if (_lastBuyPrice > 0 && sellPrice > 0 && sellQty > 0)
                             {
