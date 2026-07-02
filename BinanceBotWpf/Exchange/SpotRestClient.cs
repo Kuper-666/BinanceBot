@@ -47,6 +47,11 @@ namespace BinanceBotWpf.Exchange
         private static string TruncateLog(string s, int maxLen = 200) =>
             string.IsNullOrEmpty (s) ? "" : (s.Length <= maxLen ? s : s.Substring (0, maxLen) + "...");
 
+        private Uri MakeUri (string path)
+        {
+            return new Uri (_httpClient.BaseAddress, path);
+        }
+
         private readonly SemaphoreSlim _rateLimiter = new (10, 10);
         private readonly Queue<DateTime> _requestTimes = new ();
         private readonly int _maxRequestsPerSecond = 10;
@@ -273,7 +278,7 @@ namespace BinanceBotWpf.Exchange
                 if (startTime > 0) query += $"&startTime={startTime}";
                 if (endTime > 0) query += $"&endTime={endTime}";
                 string signature = CreateSignature (query);
-                var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/allOrders?{query}&signature={signature}");
+                var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/api/v3/allOrders?{query}&signature={signature}"));
                 var response = await SendWithRetryAsync (request);
                 string body = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
@@ -551,7 +556,7 @@ namespace BinanceBotWpf.Exchange
                 long timestamp = GetTimestamp ();
                 string query = $"symbol={symbol}&orderListId={orderListId}&timestamp={timestamp}";
                 string signature = CreateSignature (query);
-                var request = new HttpRequestMessage (HttpMethod.Delete, $"/api/v3/orderList?{query}&signature={signature}");
+                var request = new HttpRequestMessage (HttpMethod.Delete, MakeUri ($"/api/v3/orderList?{query}&signature={signature}"));
                 var response = await SendWithRetryAsync (request);
                 string body = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
@@ -603,7 +608,7 @@ namespace BinanceBotWpf.Exchange
                 long timestamp = GetTimestamp ();
                 string query = $"symbol={symbol}&orderId={orderId}&timestamp={timestamp}";
                 string signature = CreateSignature (query);
-                var request = new HttpRequestMessage (HttpMethod.Delete, $"/api/v3/order?{query}&signature={signature}");
+                var request = new HttpRequestMessage (HttpMethod.Delete, MakeUri ($"/api/v3/order?{query}&signature={signature}"));
                 var response = await SendWithRetryAsync (request);
                 return response.IsSuccessStatusCode;
             }
@@ -741,7 +746,7 @@ namespace BinanceBotWpf.Exchange
                 long timestamp = GetTimestamp ();
                 string query = $"timestamp={timestamp}";
                 string signature = CreateSignature (query);
-                var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/account?{query}&signature={signature}");
+                var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/api/v3/account?{query}&signature={signature}"));
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
 
                 var response = await SendWithRetryAsync (request);
@@ -872,7 +877,7 @@ namespace BinanceBotWpf.Exchange
                     string query = $"timestamp={timestamp}&recvWindow={recvWindow}&size={size}&current={currentPage}";
                     string signature = CreateSignature (query);
 
-                    var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}");
+                    var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/sapi/v1/simple-earn/flexible/position?{query}&signature={signature}"));
                     request.Headers.Add ("X-MBX-APIKEY", _apiKey);
 
                     var response = await SendWithRetryAsync (request);
@@ -1135,7 +1140,7 @@ namespace BinanceBotWpf.Exchange
                 string query = $"asset={asset}&timestamp={timestamp}&recvWindow={recvWindow}";
                 string signature = CreateSignature (query);
 
-                var request = new HttpRequestMessage (HttpMethod.Get, $"/sapi/v1/simple-earn/flexible/list?{query}&signature={signature}");
+                var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/sapi/v1/simple-earn/flexible/list?{query}&signature={signature}"));
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
 
                 var response = await SendWithRetryAsync (request);

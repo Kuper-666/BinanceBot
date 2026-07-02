@@ -36,6 +36,11 @@ namespace BinanceBotWpf.Exchange
         public event Action<string> OnLogGenerated;
         private void Log(string msg) => OnLogGenerated?.Invoke (msg);
 
+        private Uri MakeUri (string path)
+        {
+            return new Uri (_httpClient.BaseAddress, path);
+        }
+
         public FuturesRestClient(string apiKey, string apiSecret)
         {
             _apiKey = apiKey;
@@ -266,7 +271,7 @@ namespace BinanceBotWpf.Exchange
             long timestamp = GetTimestamp ();
             string query = $"timestamp={timestamp}";
             string signature = CreateSignature (query);
-            var request = new HttpRequestMessage (HttpMethod.Get, $"/fapi/v2/account?{query}&signature={signature}");
+            var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/fapi/v2/account?{query}&signature={signature}"));
             var response = await SendWithRetryAsync (request);
             if (response.IsSuccessStatusCode)
             {
@@ -317,7 +322,7 @@ namespace BinanceBotWpf.Exchange
             long timestamp = GetTimestamp ();
             string query = $"timestamp={timestamp}";
             string signature = CreateSignature (query);
-            var request = new HttpRequestMessage (HttpMethod.Get, $"/fapi/v2/positionRisk?{query}&signature={signature}");
+            var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/fapi/v2/positionRisk?{query}&signature={signature}"));
             var response = await SendWithRetryAsync (request);
             if (response.IsSuccessStatusCode)
             {
@@ -330,8 +335,8 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
         {
-            string url = $"/fapi/v1/klines?symbol={symbol}&interval={interval}&limit={limit}";
-            var request = new HttpRequestMessage (HttpMethod.Get, url);
+            string url = $"/fapi/v1/klines?symbol={symbol.Trim ().ToUpperInvariant ()}&interval={interval}&limit={limit}";
+            var request = new HttpRequestMessage (HttpMethod.Get, MakeUri (url));
             var response = await SendWithRetryAsync (request);
             if (response.IsSuccessStatusCode)
             {
@@ -416,7 +421,7 @@ namespace BinanceBotWpf.Exchange
         {
             try
             {
-                var request = new HttpRequestMessage (HttpMethod.Get, $"/fapi/v1/ticker/price?symbol={symbol}");
+                var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/fapi/v1/ticker/price?symbol={symbol.Trim ().ToUpperInvariant ()}"));
                 var response = await SendWithRetryAsync (request);
                 if (response.IsSuccessStatusCode)
                 {
