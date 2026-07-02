@@ -651,30 +651,37 @@ namespace BinanceBotWpf.Services
             }
             catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Futures config error: {ex.Message}"); }
 
-            // Инициализация фьючерсов (если включены)
-            if (_ui?.FuturesEnabled == true)
+            // Инициализация фьючерсов (если включены или ключи настроены)
+            bool futuresEnabled = _ui?.FuturesEnabled == true || _tradingSettings?.FuturesEnabled == true;
+            string tempFuturesKey = "";
+            string tempFuturesSecret = "";
+            try
+            {
+                var cfg = _config;
+                if (cfg != null)
+                {
+                    tempFuturesKey = cfg.FuturesApiKey ?? "";
+                    tempFuturesSecret = cfg.FuturesApiSecret ?? "";
+                }
+            }
+            catch { }
+            if (!futuresEnabled && !string.IsNullOrEmpty (tempFuturesKey) && !string.IsNullOrEmpty (tempFuturesSecret))
+            {
+                futuresEnabled = true;
+                _tradingSettings.FuturesEnabled = true;
+                _ui?.AddLog ("⚙️ Фьючерсы: ключи обнаружены, автоматическое включение");
+            }
+            if (futuresEnabled)
             {
                 try
                 {
-                    // Читаем ключи напрямую из BotConfig
-                    string futuresKey = "";
-                    string futuresSecret = "";
-
-                    try
-                    {
-                        var cfg = _config;
-                        if (cfg != null)
-                        {
-                            futuresKey = cfg.FuturesApiKey ?? "";
-                            futuresSecret = cfg.FuturesApiSecret ?? "";
-                            // Фоллбэк на спот-ключи если фьючерсные не заданы
-                            if (string.IsNullOrEmpty (futuresKey))
-                                futuresKey = cfg.ApiKey ?? "";
-                            if (string.IsNullOrEmpty (futuresSecret))
-                                futuresSecret = cfg.ApiSecret ?? "";
-                        }
-                    }
-                    catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Futures keys read error: {ex.Message}"); }
+                    string futuresKey = tempFuturesKey;
+                    string futuresSecret = tempFuturesSecret;
+                    // Фоллбэк на спот-ключи если фьючерсные не заданы
+                    if (string.IsNullOrEmpty (futuresKey))
+                        futuresKey = _config?.ApiKey ?? "";
+                    if (string.IsNullOrEmpty (futuresSecret))
+                        futuresSecret = _config?.ApiSecret ?? "";
 
                     if (string.IsNullOrEmpty (futuresKey) || string.IsNullOrEmpty (futuresSecret))
                     {
