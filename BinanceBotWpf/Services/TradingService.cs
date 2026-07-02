@@ -541,7 +541,11 @@ namespace BinanceBotWpf.Services
 
             // Получаем индикаторы для ИИ
             var klines = await _client.GetKlinesAsync (symbol, "1h", 100);
-            if (klines == null || klines.Count < 30) return;
+            if (klines == null || klines.Count < 30)
+            {
+                _ui?.AddLog ($"❌ Сетка: недостаточно данных для {symbol} ({klines?.Count ?? 0}/30 свечей)");
+                return;
+            }
 
             var closes = klines.Select (k => k.Close).ToList ();
             var volumes = klines.Select (k => k.Volume).ToList ();
@@ -570,7 +574,7 @@ namespace BinanceBotWpf.Services
 
             if (grid.Levels <= 0 || investmentUsdc <= 0)
             {
-                _ui?.AddLog ($"⛔ Сетка отключена: баланс {balance:F2} USDC недостаточен (мин. ~500 USDC)");
+                _ui?.AddLog ($"⛔ Сетка отключена: баланс {balance:F2} USDC недостаточен (мин. ~20 USDC)");
                 return;
             }
 
