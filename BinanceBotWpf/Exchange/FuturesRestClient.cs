@@ -487,7 +487,7 @@ namespace BinanceBotWpf.Exchange
                 return cached;
 
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"].ToString() == symbol);
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
             if (symInfo == null)
             {
                 var symbolNames = exchangeInfo?["symbols"]?.Select (s => s ["symbol"]?.ToString ())?.Where (s => s != null)?.Take (10)?.ToList ();
@@ -510,7 +510,7 @@ namespace BinanceBotWpf.Exchange
         public async Task<(decimal stepSize, decimal minQty)> GetLotSizeAsync(string symbol)
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"].ToString() == symbol);
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
             if (symInfo == null)
             {
                 Log ($"⚠️ GetLotSizeAsync: символ {symbol} не найден в exchangeInfo, используется fallback stepSize=1");

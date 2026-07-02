@@ -1003,11 +1003,10 @@ namespace BinanceBotWpf.Exchange
                 return cached;
 
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
             if (symInfo == null)
             {
-                var dogeMatches = exchangeInfo["symbols"]?.Where (s => s["symbol"]?.ToString ().Contains ("DOGE") == true).Select (s => s["symbol"]?.ToString ())?.ToList ();
-                Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo (всего {exchangeInfo["symbols"]?.Count () ?? 0}), DOGE-пары: {string.Join (", ", dogeMatches ?? new List<string> ())}, используется fallback stepSize=1");
+                Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo (всего {exchangeInfo["symbols"]?.Count () ?? 0}), используется fallback stepSize=1");
                 _stepSizeCache[symbol] = 1m;
                 return 1m;
             }
@@ -1030,7 +1029,7 @@ namespace BinanceBotWpf.Exchange
         public async Task<(decimal stepSize, decimal minQty)> GetLotSizeAsync(string symbol)
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
             if (symInfo == null)
             {
                 Log ($"⚠️ GetLotSizeAsync: символ {symbol} не найден в exchangeInfo, используется fallback stepSize=1");
@@ -1060,7 +1059,7 @@ namespace BinanceBotWpf.Exchange
                 return cached;
 
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
             var notionalFilter = symInfo?["filters"]?.FirstOrDefault (
                 f => f["filterType"]?.ToString () == "NOTIONAL" || f["filterType"]?.ToString () == "MIN_NOTIONAL");
 
@@ -1115,7 +1114,7 @@ namespace BinanceBotWpf.Exchange
         public async Task<decimal> GetTickSizeAsync(string symbol)
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
+            var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
             var priceFilter = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "PRICE_FILTER");
             if (priceFilter != null && priceFilter["tickSize"] != null)
             {
