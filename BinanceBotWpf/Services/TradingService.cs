@@ -568,6 +568,12 @@ namespace BinanceBotWpf.Services
             var grid = aiRisk.Grid;
             decimal investmentUsdc = balance * grid.InvestmentPercent;
 
+            if (grid.Levels <= 0 || investmentUsdc <= 0)
+            {
+                _ui?.AddLog ($"⛔ Сетка отключена: баланс {balance:F2} USDC недостаточен (мин. ~500 USDC)");
+                return;
+            }
+
             _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Баланс: {balance:F2} USDC");
             _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
 
