@@ -534,7 +534,7 @@
                             <TextBlock Text="{Binding EquityChartStatus}" Foreground="#2ecc71" FontWeight="Bold" VerticalAlignment="Center"/>
                         </WrapPanel>
                     </Border>
-                    <wv2:WebView2 x:Name="BalanceChartWebView" Grid.Row="1" />
+                    <oxy:PlotView x:Name="BalancePlotView" Grid.Row="1" Model="{Binding PlotModel}" Background="#1e1e1e"/>
                 </Grid>
             </TabItem>
 

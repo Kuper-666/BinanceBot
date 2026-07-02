@@ -1,6 +1,4 @@
 using BinanceBotWpf.ViewModels;
-using System;
-using System.IO;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
@@ -10,7 +8,6 @@ namespace BinanceBotWpf
     public partial class MainWindow : Window
     {
         public static MainWindow Instance { get; private set; }
-        private bool _chartReady;
 
         public MainWindow(MainWindowViewModel viewModel)
         {
@@ -18,47 +15,11 @@ namespace BinanceBotWpf
             DataContext = viewModel;
             Instance = this;
             Closing += OnClosing;
-
-            BalanceChartWebView.CoreWebView2InitializationCompleted += async (s, e) =>
-            {
-                string htmlPath = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Html", "balance_chart.html");
-                if (File.Exists (htmlPath))
-                {
-                    BalanceChartWebView.CoreWebView2.Navigate ("file:///" + htmlPath.Replace ('\\', '/'));
-                    BalanceChartWebView.NavigationCompleted += (s2, e2) =>
-                    {
-                        _chartReady = true;
-                    };
-                }
-            };
-            _ = BalanceChartWebView.EnsureCoreWebView2Async ();
         }
 
         private void OnClosing(object sender, System.ComponentModel.CancelEventArgs e)
         {
             Instance = null;
-        }
-
-        public void PushChartPoint (string time, decimal balance)
-        {
-            if (!_chartReady) return;
-            try
-            {
-                BalanceChartWebView.CoreWebView2.ExecuteScriptAsync (
-                    $"updateSinglePoint('{time}', {(double)balance})");
-            }
-            catch { }
-        }
-
-        public void PushChartFull (string timesJson, string valuesJson)
-        {
-            if (!_chartReady) return;
-            try
-            {
-                BalanceChartWebView.CoreWebView2.ExecuteScriptAsync (
-                    $"updateChart('{timesJson.Replace ("'", "\\'")}', '{valuesJson.Replace ("'", "\\'")}')");
-            }
-            catch { }
         }
 
         public void AppendLog(string text)
