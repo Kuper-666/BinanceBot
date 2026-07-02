@@ -1006,7 +1006,8 @@ namespace BinanceBotWpf.Exchange
             var symInfo = exchangeInfo["symbols"]?.FirstOrDefault (s => s["symbol"].ToString () == symbol);
             if (symInfo == null)
             {
-                Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo, используется fallback stepSize=1");
+                var dogeMatches = exchangeInfo["symbols"]?.Where (s => s["symbol"]?.ToString ().Contains ("DOGE") == true).Select (s => s["symbol"]?.ToString ())?.ToList ();
+                Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo (всего {exchangeInfo["symbols"]?.Count () ?? 0}), DOGE-пары: {string.Join (", ", dogeMatches ?? new List<string> ())}, используется fallback stepSize=1");
                 _stepSizeCache[symbol] = 1m;
                 return 1m;
             }
