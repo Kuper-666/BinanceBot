@@ -339,7 +339,8 @@ namespace BinanceBotWpf.Exchange
         {
             string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={sym}&side={side}&type=MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string positionSide = side == "BUY" ? "LONG" : "SHORT";
+            string query = $"symbol={sym}&side={side}&type=MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&positionSide={positionSide}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
@@ -401,6 +402,8 @@ namespace BinanceBotWpf.Exchange
             if (!response.IsSuccessStatusCode)
             {
                 string body = await response.Content.ReadAsStringAsync ();
+                if (body.Contains ("-4046") || body.Contains ("-4175"))
+                    return;
                 Log ($"SetMarginType error for {symbol}: {body}");
             }
         }
@@ -417,6 +420,8 @@ namespace BinanceBotWpf.Exchange
             if (!response.IsSuccessStatusCode)
             {
                 string body = await response.Content.ReadAsStringAsync ();
+                if (body.Contains ("-4059"))
+                    return;
                 Log ($"SetPositionMode error: {body}");
             }
         }
@@ -425,7 +430,8 @@ namespace BinanceBotWpf.Exchange
         {
             string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={sym}&side={side}&type=TRAILING_STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&callbackRate={callbackRate.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string positionSide = side == "BUY" ? "LONG" : "SHORT";
+            string query = $"symbol={sym}&side={side}&type=TRAILING_STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&callbackRate={callbackRate.ToString (CultureInfo.InvariantCulture)}&positionSide={positionSide}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
@@ -442,7 +448,8 @@ namespace BinanceBotWpf.Exchange
         {
             string sym = NormalizeSymbol (symbol);
             long timestamp = GetTimestamp ();
-            string query = $"symbol={sym}&side={side}&type=STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&stopPrice={stopPrice.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+            string positionSide = side == "BUY" ? "LONG" : "SHORT";
+            string query = $"symbol={sym}&side={side}&type=STOP_MARKET&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&stopPrice={stopPrice.ToString (CultureInfo.InvariantCulture)}&positionSide={positionSide}&timestamp={timestamp}";
             string signature = CreateSignature (query);
             var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
             var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
@@ -595,7 +602,8 @@ namespace BinanceBotWpf.Exchange
                     return null;
                 }
                 long timestamp = GetTimestamp();
-                string query = $"symbol={sym}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString(CultureInfo.InvariantCulture)}&price={price.ToString(CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+                string positionSide = side == "BUY" ? "LONG" : "SHORT";
+                string query = $"symbol={sym}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString(CultureInfo.InvariantCulture)}&price={price.ToString(CultureInfo.InvariantCulture)}&positionSide={positionSide}&timestamp={timestamp}";
                 string signature = CreateSignature(query);
                 var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
                 var request = new HttpRequestMessage(HttpMethod.Post, "/fapi/v1/order") { Content = content };

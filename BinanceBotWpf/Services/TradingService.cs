@@ -243,7 +243,7 @@ namespace BinanceBotWpf.Services
                             (PriceAlertManager)_priceAlertManager, _ui, _recentErrors, _pairManager.GetActivePairs (),
                             () => _isRunning,
                             () => { StopTrading (); return Task.CompletedTask; },
-                            async (sym) => await StartAutoGridAsync (sym),
+                            async (sym) => { _ui?.AddLog ("⚠️ Сетка отключена."); await Task.CompletedTask; },
                             () => StopGridAsync (),
                             () => GetStatusText (),
                             () => GetPerformanceStats (),
@@ -508,180 +508,17 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Запуск сеточного бота
         /// </summary>
+        // ОТКЛЮЧЕНО — фьючерсная сетка требует доработки
         public async Task StartGridAsync(string symbol, decimal gridRangePercent, int gridLevels, decimal investmentPercent)
         {
-            if (_gridBot != null && _gridBot.IsRunning)
-            {
-                _ui?.AddLog ("⚠️ GridBot уже запущен. Остановите перед перезапуском.");
-                return;
-            }
-
-            decimal currentPrice = GetCurrentPrice (symbol);
-            if (currentPrice <= 0)
-            {
-                _ui?.AddLog ($"❌ Не удалось получить цену для {symbol}");
-                return;
-            }
-
-            decimal balance = _wallet.GetTotalBalance ("USDT");
-            decimal investmentUsdc = balance * investmentPercent;
-
-            if (_futuresClient == null)
-            {
-                _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. Сетка требует фьючерсный аккаунт.");
-                return;
-            }
-
-            // Проверяем баланс на фьючерсах и переводим со спота при необходимости
-            var (futuresAsset, futuresBalance) = await GetFuturesStablecoinBalance ();
-            _ui?.AddLog ($"💰 Фьючерсный баланс {futuresAsset}: {futuresBalance:F2}");
-            if (futuresBalance < investmentUsdc)
-            {
-                decimal toTransfer = investmentUsdc - futuresBalance + 1m;
-                decimal spotBalance = await _client.GetAccountBalanceAsync (futuresAsset);
-                if (spotBalance >= toTransfer)
-                {
-                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} {futuresAsset} из спота в фьючерсы...");
-                    var transferResult = await _futuresClient.TransferToFuturesAsync (futuresAsset, toTransfer);
-                    if (transferResult != null)
-                    {
-                        _ui?.AddLog ($"✅ Перевод выполнен");
-                        await Task.Delay (2000); // Ждём обновления баланса
-                    }
-                    else
-                    {
-                        _ui?.AddLog ("❌ Ошибка перевода. Проверьте баланс на фьючерсах.");
-                        return;
-                    }
-                }
-                else
-                {
-                    _ui?.AddLog ($"⚠️ Недостаточно {futuresAsset} на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
-                    return;
-                }
-            }
-
-            _gridBot = new GridBot (_futuresClient, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
-            _gridBot.OnTrade += async trade =>
-            {
-                _ui?.AddTradeToHistory (trade);
-                string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
-                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} {futuresAsset} ({trade.PnLPercent:+F2;-F2}%)");
-            };
-            await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
+            _ui?.AddLog ("⚠️ Сетка отключена. Воспользуйтесь спот-стратегией.");
+            await Task.CompletedTask;
         }
 
-        /// <summary>
-        /// Авто-запуск сетки с параметрами от ИИ
-        /// </summary>
         public async Task StartAutoGridAsync(string symbol)
         {
-            if (_gridBot != null && _gridBot.IsRunning)
-            {
-                _ui?.AddLog ("⚠️ GridBot уже запущен.");
-                return;
-            }
-
-            decimal currentPrice = GetCurrentPrice (symbol);
-            if (currentPrice <= 0)
-            {
-                _ui?.AddLog ($"❌ Не удалось получить цену для {symbol}");
-                return;
-            }
-
-            if (_futuresClient == null)
-            {
-                _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. ИИ-сетка требует фьючерсный аккаунт.");
-                return;
-            }
-
-            // Баланс для инвестиций — фьючерсный (не общий кошелёк)
-            var (futuresAsset, futuresBalance) = await GetFuturesStablecoinBalance ();
-            _ui?.AddLog ($"💰 Фьючерсный баланс {futuresAsset}: {futuresBalance:F2}");
-
-            if (futuresBalance < 20m)
-            {
-                _ui?.AddLog ($"⛔ Фьючерсный баланс {futuresBalance:F2} {futuresAsset} < минимума (20 {futuresAsset}). Пополните фьючерсный аккаунт.");
-                return;
-            }
-
-            // Получаем индикаторы для ИИ
-            var klines = await _client.GetKlinesAsync (symbol, "1h", 100);
-            if (klines == null || klines.Count < 30)
-            {
-                _ui?.AddLog ($"❌ Сетка: недостаточно данных для {symbol} ({klines?.Count ?? 0}/30 свечей)");
-                return;
-            }
-
-            var closes = klines.Select (k => k.Close).ToList ();
-            var volumes = klines.Select (k => k.Volume).ToList ();
-            var highs = klines.Select (k => k.High).ToList ();
-            var lows = klines.Select (k => k.Low).ToList ();
-
-            decimal fastSma = closes.TakeLast (9).Average ();
-            decimal slowSma = closes.TakeLast (21).Average ();
-            var rsiValues = TechnicalAnalysis.RSI (closes, 14);
-            decimal rsi = rsiValues.LastOrDefault () ?? 50;
-            decimal avgVolume = volumes.TakeLast (20).Average ();
-            decimal volumeRatio = avgVolume > 0 ? volumes.Last () / avgVolume : 1;
-            var macd = TechnicalAnalysis.MACD (closes, 12, 26, 9);
-            decimal macdHist = macd.Histogram.LastOrDefault () ?? 0;
-            var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
-            decimal bbWidth = (bb.Upper.LastOrDefault () ?? currentPrice) - (bb.Lower.LastOrDefault () ?? currentPrice);
-            bbWidth = currentPrice > 0 ? bbWidth / currentPrice : 0.05m;
-            decimal obv = TechnicalAnalysis.OBV (klines).LastOrDefault ();
-
-            // ИИ рассчитывает параметры сетки на основе фьючерсного баланса
-            var aiRisk = await _aiRiskEngine.CalculateRiskAsync (
-                symbol, futuresBalance, currentPrice, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
-
-            var grid = aiRisk.Grid;
-            decimal investmentUsdc = futuresBalance * grid.InvestmentPercent;
-
-            if (grid.Levels <= 0 || investmentUsdc <= 0)
-            {
-                _ui?.AddLog ($"⛔ Сетка отключена: фьючерсный баланс {futuresBalance:F2} USDT недостаточен (мин. ~20 USDT)");
-                return;
-            }
-
-            // Переводим со спота при необходимости
-            if (futuresBalance < investmentUsdc)
-            {
-                decimal toTransfer = investmentUsdc - futuresBalance + 1m;
-                decimal spotBalance = await _client.GetAccountBalanceAsync (futuresAsset);
-                if (spotBalance >= toTransfer)
-                {
-                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} {futuresAsset} из спота в фьючерсы...");
-                    var transferResult = await _futuresClient.TransferToFuturesAsync (futuresAsset, toTransfer);
-                    if (transferResult != null)
-                    {
-                        _ui?.AddLog ($"✅ Перевод выполнен");
-                        await Task.Delay (2000);
-                    }
-                    else
-                    {
-                        _ui?.AddLog ("❌ Ошибка перевода. Проверьте баланс на фьючерсах.");
-                        return;
-                    }
-                }
-                else
-                {
-                    _ui?.AddLog ($"⚠️ Недостаточно {futuresAsset} на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
-                    return;
-                }
-            }
-
-            _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Фьючерсный баланс: {futuresBalance:F2} {futuresAsset}");
-            _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} {futuresAsset})");
-
-            _gridBot = new GridBot (_futuresClient, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
-            _gridBot.OnTrade += async trade =>
-            {
-                _ui?.AddTradeToHistory (trade);
-                string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
-                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} {futuresAsset} ({trade.PnLPercent:+F2;-F2}%)");
-            };
-            await _gridBot.StartAsync (symbol, currentPrice, grid.RangePercent, grid.Levels, investmentUsdc, grid.UseDynamicStep);
+            _ui?.AddLog ("⚠️ ИИ-сетка отключена. Воспользуйтесь спот-стратегией.");
+            await Task.CompletedTask;
         }
 
         /// <summary>
@@ -689,12 +526,8 @@ namespace BinanceBotWpf.Services
         /// </summary>
         public async Task StopGridAsync()
         {
-            if (_gridBot != null && _gridBot.IsRunning)
-            {
-                await _gridBot.StopAsync ();
-                _gridBot.Dispose ();
-                _gridBot = null;
-            }
+            _ui?.AddLog ("⚠️ Сетка отключена.");
+            await Task.CompletedTask;
         }
 
         private async Task InitAsync()
@@ -789,11 +622,12 @@ namespace BinanceBotWpf.Services
                         futuresClient.OnLogGenerated += msg => _ui?.AddLog (msg);
                         _wallet.SetFuturesClient (futuresClient);
                         await futuresClient.SyncTimeAsync ();
-                        await futuresClient.SetMarginTypeAsync ("BTCUSDT", "ISOLATED");
+                        string initSymbol = _tradingSettings?.GridSymbol ?? "DOGEUSDT";
+                        await futuresClient.SetMarginTypeAsync (initSymbol, "ISOLATED");
                         await futuresClient.SetPositionModeAsync (true); // Hedge Mode
 
                         int leverage = _tradingSettings?.FuturesLeverage ?? 5;
-                        await futuresClient.SetLeverageAsync ("BTCUSDT", leverage);
+                        await futuresClient.SetLeverageAsync (initSymbol, leverage);
                         _ui?.AddLog ($"✅ Фьючерсы: Изолированная маржа, Hedge Mode, плечо {leverage}x");
                     }
                 }
@@ -828,6 +662,8 @@ namespace BinanceBotWpf.Services
             }
 
             // Авто-запуск сетки с параметрами от ИИ (если включена)
+            // ОТКЛЮЧЕНО — фьючерсная сетка требует доработки
+            /*
             if (_tradingSettings?.GridBotEnabled == true)
             {
                 string gridSymbol = _tradingSettings.GridSymbol ?? "DOGEUSDT";
@@ -854,6 +690,7 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ($"❌ Не удалось получить цену {gridSymbol} за 30 сек. Запустите сетку вручную.");
                 });
             }
+            */
         }
 
         /// <summary>
