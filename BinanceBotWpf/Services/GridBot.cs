@@ -176,6 +176,14 @@ namespace BinanceBotWpf.Services
                         lock (_lock) { _activeOrderIds[_buyLevels[i]] = orderId; }
                         _logger?.Invoke ($"   📗 Buy лимит: {buyQty} @ {_buyLevels[i]:F4}");
                     }
+                    else
+                    {
+                        _logger?.Invoke ($"   ❌ Buy ОТКАЗ: {buyQty} @ {_buyLevels[i]:F4} (notional={buyNotional:F2})");
+                    }
+                }
+                else
+                {
+                    _logger?.Invoke ($"   ⏭ Buy пропущен: buyQty={buyQty}, notional={buyNotional:F2} < minNotional={minNotional}");
                 }
 
                 // Sell ордер на уровне выше
@@ -190,6 +198,14 @@ namespace BinanceBotWpf.Services
                         lock (_lock) { _activeOrderIds[_sellLevels[i]] = orderId; }
                         _logger?.Invoke ($"   📕 Sell лимит: {sellQty} @ {_sellLevels[i]:F4}");
                     }
+                    else
+                    {
+                        _logger?.Invoke ($"   ❌ Sell ОТКАЗ: {sellQty} @ {_sellLevels[i]:F4} (notional={sellNotional:F2})");
+                    }
+                }
+                else
+                {
+                    _logger?.Invoke ($"   ⏭ Sell пропущен: sellQty={sellQty}, notional={sellNotional:F2} < minNotional={minNotional}");
                 }
 
                 await Task.Delay (200);

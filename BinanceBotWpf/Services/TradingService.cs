@@ -585,7 +585,21 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
-            decimal balance = _wallet.GetTotalBalance ("USDC");
+            if (_futuresClient == null)
+            {
+                _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. ИИ-сетка требует фьючерсный аккаунт.");
+                return;
+            }
+
+            // Баланс для инвестиций — фьючерсный (не общий кошелёк)
+            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDC");
+            _ui?.AddLog ($"💰 Фьючерсный баланс USDC: {futuresBalance:F2}");
+
+            if (futuresBalance < 20m)
+            {
+                _ui?.AddLog ($"⛔ Фьючерсный баланс {futuresBalance:F2} USDC < минимума (20 USDC). Пополните фьючерсный аккаунт.");
+                return;
+            }
 
             // Получаем индикаторы для ИИ
             var klines = await _client.GetKlinesAsync (symbol, "1h", 100);
@@ -613,28 +627,20 @@ namespace BinanceBotWpf.Services
             bbWidth = currentPrice > 0 ? bbWidth / currentPrice : 0.05m;
             decimal obv = TechnicalAnalysis.OBV (klines).LastOrDefault ();
 
-            // ИИ рассчитывает параметры сетки
+            // ИИ рассчитывает параметры сетки на основе фьючерсного баланса
             var aiRisk = await _aiRiskEngine.CalculateRiskAsync (
-                symbol, balance, currentPrice, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
+                symbol, futuresBalance, currentPrice, fastSma, slowSma, rsi, volumeRatio, macdHist, bbWidth, obv);
 
             var grid = aiRisk.Grid;
-            decimal investmentUsdc = balance * grid.InvestmentPercent;
+            decimal investmentUsdc = futuresBalance * grid.InvestmentPercent;
 
             if (grid.Levels <= 0 || investmentUsdc <= 0)
             {
-                _ui?.AddLog ($"⛔ Сетка отключена: баланс {balance:F2} USDC недостаточен (мин. ~20 USDC)");
+                _ui?.AddLog ($"⛔ Сетка отключена: фьючерсный баланс {futuresBalance:F2} USDC недостаточен (мин. ~20 USDC)");
                 return;
             }
 
-            if (_futuresClient == null)
-            {
-                _ui?.AddLog ("⚠️ Фьючерсные API ключи не настроены. ИИ-сетка требует фьючерсный аккаунт.");
-                return;
-            }
-
-            // Проверяем баланс на фьючерсах и переводим со спота при необходимости
-            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDC");
-            _ui?.AddLog ($"💰 Фьючерсный баланс USDC: {futuresBalance:F2}");
+            // Переводим со спота при необходимости
             if (futuresBalance < investmentUsdc)
             {
                 decimal toTransfer = investmentUsdc - futuresBalance + 1m;
@@ -661,7 +667,7 @@ namespace BinanceBotWpf.Services
                 }
             }
 
-            _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Баланс: {balance:F2} USDC");
+            _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Фьючерсный баланс: {futuresBalance:F2} USDC");
             _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
 
             _gridBot = new GridBot (_futuresClient, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
