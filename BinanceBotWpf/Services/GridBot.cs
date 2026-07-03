@@ -330,6 +330,7 @@ namespace BinanceBotWpf.Services
                                         ["status"] = "filled",
                                         ["filledAt"] = DateTime.Now.ToString ("HH:mm"),
                                     });
+                                    _logger?.Invoke ($"📗 GridBot: BUY исполнен {pos.Quantity} @ {pos.EntryPrice:F4} (уровень {closestBuyLevel:F4})");
                                 }
                             }
 
@@ -386,6 +387,8 @@ namespace BinanceBotWpf.Services
                                         });
                                     }
                                 }
+                                string profitSign = profit >= 0 ? "+" : "";
+                                _logger?.Invoke ($"📕 GridBot: SELL исполнен {sellQty} @ {sellPrice:F4} | PnL: {profitSign}{profit:F4} USDC ({profitPct:+0.00;-0.00}%)");
                                 OnTrade?.Invoke (new TradeLog
                                 {
                                     Symbol = _symbol,

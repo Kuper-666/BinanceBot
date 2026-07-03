@@ -750,6 +750,7 @@ namespace BinanceBotWpf.Services
                     {
                         var futuresClient = new BinanceFuturesClient (futuresKey, futuresSecret);
                         _futuresClient = futuresClient;
+                        _wallet.SetFuturesClient (futuresClient);
                         await futuresClient.SyncTimeAsync ();
                         await futuresClient.SetMarginTypeAsync ("BTCUSDT", "ISOLATED");
                         await futuresClient.SetPositionModeAsync (true); // Hedge Mode

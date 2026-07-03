@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
+using BinanceBotWpf.Exchange;
 using BinanceBotWpf.Services;
 using Newtonsoft.Json.Linq;
 
@@ -11,12 +12,14 @@ namespace BinanceBotWpf.Models
     {
         public decimal Spot { get; set; }
         public decimal Earn { get; set; }
-        public decimal Total => Spot + Earn;
+        public decimal Futures { get; set; }
+        public decimal Total => Spot + Earn + Futures;
     }
 
     public class WalletManager : IWalletManager
     {
         private readonly BinanceClient _client;
+        private IBinanceFuturesClient _futuresClient;
         private readonly Dictionary<string, AssetBalance> _balances;
         public event Action<string> OnLogGenerated;
 
@@ -24,6 +27,11 @@ namespace BinanceBotWpf.Models
         {
             _client = client ?? throw new ArgumentNullException (nameof (client));
             _balances = new Dictionary<string, AssetBalance> ();
+        }
+
+        public void SetFuturesClient (IBinanceFuturesClient futuresClient)
+        {
+            _futuresClient = futuresClient;
         }
 
         public async Task UpdateBalance()
@@ -62,6 +70,27 @@ namespace BinanceBotWpf.Models
                     }
                 }
 
+                // Добавляем фьючерсный баланс
+                if (_futuresClient != null)
+                {
+                    try
+                    {
+                        foreach (string asset in new[] { "USDC", "USDT" })
+                        {
+                            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync (asset);
+                            if (futuresBalance > 0)
+                            {
+                                lock (_balances)
+                                {
+                                    if (!_balances.ContainsKey (asset))
+                                        _balances[asset] = new AssetBalance ();
+                                    _balances[asset].Futures = futuresBalance;
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+                }
             }
             catch (Exception ex) { Log ($"Ошибка обновления балансов: {ex.Message}"); }
         }
