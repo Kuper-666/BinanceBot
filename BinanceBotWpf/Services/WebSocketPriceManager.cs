@@ -19,6 +19,9 @@ namespace BinanceBotWpf.Services
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _ctsDict = new ();
         private readonly string _wsBaseUrl;
         private bool _disposed;
+        private CancellationTokenSource _restPollCts;
+        private Task _restPollTask;
+        private Func<string, Task<decimal>> _restPriceFetcher;
 
         /// <summary>
         /// Максимальный допустимый возраст цены в секундах. После этого цена считается протухшей.
@@ -196,6 +199,50 @@ namespace BinanceBotWpf.Services
         }
 
         /// <summary>
+        /// Запускает периодический REST-опрос цен для всех подписанных символов.
+        /// Используется как fallback когда WS не получает данные.
+        /// </summary>
+        public void StartPeriodicRestFetch (Func<string, Task<decimal>> priceFetcher, int intervalMs = 5000)
+        {
+            StopPeriodicRestFetch ();
+            _restPriceFetcher = priceFetcher;
+            _restPollCts = new CancellationTokenSource ();
+            _restPollTask = Task.Run (async () =>
+            {
+                while (!_restPollCts.Token.IsCancellationRequested && !_disposed)
+                {
+                    try { await Task.Delay (intervalMs, _restPollCts.Token); } catch (OperationCanceledException) { break; }
+
+                    string[] symbols = GetSubscribedSymbols ();
+                    foreach (string symbol in symbols)
+                    {
+                        if (_disposed || _restPollCts.Token.IsCancellationRequested) break;
+
+                        if (IsPriceFresh (symbol)) continue;
+
+                        try
+                        {
+                            decimal price = await priceFetcher (symbol);
+                            if (price > 0)
+                            {
+                                UpdatePrice (symbol, price);
+                            }
+                        }
+                        catch { }
+                    }
+                }
+            });
+        }
+
+        public void StopPeriodicRestFetch ()
+        {
+            try { _restPollCts?.Cancel (); } catch { }
+            try { _restPollCts?.Dispose (); } catch { }
+            _restPollCts = null;
+            _restPollTask = null;
+        }
+
+        /// <summary>
         /// Принудительно переподключает символы с протухшими ценами.
         /// Закрывает зависший сокет, чтобы ConnectAndListen запустил переподключение.
         /// Возвращает количество переподключённых символов.
@@ -238,6 +285,8 @@ namespace BinanceBotWpf.Services
         {
             if (_disposed) return;
             _disposed = true;
+
+            StopPeriodicRestFetch ();
 
             foreach (var cts in _ctsDict.Values)
             {

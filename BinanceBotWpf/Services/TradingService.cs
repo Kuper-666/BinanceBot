@@ -9,6 +9,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using BinanceBotWpf.Models;
+using BinanceBotWpf.Exchange;
 using BinanceBotWpf.Risk;
 using BinanceBotWpf.Services.Strategies;
 using BinanceBotWpf.ViewModels;
@@ -161,6 +162,9 @@ namespace BinanceBotWpf.Services
             _earn.OnLogGenerated += logger;
             _rebalancer.OnLogGenerated += logger;
             _client.OnLogGenerated += logger;
+
+            if (_futuresClient is FuturesRestClient frc)
+                frc.OnLogGenerated += logger;
 
             _strategy.SetMlManager((MlModelManager)_mlManager);
 
@@ -713,6 +717,20 @@ namespace BinanceBotWpf.Services
             _ui?.UpdateDrawdown (initBal);
             _ui?.AddBalancePoint (DateTime.Now, initBal);
             await _pairManager.UpdatePairsAsync ();
+
+            // REST-запасной поллинг цен: если WS не получает данные, обновляем цены через REST API
+            bool useFuturesForPrices = useFutures;
+            _webSocketManager.StartPeriodicRestFetch (async (symbol) =>
+            {
+                try
+                {
+                    if (useFuturesForPrices && _futuresClient != null)
+                        return await _futuresClient.GetPriceAsync (symbol);
+                    return await _client.GetPriceAsync (symbol);
+                }
+                catch { return 0m; }
+            }, intervalMs: 5000);
+
             await LoadPositions ();
             _ui?.AddLog (_client.IsTestnet ? "⚠️ ТЕСТОВАЯ СЕТЬ" : "✅ РЕАЛЬНАЯ СЕТЬ");
 
@@ -768,6 +786,7 @@ namespace BinanceBotWpf.Services
                     {
                         var futuresClient = new BinanceFuturesClient (futuresKey, futuresSecret);
                         _futuresClient = futuresClient;
+                        futuresClient.OnLogGenerated += msg => _ui?.AddLog (msg);
                         _wallet.SetFuturesClient (futuresClient);
                         await futuresClient.SyncTimeAsync ();
                         await futuresClient.SetMarginTypeAsync ("BTCUSDT", "ISOLATED");
