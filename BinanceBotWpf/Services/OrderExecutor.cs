@@ -180,9 +180,6 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ($"{symbol}: BUY пропущен — глобальный лимит {MaxTradesPerHour} сделок/час");
                     return;
                 }
-
-                _lastBuyTime[symbol] = DateTime.UtcNow;
-                _recentTradeTimes.Add (DateTime.UtcNow);
             }
 
             decimal adaptiveSlMult = indicators.ContainsKey ("adaptiveSlMultiplier") ? indicators["adaptiveSlMultiplier"] : 1.0m;
@@ -202,6 +199,12 @@ namespace BinanceBotWpf.Services
 
             if (order != null)
             {
+                lock (_cooldownLock)
+                {
+                    _lastBuyTime[symbol] = DateTime.UtcNow;
+                    _recentTradeTimes.Add (DateTime.UtcNow);
+                }
+
                 OpenPosition pos = new OpenPosition
                 {
                     Symbol = symbol,
@@ -227,6 +230,10 @@ namespace BinanceBotWpf.Services
                     $"🎯 TP: {tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2})\n" +
                     $"⚖️ Риск: {riskAmount:F2} USDC ({riskPerTrade:P2})\n" +
                     $"📐 R/R: 1:{riskRewardRatio:F1}");
+            }
+            else
+            {
+                _ui?.AddLog ($"❌ {symbol}: BUY ордер ОТКЛОНЁН биржей — {qty} @ {limitPrice:F4}. Кулдаун НЕ засчитан.");
             }
         }
 
@@ -347,6 +354,10 @@ namespace BinanceBotWpf.Services
                     $"📦 Количество: {qtyToSell}\n" +
                     $"📈 PnL: {pnl:+F2;-F2} USDC ({pnlPct:+F2;-F2}%)\n" +
                     $"⏱ Длительность: {(DateTime.UtcNow - pos.OpenTime):hh\\:mm}");
+            }
+            else
+            {
+                _ui?.AddLog ($"❌ {symbol}: SELL ордер ОТКЛОНЁН биржей — {qtyToSell} @ {limitPrice:F4}");
             }
         }
     }

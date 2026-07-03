@@ -20,7 +20,6 @@ namespace BinanceBotWpf.Services
         public decimal ActivationProfitPercent { get; set; } = 0.02m; // Активация при +2%
         public decimal TrailingStepPercent { get; set; } = 0.005m;    // Шаг трейлинга 0.5%
         private readonly ConcurrentDictionary<string, decimal> _lastTrailingPrice = new ();
-        private readonly HashSet<string> _partialClosedThisCycle = new ();
 
         public decimal TrailingStopPercent { get; set; } = 0.02m;
         public decimal PartialClosePercent { get; set; } = 0.05m; // 5% профита -> частичная фиксация
@@ -47,7 +46,6 @@ namespace BinanceBotWpf.Services
         public async Task<List<string>> CheckAndProtectAsync(Func<string, decimal> getCurrentPrice)
         {
             var toClose = new List<string> ();
-            _partialClosedThisCycle.Clear ();
 
             foreach (var sym in _positionManager.GetSymbols ())
             {
@@ -65,14 +63,12 @@ namespace BinanceBotWpf.Services
 
                 // Динамический трейлинг-стоп (может сделать частичную фиксацию 25%)
                 bool dynamicPartialClosed = await UpdateDynamicTrailingStopAsync (sym, pos, price);
-                if (dynamicPartialClosed)
-                    _partialClosedThisCycle.Add (sym);
 
                 // Стандартный трейлинг-стоп
                 await UpdateTrailingStopAsync (sym, pos, price);
 
                 // Частичная фиксация — только если динамический трейлинг уже не закрывал в этом цикле
-                if (!_partialClosedThisCycle.Contains (sym))
+                if (!dynamicPartialClosed)
                     await CheckPartialCloseAsync (sym, pos, price);
 
                 // Проверка условий закрытия
@@ -130,6 +126,8 @@ namespace BinanceBotWpf.Services
 
         private async Task CheckPartialCloseAsync(string symbol, OpenPosition pos, decimal currentPrice)
         {
+            if (pos.PartialClosed) return;
+
             decimal profitPercent = ( currentPrice - pos.EntryPrice ) / pos.EntryPrice;
 
             if (profitPercent >= PartialClosePercent && pos.Quantity > 0)
@@ -146,6 +144,7 @@ namespace BinanceBotWpf.Services
                         _logger?.Invoke ($"🎯 Частичная фиксация {symbol}: продано {closeQty} по {currentPrice:F4}, PnL {pnl:F2}");
 
                         pos.Quantity -= closeQty;
+                        pos.PartialClosed = true;
 
                         if (pos.Quantity <= 0.000001m)
                         {
@@ -158,6 +157,8 @@ namespace BinanceBotWpf.Services
                             _logger?.Invoke ($"🛡️ Стоп-лосс {symbol} перемещён в безубыток: {pos.StopLossPrice:F4}");
                             await UpdateOcoOrder (symbol, pos);
                         }
+
+                        await _positionManager.SaveAsync ();
                     }
                 }
             }
@@ -315,12 +316,14 @@ namespace BinanceBotWpf.Services
                         _logger?.Invoke ($"🎯 Динамический трейлинг {symbol}: продано {closeQty} по {currentPrice:F4}, PnL {pnl:F2}");
 
                         pos.Quantity -= closeQty;
+                        pos.PartialClosed = true;
                         _lastTrailingPrice[symbol] = currentPrice;
 
                         if (pos.Quantity <= 0.000001m)
                         {
                             _positionManager.Remove (symbol);
                         }
+                        await _positionManager.SaveAsync ();
                         return true;
                     }
                 }

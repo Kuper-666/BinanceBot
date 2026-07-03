@@ -127,7 +127,8 @@ namespace BinanceBotWpf.Services
         public long OcoOrderListId { get; set; }
         public decimal InitialTakeProfitPrice { get; set; }
         public decimal HighestPriceSinceOpen { get; set; }
-        public bool IsBreakevenSet { get; set; } = false; // добавьте эту строку
-        public bool IsUnprotected { get; set; } = false; // true, если OCO не удалось разместить на бирже
+        public bool IsBreakevenSet { get; set; } = false;
+        public bool IsUnprotected { get; set; } = false;
+        public bool PartialClosed { get; set; } = false;
     }
 }
