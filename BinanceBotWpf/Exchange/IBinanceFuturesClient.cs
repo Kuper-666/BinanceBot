@@ -29,5 +29,6 @@ namespace BinanceBotWpf.Exchange
         Task<List<JObject>> GetAllOrdersAsync (string symbol, int limit = 50);
         Task<decimal> GetATRAsync (string symbol, int period = 14, string interval = "1h");
         Task<JObject> TransferToFuturesAsync (string asset, decimal amount);
+        Task<JObject> TransferFromFuturesAsync (string asset, decimal amount);
     }
 }

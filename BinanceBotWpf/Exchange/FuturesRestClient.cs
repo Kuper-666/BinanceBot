@@ -705,6 +705,33 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
+        public async Task<JObject> TransferFromFuturesAsync(string asset, decimal amount)
+        {
+            try
+            {
+                long timestamp = GetTimestamp();
+                string type = "UMFUTURE_MAIN";
+                string query = $"type={type}&asset={asset}&amount={amount.ToString(CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+                string signature = CreateSignature(query);
+                var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_sapiClient.BaseAddress, $"/sapi/v1/asset/transfer")) { Content = content };
+                var response = await _sapiClient.SendAsync(request);
+                string body = await response.Content.ReadAsStringAsync();
+                if (response.IsSuccessStatusCode)
+                {
+                    Log($"✅ Перевод {amount} {asset} из фьючерсов на спот: {body}");
+                    return JObject.Parse(body);
+                }
+                Log($"⚠️ Ошибка перевода с фьючерсов: {body}");
+                return null;
+            }
+            catch (Exception ex)
+            {
+                Log($"❌ TransferFromFutures ошибка: {ex.Message}");
+                return null;
+            }
+        }
+
         public void Dispose()
         {
             _httpClient.Dispose();
