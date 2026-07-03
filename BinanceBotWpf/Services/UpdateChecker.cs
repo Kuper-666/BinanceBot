@@ -67,12 +67,27 @@ namespace BinanceBotWpf.Services
                     : "";
 
                 // Берём URL zip-файла из assets (а не ссылку на страницу релиза)
-                string downloadUrl = releasePageUrl;
+                string downloadUrl = null;
                 if (root.TryGetProperty ("assets", out var assets) && assets.GetArrayLength () > 0)
                 {
-                    string assetUrl = assets[0].GetProperty ("browser_download_url").GetString ();
-                    if (!string.IsNullOrEmpty (assetUrl))
-                        downloadUrl = assetUrl;
+                    // Ищем первый .zip или .exe asset (не source code archive)
+                    for (int i = 0; i < assets.GetArrayLength (); i++)
+                    {
+                        string assetUrl = assets[i].GetProperty ("browser_download_url").GetString ();
+                        if (!string.IsNullOrEmpty (assetUrl) &&
+                            (assetUrl.EndsWith (".zip", StringComparison.OrdinalIgnoreCase) ||
+                             assetUrl.EndsWith (".exe", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            downloadUrl = assetUrl;
+                            break;
+                        }
+                    }
+                }
+
+                if (string.IsNullOrEmpty (downloadUrl))
+                {
+                    _logger?.Invoke ($"✅ Установлена актуальная версия {currentVersion} (нет ZIP-архива в релизе)");
+                    return;
                 }
 
                 // Убираем 'v' префикс если есть для сравнения
