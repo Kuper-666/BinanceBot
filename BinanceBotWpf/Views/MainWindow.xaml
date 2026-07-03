@@ -584,8 +584,12 @@
                             <StackPanel>
                                 <TextBlock Text="Сессии и Котировки" Foreground="#9b59b6" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel Margin="0,0,0,6">
-                                    <CheckBox Content="Фильтр сессий" IsChecked="{Binding SessionFilterEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
-                                    <CheckBox Content="Только EU+US" IsChecked="{Binding TradeOnlyEuUs}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox IsChecked="{Binding SessionFilterEnabled}" Margin="0,0,15,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Фильтр сессий" Foreground="#ecf0f1"/>
+                                    </CheckBox>
+                                    <CheckBox IsChecked="{Binding TradeOnlyEuUs}" Margin="0,0,15,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Только EU+US" Foreground="#ecf0f1"/>
+                                    </CheckBox>
                                 </WrapPanel>
                                 <WrapPanel>
                                     <TextBlock Text="Котировка:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
@@ -603,7 +607,9 @@
                             <StackPanel>
                                 <TextBlock Text="Сеточный бот (Grid)" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <CheckBox Content="Включить Grid Bot" IsChecked="{Binding GridBotEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox IsChecked="{Binding GridBotEnabled}" Margin="0,0,15,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Включить Grid Bot" Foreground="#ecf0f1"/>
+                                    </CheckBox>
                                     <TextBlock Text="Пара:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding GridSymbol}" Width="100" Margin="0,0,15,0"/>
                                     <TextBlock Text="Диапазон (%):" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
@@ -621,8 +627,12 @@
                             <StackPanel>
                                 <TextBlock Text="Дополнительные стратегии" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <CheckBox Content="Volume Breakout" IsChecked="{Binding VolumeBreakoutEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
-                                    <CheckBox Content="DCA (усреднение)" IsChecked="{Binding DcaEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox IsChecked="{Binding VolumeBreakoutEnabled}" Margin="0,0,15,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Volume Breakout" Foreground="#ecf0f1"/>
+                                    </CheckBox>
+                                    <CheckBox IsChecked="{Binding DcaEnabled}" Margin="0,0,15,0" VerticalAlignment="Center">
+                                        <TextBlock Text="DCA (усреднение)" Foreground="#ecf0f1"/>
+                                    </CheckBox>
                                 </WrapPanel>
                             </StackPanel>
                         </Border>
@@ -632,7 +642,9 @@
                             <StackPanel>
                                 <TextBlock Text="Фьючерсы" Foreground="#3498db" FontSize="14" FontWeight="Bold" Margin="0,0,0,8"/>
                                 <WrapPanel>
-                                    <CheckBox Content="Включить фьючерсы" IsChecked="{Binding FuturesEnabled}" Foreground="#ecf0f1" Margin="0,0,15,0" VerticalAlignment="Center"/>
+                                    <CheckBox IsChecked="{Binding FuturesEnabled}" Margin="0,0,15,0" VerticalAlignment="Center">
+                                        <TextBlock Text="Включить фьючерсы" Foreground="#ecf0f1"/>
+                                    </CheckBox>
                                     <TextBlock Text="Плечо:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                     <TextBox Text="{Binding FuturesLeverage}" Width="60"/>
                                 </WrapPanel>
@@ -647,7 +659,9 @@
                                 <!-- AdaptiveAgent -->
                                 <Border Background="#1e1e1e" CornerRadius="3" Padding="8" Margin="0,0,0,8">
                                     <StackPanel>
-                                        <CheckBox Content="AdaptiveAgent (ATR + Volume + Volatility + ADX)" IsChecked="{Binding AdaptiveAgentEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
+                                        <CheckBox IsChecked="{Binding AdaptiveAgentEnabled}" FontWeight="Bold" Margin="0,0,0,6">
+                                            <TextBlock Text="AdaptiveAgent (ATR + Volume + Volatility + ADX)" Foreground="#f1c40f" FontWeight="Bold"/>
+                                        </CheckBox>
                                         <WrapPanel>
                                             <TextBlock Text="SL множитель:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding AdaptiveSlMultiplier, StringFormat=F1}" Width="50" Margin="0,0,15,0"/>
@@ -660,7 +674,9 @@
                                 <!-- SignalValidator -->
                                 <Border Background="#1e1e1e" CornerRadius="3" Padding="8" Margin="0,0,0,8">
                                     <StackPanel>
-                                        <CheckBox Content="SignalValidator (ONNX / Heuristic)" IsChecked="{Binding SignalValidatorEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
+                                        <CheckBox IsChecked="{Binding SignalValidatorEnabled}" FontWeight="Bold" Margin="0,0,0,6">
+                                            <TextBlock Text="SignalValidator (ONNX / Heuristic)" Foreground="#f1c40f" FontWeight="Bold"/>
+                                        </CheckBox>
                                         <WrapPanel>
                                             <TextBlock Text="Volume порог:" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding ValidatorVolumeThreshold, StringFormat=F1}" Width="50" Margin="0,0,15,0"/>
@@ -677,7 +693,9 @@
                                 <!-- NewsSentinel -->
                                 <Border Background="#1e1e1e" CornerRadius="3" Padding="8">
                                     <StackPanel>
-                                        <CheckBox Content="NewsSentinel (SQLite + новостной анализ)" IsChecked="{Binding NewsSentinelEnabled}" Foreground="#f1c40f" FontWeight="Bold" Margin="0,0,0,6"/>
+                                        <CheckBox IsChecked="{Binding NewsSentinelEnabled}" FontWeight="Bold" Margin="0,0,0,6">
+                                            <TextBlock Text="NewsSentinel (SQLite + новостной анализ)" Foreground="#f1c40f" FontWeight="Bold"/>
+                                        </CheckBox>
                                         <WrapPanel>
                                             <TextBlock Text="Блокировка (мин):" Foreground="#ecf0f1" Margin="0,0,5,0" VerticalAlignment="Center"/>
                                             <TextBox Text="{Binding NewsSentinelBlockMinutes}" Width="50"/>
