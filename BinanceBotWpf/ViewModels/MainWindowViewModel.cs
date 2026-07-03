@@ -1012,7 +1012,25 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        public void AddTradeToHistory(TradeLog trade)
+        public void ClearTradeHistory ()
+        {
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                TradesHistory.Clear ();
+                TotalTrades = 0;
+                WinningTrades = 0;
+                LosingTrades = 0;
+                TotalPnL = 0;
+                WinRate = 0;
+                BestPnL = 0;
+                WorstPnL = 0;
+                _totalProfitSum = 0;
+                _totalLossSum = 0;
+                AvgProfitLossDisplay = "Ср. приб/убыток: 0.00 / 0.00";
+            });
+        }
+
+        public void AddTradeToHistory(TradeLog trade, bool silent = false)
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
@@ -1030,7 +1048,8 @@ namespace BinanceBotWpf.ViewModels
                 decimal avgL = LosingTrades > 0 ? Math.Abs (_totalLossSum / LosingTrades) : 0;
                 AvgProfitLossDisplay = $"Ср. приб/убыток: {avgP:F2} / {avgL:F2}";
 
-                AddLog ($"📊 Сделка {trade.Symbol}: {trade.Action} PnL={trade.PnL:F2} ({trade.PnLPercent:F2}%)");
+                if (!silent)
+                    AddLog ($"📊 Сделка {trade.Symbol}: {trade.Action} PnL={trade.PnL:F2} ({trade.PnLPercent:F2}%)");
             });
         }
 

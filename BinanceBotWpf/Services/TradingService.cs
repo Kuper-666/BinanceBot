@@ -46,6 +46,7 @@ namespace BinanceBotWpf.Services
         private readonly IAiRiskEngine _aiRiskEngine;
         private ISimpleEarnStrategy _earnStrategy;
         private readonly IFearGreedIndexProvider _fearGreedProvider;
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _pendingNotifications = new ();
 
         // Decomposed services
         private readonly PairManager _pairManager;
@@ -232,10 +233,17 @@ namespace BinanceBotWpf.Services
                     if (_telegram == null)
                     {
                         _telegram = new TelegramNotifier (tgToken, tgChatId);
-                        _telegram.OnStatusChanged += (isEnabled, msg) =>
+                        _telegram.OnStatusChanged += async (isEnabled, msg) =>
                         {
                             logger (isEnabled ? $"✅ Telegram: {msg}" : $"❌ Telegram: {msg}");
                             _ui?.RefreshTelegramStatus ();
+                            if (isEnabled)
+                            {
+                                while (_pendingNotifications.TryDequeue (out string pending))
+                                {
+                                    await _telegram.SendMessageAsync (pending);
+                                }
+                            }
                         };
                         _telegramHandler = new TelegramCommandHandler (
                             _telegram, _client, (WalletManager)_wallet, (PositionManager)_positionManager, _tradingSettings,
@@ -490,9 +498,10 @@ namespace BinanceBotWpf.Services
             // Restore trade history and stats
             if (_ui != null && state.TradesHistory.Count > 0)
             {
+                _ui.ClearTradeHistory ();
                 foreach (var trade in state.TradesHistory)
                 {
-                    _ui.AddTradeToHistory (trade);
+                    _ui.AddTradeToHistory (trade, silent: true);
                 }
             }
 
@@ -1213,7 +1222,15 @@ namespace BinanceBotWpf.Services
             {
                 if (_telegram != null && _telegram.IsEnabled)
                 {
+                    while (_pendingNotifications.TryDequeue (out string pending))
+                    {
+                        await _telegram.SendMessageAsync (pending);
+                    }
                     await _telegram.SendMessageAsync (message);
+                }
+                else
+                {
+                    _pendingNotifications.Enqueue (message);
                 }
             }
             catch (Exception ex)
