@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.WebSockets;
 using System.Text;
@@ -13,10 +14,16 @@ namespace BinanceBotWpf.Services
     {
         private readonly Action<string> _logger;
         private readonly ConcurrentDictionary<string, decimal> _currentPrices = new ();
+        private readonly ConcurrentDictionary<string, DateTime> _lastMessageTime = new ();
         private readonly ConcurrentDictionary<string, ClientWebSocket> _sockets = new ();
         private readonly ConcurrentDictionary<string, CancellationTokenSource> _ctsDict = new ();
         private readonly string _wsBaseUrl;
         private bool _disposed;
+
+        /// <summary>
+        /// Максимальный допустимый возраст цены в секундах. После этого цена считается протухшей.
+        /// </summary>
+        public int MaxPriceAgeSeconds { get; set; } = 30;
 
         public WebSocketPriceManager (Action<string> logger, bool useFuturesEndpoint = false)
         {
@@ -102,6 +109,7 @@ namespace BinanceBotWpf.Services
                                     System.Globalization.CultureInfo.InvariantCulture, out decimal price))
                                 {
                                     _currentPrices[symbol] = price;
+                                    _lastMessageTime[symbol] = DateTime.UtcNow;
                                 }
                             }
                         }
@@ -141,9 +149,45 @@ namespace BinanceBotWpf.Services
             return price;
         }
 
+        /// <summary>
+        /// Проверяет, актуальна ли цена для символа (получена недавно).
+        /// </summary>
+        public bool IsPriceFresh(string symbol)
+        {
+            if (!_lastMessageTime.TryGetValue (symbol.ToUpperInvariant (), out var lastTime))
+                return false;
+            return (DateTime.UtcNow - lastTime).TotalSeconds <= MaxPriceAgeSeconds;
+        }
+
+        /// <summary>
+        /// Возвращает возраст цены в секундах (0 если нет данных).
+        /// </summary>
+        public double GetPriceAgeSeconds(string symbol)
+        {
+            if (!_lastMessageTime.TryGetValue (symbol.ToUpperInvariant (), out var lastTime))
+                return -1;
+            return (DateTime.UtcNow - lastTime).TotalSeconds;
+        }
+
+        /// <summary>
+        /// Возвращает список символов с протухшими ценами.
+        /// </summary>
+        public string[] GetStaleSymbols()
+        {
+            var now = DateTime.UtcNow;
+            var stale = new List<string> ();
+            foreach (var kvp in _lastMessageTime)
+            {
+                if ((now - kvp.Value).TotalSeconds > MaxPriceAgeSeconds)
+                    stale.Add (kvp.Key);
+            }
+            return stale.ToArray ();
+        }
+
         public void UpdatePrice(string symbol, decimal price)
         {
             _currentPrices[symbol.ToUpperInvariant ()] = price;
+            _lastMessageTime[symbol.ToUpperInvariant ()] = DateTime.UtcNow;
         }
 
         public string[] GetSubscribedSymbols()

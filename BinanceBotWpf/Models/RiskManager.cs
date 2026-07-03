@@ -17,9 +17,13 @@ namespace BinanceBotWpf.Risk
         public int MaxOpenOrders { get; set; } = 5;
         public decimal MaxDailyLossPercent { get; set; } = 0.10m;   // 10% от баланса
         public decimal MaxExposurePercent { get; set; } = 0.50m;    // 50% от баланса в открытых позициях
+        public decimal MaxExposurePerSymbolPercent { get; set; } = 0.20m; // 20% на одну пару
+        public decimal MaxWeeklyLossPercent { get; set; } = 0.20m;  // 20% недельный лимит
 
         private decimal _dailyPnL;
+        private decimal _weeklyPnL;
         private DateTime _dailyPnLReset = DateTime.UtcNow.Date;
+        private DateTime _weeklyPnLReset = DateTime.UtcNow.Date;
         private readonly List<decimal> _tradeHistory = new ();
 
         // === ПУБЛИЧНЫЕ СВОЙСТВА ===
@@ -30,6 +34,12 @@ namespace BinanceBotWpf.Risk
         public decimal BuyingPower => BalanceUSDC * Leverage;
         public bool CanTrade { get; private set; }
         public string StatusMessage { get; private set; }
+
+        /// <summary>
+        /// Kill-switch: true если достигнут дневной или недельный лимит убытка.
+        /// Бот должен полностью остановить торговлю и закрыть позиции.
+        /// </summary>
+        public bool IsKillSwitchActive => IsDailyLossKillSwitchTriggered () || IsWeeklyLossTriggered ();
 
         public decimal DailyPnL
         {
@@ -60,9 +70,14 @@ namespace BinanceBotWpf.Risk
         }
 
         // === ПРОВЕРКА: МОЖНО ЛИ ОТКРЫТЬ НОВУЮ ПОЗИЦИЮ ===
-        public (bool Allowed, string Reason) CanOpenPosition(int currentOpenPositions, decimal orderValueUsdc, decimal currentTotalExposure = 0, decimal tradePnL = 0)
+        public (bool Allowed, string Reason) CanOpenPosition(int currentOpenPositions, decimal orderValueUsdc, decimal currentTotalExposure = 0, decimal tradePnL = 0, decimal currentSymbolExposure = 0)
         {
             ResetDailyIfNeeded ();
+            ResetWeeklyIfNeeded ();
+
+            // 0. Kill-switch: полная остановка при дневной/недельной просадке
+            if (IsKillSwitchActive)
+                return (false, $"🚨 KILL-SWITCH: дневной убыток {Math.Abs (_dailyPnL):F2} USDC ({_dailyPnL / BalanceUSDC:P0}) или недельный {_weeklyPnL:F2} USDC ({_weeklyPnL / BalanceUSDC:P0})");
 
             // 1. Лимит открытых позиций
             if (currentOpenPositions >= MaxOpenOrders)
@@ -74,11 +89,23 @@ namespace BinanceBotWpf.Risk
             if (potentialLoss < 0 && Math.Abs (potentialLoss) >= maxDailyLoss)
                 return (false, $"Дневной убыток {Math.Abs (potentialLoss):F2} USDC >= лимита {maxDailyLoss:F2} USDC ({MaxDailyLossPercent:P0})");
 
-            // 3. Общая экспозиция (сумма текущих открытых позиций + новый ордер)
+            // 3. Недельный убыток
+            decimal weeklyPotentialLoss = _weeklyPnL + tradePnL;
+            decimal maxWeeklyLoss = BalanceUSDC * MaxWeeklyLossPercent;
+            if (weeklyPotentialLoss < 0 && Math.Abs (weeklyPotentialLoss) >= maxWeeklyLoss)
+                return (false, $"Недельный убыток {Math.Abs (weeklyPotentialLoss):F2} USDC >= лимита {maxWeeklyLoss:F2} USDC ({MaxWeeklyLossPercent:P0})");
+
+            // 4. Общая экспозиция (сумма текущих открытых позиций + новый ордер)
             decimal totalExposure = currentTotalExposure + orderValueUsdc;
             decimal maxExposure = BalanceUSDC * MaxExposurePercent;
             if (totalExposure > maxExposure)
                 return (false, $"Экспозиция {totalExposure:F2} USDC > лимита {maxExposure:F2} USDC ({MaxExposurePercent:P0})");
+
+            // 5. Экспозиция на одну пару
+            decimal symbolExposure = currentSymbolExposure + orderValueUsdc;
+            decimal maxSymbolExposure = BalanceUSDC * MaxExposurePerSymbolPercent;
+            if (symbolExposure > maxSymbolExposure)
+                return (false, $"Экспозиция на пару {symbolExposure:F2} USDC > лимита {maxSymbolExposure:F2} USDC ({MaxExposurePerSymbolPercent:P0})");
 
             return (true, "OK");
         }
@@ -87,7 +114,23 @@ namespace BinanceBotWpf.Risk
         {
             _tradeHistory.Add (pnlUsdc);
             ResetDailyIfNeeded ();
+            ResetWeeklyIfNeeded ();
             _dailyPnL += pnlUsdc;
+            _weeklyPnL += pnlUsdc;
+        }
+
+        public bool IsDailyLossKillSwitchTriggered ()
+        {
+            ResetDailyIfNeeded ();
+            decimal maxDailyLoss = BalanceUSDC * MaxDailyLossPercent;
+            return _dailyPnL < 0 && Math.Abs (_dailyPnL) >= maxDailyLoss;
+        }
+
+        private bool IsWeeklyLossTriggered ()
+        {
+            ResetWeeklyIfNeeded ();
+            decimal maxWeeklyLoss = BalanceUSDC * MaxWeeklyLossPercent;
+            return _weeklyPnL < 0 && Math.Abs (_weeklyPnL) >= maxWeeklyLoss;
         }
 
         private void ResetDailyIfNeeded ()
@@ -97,6 +140,18 @@ namespace BinanceBotWpf.Risk
             {
                 _dailyPnL = 0;
                 _dailyPnLReset = today;
+            }
+        }
+
+        private void ResetWeeklyIfNeeded ()
+        {
+            DateTime now = DateTime.UtcNow;
+            // Неделя начинается в понедельник
+            DateTime weekStart = now.Date.AddDays (-(int)now.DayOfWeek + 1);
+            if (_weeklyPnLReset < weekStart)
+            {
+                _weeklyPnL = 0;
+                _weeklyPnLReset = weekStart;
             }
         }
 

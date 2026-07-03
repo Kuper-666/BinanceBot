@@ -48,7 +48,9 @@ namespace BinanceBotWpf.Tests
             var (allowed, reason) = rm.CanOpenPosition (currentOpenPositions: 0, orderValueUsdc: 50m);
 
             Assert.False (allowed);
-            Assert.Contains ("Дневной убыток", reason);
+            // Kill-switch triggers first when daily loss >= MaxDailyLossPercent
+            Assert.True (reason.Contains ("KILL-SWITCH") || reason.Contains ("Дневной убыток"),
+                $"Expected kill-switch or daily loss block, got: {reason}");
         }
 
         [Fact]

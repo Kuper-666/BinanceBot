@@ -35,17 +35,25 @@ namespace BinanceBotWpf.Services
                 await _semaphore.WaitAsync ();
 
             // Контроль времени между запросами (rate limiting по времени)
+            TimeSpan delay;
             lock (_lock)
             {
                 var now = DateTime.UtcNow;
                 var elapsed = now - _lastRequestTime;
-                if (elapsed < TimeSpan.FromMilliseconds (1000.0 / _maxRequestsPerSecond))
+                var minInterval = TimeSpan.FromMilliseconds (1000.0 / _maxRequestsPerSecond);
+                if (elapsed < minInterval)
                 {
-                    var delay = TimeSpan.FromMilliseconds (1000.0 / _maxRequestsPerSecond) - elapsed;
-                    Thread.Sleep (delay);
+                    delay = minInterval - elapsed;
+                }
+                else
+                {
+                    delay = TimeSpan.Zero;
                 }
                 _lastRequestTime = DateTime.UtcNow;
             }
+
+            if (delay > TimeSpan.Zero)
+                await Task.Delay (delay);
         }
 
         /// <summary>

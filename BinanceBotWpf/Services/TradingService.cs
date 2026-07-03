@@ -991,6 +991,16 @@ namespace BinanceBotWpf.Services
                         continue;
                     }
 
+                    // Kill-switch: полная остановка при дневной/недельной просадке
+                    if (_riskManager.IsKillSwitchActive)
+                    {
+                        _ui?.AddLog ("🚨 KILL-SWITCH: превышен лимит дневной/недельной просадки. Торговля остановлена.");
+                        if (_telegram != null && _telegram.IsEnabled)
+                            await _telegram.SendMessageAsync ("🚨 <b>KILL-SWITCH</b>\nДневной/недельный лимит убытка превышен.\nТорговля остановлена. Откройте позиции вручную.");
+                        StopTrading ();
+                        return;
+                    }
+
                     // 0. Проверка новостей и макро-событий
                     if (_tradingSettings?.AvoidNewsTime == true
                         && (_newsProvider?.HasRealApi == true || _macroCalendar?.HasRealApi == true))
@@ -1123,9 +1133,18 @@ namespace BinanceBotWpf.Services
                                 }
                             }
 
+                            // Расчёт текущей экспозиции на данную пару
+                            decimal currentSymbolExposure = 0;
+                            if (_positionManager.TryGet (sym, out var existingPos) && existingPos.Quantity > 0)
+                            {
+                                decimal symPrice = await _client.GetPriceAsync (sym);
+                                if (symPrice > 0)
+                                    currentSymbolExposure = existingPos.Quantity * symPrice;
+                            }
+
                             // Проверка лимитов RiskManager — реальный размер сделки (как в OrderExecutor)
                             decimal maxRiskPerTrade = RiskCalculator.CalculateRiskAmount (spotBalance, 0.02m);
-                            var riskCheck = _riskManager.CanOpenPosition (_positionManager.Count, maxRiskPerTrade, currentTotalExposure);
+                            var riskCheck = _riskManager.CanOpenPosition (_positionManager.Count, maxRiskPerTrade, currentTotalExposure, 0, currentSymbolExposure);
                             if (!riskCheck.Allowed)
                             {
                                 _ui?.AddLog ($"🛡️ {sym}: покупка заблокирована — {riskCheck.Reason}");

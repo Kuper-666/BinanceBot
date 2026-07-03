@@ -195,7 +195,20 @@ namespace BinanceBotWpf.Services
                 limitPrice = Math.Floor (limitPrice / tickSize) * tickSize;
 
             _ui?.AddLog ($"Покупка {qty} {symbol} | лимит {limitPrice:F4} ( рынок {price:F4}, -0.2%)");
-            JObject order = await _client.PlaceLimitOrder (symbol, "BUY", qty, limitPrice);
+
+            JObject order = null;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                order = await _client.PlaceLimitOrder (symbol, "BUY", qty, limitPrice);
+                if (order != null) break;
+
+                if (attempt < 3)
+                {
+                    int delayMs = (int)Math.Pow (2, attempt) * 1000;
+                    _ui?.AddLog ($"⚠️ {symbol}: BUY попытка {attempt}/3 не удалась, повтор через {delayMs / 1000}с...");
+                    await Task.Delay (delayMs);
+                }
+            }
 
             if (order != null)
             {
@@ -319,7 +332,21 @@ namespace BinanceBotWpf.Services
                 limitPrice = Math.Ceiling (limitPrice / tickSize) * tickSize;
 
             _ui?.AddLog ($"Продажа {qtyToSell} {symbol} | лимит {limitPrice:F4} ( рынок {price:F4}, +0.2%)");
-            JObject sellOrder = await _client.PlaceLimitOrder (symbol, "SELL", qtyToSell, limitPrice);
+
+            JObject sellOrder = null;
+            for (int attempt = 1; attempt <= 3; attempt++)
+            {
+                sellOrder = await _client.PlaceLimitOrder (symbol, "SELL", qtyToSell, limitPrice);
+                if (sellOrder != null) break;
+
+                if (attempt < 3)
+                {
+                    int delayMs = (int)Math.Pow (2, attempt) * 1000;
+                    _ui?.AddLog ($"⚠️ {symbol}: SELL попытка {attempt}/3 не удалась, повтор через {delayMs / 1000}с...");
+                    await Task.Delay (delayMs);
+                }
+            }
+
             if (sellOrder != null)
             {
                 decimal pnl = (limitPrice - pos.EntryPrice) * qtyToSell;
