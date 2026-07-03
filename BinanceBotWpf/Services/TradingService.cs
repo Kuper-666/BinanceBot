@@ -544,7 +544,8 @@ namespace BinanceBotWpf.Services
             // TradingSettings загружены через DI, не нужно загружать заново
 
             // Инициализация WebSocket менеджера
-            bool useFutures = _ui?.FuturesEnabled == true || _tradingSettings?.FuturesEnabled == true;
+            bool hasFuturesKeys = !string.IsNullOrEmpty (_config?.FuturesApiKey);
+            bool useFutures = hasFuturesKeys && (_ui?.FuturesEnabled == true || _tradingSettings?.FuturesEnabled == true);
             if (_webSocketManager != null)
             {
                 _webSocketManager.Dispose ();
