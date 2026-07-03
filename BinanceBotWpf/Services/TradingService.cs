@@ -599,11 +599,6 @@ namespace BinanceBotWpf.Services
                 {
                     tempFuturesKey = cfg.FuturesApiKey ?? "";
                     tempFuturesSecret = cfg.FuturesApiSecret ?? "";
-                    // Фоллбэк на спот-ключи
-                    if (string.IsNullOrEmpty (tempFuturesKey))
-                        tempFuturesKey = cfg.ApiKey ?? "";
-                    if (string.IsNullOrEmpty (tempFuturesSecret))
-                        tempFuturesSecret = cfg.ApiSecret ?? "";
                 }
             }
             catch { }
