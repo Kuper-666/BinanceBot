@@ -195,6 +195,45 @@ namespace BinanceBotWpf.Services
             return _sockets.Keys.ToArray ();
         }
 
+        /// <summary>
+        /// Принудительно переподключает символы с протухшими ценами.
+        /// Закрывает зависший сокет, чтобы ConnectAndListen запустил переподключение.
+        /// Возвращает количество переподключённых символов.
+        /// </summary>
+        public int ForceReconnectStaleSymbols ()
+        {
+            string[] staleSymbols = GetStaleSymbols ();
+            int reconnected = 0;
+
+            foreach (string symbol in staleSymbols)
+            {
+                if (_sockets.TryRemove (symbol, out var ws))
+                {
+                    try
+                    {
+                        if (ws.State == WebSocketState.Open || ws.State == WebSocketState.CloseReceived)
+                        {
+                            _ = ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "stale price reconnect", CancellationToken.None);
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        try { ws.Dispose (); } catch { }
+                    }
+
+                    // Запускаем новое подключение через старый CTS (ConnectAndListen переподключится автоматически)
+                    if (_ctsDict.TryGetValue (symbol, out var cts) && !cts.IsCancellationRequested)
+                    {
+                        _logger?.Invoke ($"🔄 WebSocket: принудительное переподключение к {symbol} (цена протухла)");
+                        reconnected++;
+                    }
+                }
+            }
+
+            return reconnected;
+        }
+
         public void Dispose()
         {
             if (_disposed) return;

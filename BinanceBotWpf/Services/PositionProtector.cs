@@ -15,6 +15,7 @@ namespace BinanceBotWpf.Services
         private readonly BinanceClient _client;
         private readonly PositionManager _positionManager;
         private readonly Action<string> _logger;
+        private WebSocketPriceManager _wsManager;
 
         public bool EnableDynamicTrailingStop { get; set; } = true;
         public decimal ActivationProfitPercent { get; set; } = 0.02m; // Активация при +2%
@@ -31,6 +32,15 @@ namespace BinanceBotWpf.Services
             _client = client;
             _positionManager = positionManager;
             _logger = logger;
+        }
+
+        /// <summary>
+        /// Установить менеджер WebSocket для проверки актуальности цен.
+        /// Если цена для символа протухла (> MaxPriceAgeSeconds), защитные действия пропускаются.
+        /// </summary>
+        public void SetWebSocketManager (WebSocketPriceManager wsManager)
+        {
+            _wsManager = wsManager;
         }
 
         // Публичный метод для установки логгера
@@ -53,6 +63,14 @@ namespace BinanceBotWpf.Services
 
                 decimal price = getCurrentPrice (sym);
                 if (price <= 0) continue;
+
+                // Проверка актуальности цены через WebSocket
+                if (_wsManager != null && !_wsManager.IsPriceFresh (sym))
+                {
+                    double age = _wsManager.GetPriceAgeSeconds (sym);
+                    _logger?.Invoke ($"⚠️ {sym}: цена протухла ({age:F0}с назад). Защитные действия пропущены.");
+                    continue;
+                }
 
                 // Если позиция осталась без OCO-защиты на бирже после прошлого сбоя — пробуем восстановить в первую очередь
                 if (pos.IsUnprotected)

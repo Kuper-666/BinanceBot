@@ -313,6 +313,7 @@ namespace BinanceBotWpf.Services
             {
                 prot.TrailingStopPercent = _ui.TrailingStopPercent;
                 prot.MaxHoldTime = TimeSpan.FromHours (_tradingSettings?.MaxHoldTimeHours ?? 24);
+                prot.SetWebSocketManager (_webSocketManager);
             }
 
             // Restore trading state from file
@@ -339,6 +340,7 @@ namespace BinanceBotWpf.Services
             _protectorCts = new CancellationTokenSource ();
             _protectorLoopTask = Task.Run (async () =>
             {
+                int staleScanCounter = 0;
                 while (!_protectorCts.Token.IsCancellationRequested)
                 {
                     try
@@ -350,6 +352,16 @@ namespace BinanceBotWpf.Services
                             {
                                 await _orderExecutor.ExecuteSellAsync (sym);
                             }
+                        }
+
+                        // Периодический скан протухших WebSocket-соединений (каждые 60с = каждые 6 итераций)
+                        staleScanCounter++;
+                        if (staleScanCounter >= 6 && _webSocketManager != null)
+                        {
+                            staleScanCounter = 0;
+                            int reconnected = _webSocketManager.ForceReconnectStaleSymbols ();
+                            if (reconnected > 0)
+                                _ui?.AddLog ($"🔄 WebSocket: переподключено {reconnected} символов с протухшими ценами");
                         }
 
                         // Sync trailing stop from UI
@@ -1105,6 +1117,14 @@ namespace BinanceBotWpf.Services
 
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         bool traded = false;
+
+                        // Проверка актуальности цены: пропускаем торговые решения при протухшей цене
+                        if (_webSocketManager != null && !_webSocketManager.IsPriceFresh (sym))
+                        {
+                            double age = _webSocketManager.GetPriceAgeSeconds (sym);
+                            _ui?.AddLog ($"⚠️ {sym}: цена протухла ({age:F0}с). Торговые решения пропущены.");
+                            continue;
+                        }
 
                         // Диагностика: почему Buy не исполняется
                         if (analysis.Action == TradeAction.Buy && !hasPosition)
