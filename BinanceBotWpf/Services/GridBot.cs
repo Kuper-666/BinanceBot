@@ -138,12 +138,12 @@ namespace BinanceBotWpf.Services
             {
                 perLevelUsdc = minNotional;
                 totalInvestmentUsdc = perLevelUsdc * 2; // 1 buy + 1 sell
-                _logger?.Invoke ($"⚠️ Автоподстройка: инвестиции увеличены до {totalInvestmentUsdc:F2} USDC для покрытия минимума");
+                _logger?.Invoke ($"⚠️ Автоподстройка: инвестиции увеличены до {totalInvestmentUsdc:F2} USDT для покрытия минимума");
             }
 
             if (gridLevels != _buyLevels.Length)
             {
-                _logger?.Invoke ($"🔧 Автоподстройка: уровней {gridLevels} (было {_buyLevels.Length}), на уровень {perLevelUsdc:F2} USDC");
+                _logger?.Invoke ($"🔧 Автоподстройка: уровней {gridLevels} (было {_buyLevels.Length}), на уровень {perLevelUsdc:F2} USDT");
                 _buyLevels = new decimal[gridLevels];
                 _sellLevels = new decimal[gridLevels];
                 for (int i = 0; i < gridLevels; i++)
@@ -404,7 +404,7 @@ namespace BinanceBotWpf.Services
                                     }
                                 }
                                 string profitSign = profit >= 0 ? "+" : "";
-                                _logger?.Invoke ($"📕 GridBot: SELL исполнен {sellQty} @ {sellPrice:F4} | PnL: {profitSign}{profit:F4} USDC ({profitPct:+0.00;-0.00}%)");
+                                _logger?.Invoke ($"📕 GridBot: SELL исполнен {sellQty} @ {sellPrice:F4} | PnL: {profitSign}{profit:F4} USDT ({profitPct:+0.00;-0.00}%)");
                                 OnTrade?.Invoke (new TradeLog
                                 {
                                     Symbol = _symbol,

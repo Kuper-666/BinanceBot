@@ -75,7 +75,7 @@ namespace BinanceBotWpf.Models
                 {
                     try
                     {
-                        foreach (string asset in new[] { "USDC", "USDT" })
+                        foreach (string asset in new[] { "USDT", "USDC" })
                         {
                             decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync (asset);
                             if (futuresBalance > 0)

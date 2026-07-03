@@ -523,7 +523,7 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
-            decimal balance = _wallet.GetTotalBalance ("USDC");
+            decimal balance = _wallet.GetTotalBalance ("USDT");
             decimal investmentUsdc = balance * investmentPercent;
 
             if (_futuresClient == null)
@@ -533,16 +533,16 @@ namespace BinanceBotWpf.Services
             }
 
             // Проверяем баланс на фьючерсах и переводим со спота при необходимости
-            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDC");
-            _ui?.AddLog ($"💰 Фьючерсный баланс USDC: {futuresBalance:F2}");
+            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDT");
+            _ui?.AddLog ($"💰 Фьючерсный баланс USDT: {futuresBalance:F2}");
             if (futuresBalance < investmentUsdc)
             {
-                decimal toTransfer = investmentUsdc - futuresBalance + 1m; // +1 USDC запас на комиссии
-                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                decimal toTransfer = investmentUsdc - futuresBalance + 1m; // +1 USDT запас на комиссии
+                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDT");
                 if (spotBalance >= toTransfer)
                 {
-                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} USDC из спота в фьючерсы...");
-                    var transferResult = await _futuresClient.TransferToFuturesAsync ("USDC", toTransfer);
+                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} USDT из спота в фьючерсы...");
+                    var transferResult = await _futuresClient.TransferToFuturesAsync ("USDT", toTransfer);
                     if (transferResult != null)
                     {
                         _ui?.AddLog ($"✅ Перевод выполнен");
@@ -556,7 +556,7 @@ namespace BinanceBotWpf.Services
                 }
                 else
                 {
-                    _ui?.AddLog ($"⚠️ Недостаточно USDC на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
+                    _ui?.AddLog ($"⚠️ Недостаточно USDT на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
                     return;
                 }
             }
@@ -566,7 +566,7 @@ namespace BinanceBotWpf.Services
             {
                 _ui?.AddTradeToHistory (trade);
                 string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
-                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
+                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDT ({trade.PnLPercent:+F2;-F2}%)");
             };
             await _gridBot.StartAsync (symbol, currentPrice, gridRangePercent, gridLevels, investmentUsdc);
         }
@@ -596,12 +596,12 @@ namespace BinanceBotWpf.Services
             }
 
             // Баланс для инвестиций — фьючерсный (не общий кошелёк)
-            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDC");
-            _ui?.AddLog ($"💰 Фьючерсный баланс USDC: {futuresBalance:F2}");
+            decimal futuresBalance = await _futuresClient.GetAccountBalanceAsync ("USDT");
+            _ui?.AddLog ($"💰 Фьючерсный баланс USDT: {futuresBalance:F2}");
 
             if (futuresBalance < 20m)
             {
-                _ui?.AddLog ($"⛔ Фьючерсный баланс {futuresBalance:F2} USDC < минимума (20 USDC). Пополните фьючерсный аккаунт.");
+                _ui?.AddLog ($"⛔ Фьючерсный баланс {futuresBalance:F2} USDT < минимума (20 USDT). Пополните фьючерсный аккаунт.");
                 return;
             }
 
@@ -640,7 +640,7 @@ namespace BinanceBotWpf.Services
 
             if (grid.Levels <= 0 || investmentUsdc <= 0)
             {
-                _ui?.AddLog ($"⛔ Сетка отключена: фьючерсный баланс {futuresBalance:F2} USDC недостаточен (мин. ~20 USDC)");
+                _ui?.AddLog ($"⛔ Сетка отключена: фьючерсный баланс {futuresBalance:F2} USDT недостаточен (мин. ~20 USDT)");
                 return;
             }
 
@@ -648,11 +648,11 @@ namespace BinanceBotWpf.Services
             if (futuresBalance < investmentUsdc)
             {
                 decimal toTransfer = investmentUsdc - futuresBalance + 1m;
-                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDC");
+                decimal spotBalance = await _client.GetAccountBalanceAsync ("USDT");
                 if (spotBalance >= toTransfer)
                 {
-                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} USDC из спота в фьючерсы...");
-                    var transferResult = await _futuresClient.TransferToFuturesAsync ("USDC", toTransfer);
+                    _ui?.AddLog ($"💸 Перевод {toTransfer:F2} USDT из спота в фьючерсы...");
+                    var transferResult = await _futuresClient.TransferToFuturesAsync ("USDT", toTransfer);
                     if (transferResult != null)
                     {
                         _ui?.AddLog ($"✅ Перевод выполнен");
@@ -666,20 +666,20 @@ namespace BinanceBotWpf.Services
                 }
                 else
                 {
-                    _ui?.AddLog ($"⚠️ Недостаточно USDC на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
+                    _ui?.AddLog ($"⚠️ Недостаточно USDT на споте ({spotBalance:F2}) для перевода ({toTransfer:F2})");
                     return;
                 }
             }
 
-            _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Фьючерсный баланс: {futuresBalance:F2} USDC");
-            _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDC)");
+            _ui?.AddLog ($"🤖 ИИ-автосетка: {symbol} | Фьючерсный баланс: {futuresBalance:F2} USDT");
+            _ui?.AddLog ($"   Диапазон: ±{grid.RangePercent:P0} | Уровней: {grid.Levels} | Инвестиции: {grid.InvestmentPercent:P0} ({investmentUsdc:F2} USDT)");
 
             _gridBot = new GridBot (_futuresClient, (PositionManager)_positionManager, msg => _ui?.AddLog (msg));
             _gridBot.OnTrade += async trade =>
             {
                 _ui?.AddTradeToHistory (trade);
                 string emoji = trade.PnL >= 0 ? "🟢" : "🔴";
-                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDC ({trade.PnLPercent:+F2;-F2}%)");
+                await SendTradeNotification ($"{emoji} <b>СЕТКА ПРОДАЖА</b>\n📊 {trade.Symbol}\n💵 Вход: {trade.EntryPrice:F4} → Выход: {trade.ExitPrice:F4}\n📈 PnL: {trade.PnL:+F2;-F2} USDT ({trade.PnLPercent:+F2;-F2}%)");
             };
             await _gridBot.StartAsync (symbol, currentPrice, grid.RangePercent, grid.Levels, investmentUsdc, grid.UseDynamicStep);
         }
@@ -830,7 +830,7 @@ namespace BinanceBotWpf.Services
             // Авто-запуск сетки с параметрами от ИИ (если включена)
             if (_tradingSettings?.GridBotEnabled == true)
             {
-                string gridSymbol = _tradingSettings.GridSymbol ?? "DOGEUSDC";
+                string gridSymbol = _tradingSettings.GridSymbol ?? "DOGEUSDT";
                 _ui?.AddLog ($"🤖 Автозапуск ИИ-сетки для {gridSymbol}...");
                 _ = Task.Run (async () =>
                 {
