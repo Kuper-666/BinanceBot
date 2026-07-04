@@ -72,6 +72,13 @@ namespace BinanceBotWpf.ViewModels
         private bool _isRunning = false;
         private CancellationTokenSource _bgCts = new ();
 
+        // Telegram 2FA
+        private bool _isAuthenticated = true;
+        private string _authCodeInput = "";
+        private string _authStatusMessage = "Введите код из Telegram";
+        private TelegramAuthenticator _authenticator;
+        private bool _authSkipped;
+
         // Параметры стратегии
         private int _fastSma = 12;
         private int _slowSma = 26;
@@ -150,6 +157,14 @@ namespace BinanceBotWpf.ViewModels
         public decimal TrailingStopPercent { get => _trailingStopPercent; set { _trailingStopPercent = Math.Clamp (value, 0.005m, 0.10m); OnPropertyChanged (); SaveSettings (); } }
         public decimal MinBalanceForTrading { get => _minBalanceForTrading; set { _minBalanceForTrading = Math.Clamp (value, 5m, 100m); OnPropertyChanged (); SaveSettings (); } }
         public decimal MaxRiskPercent { get => _maxRiskPercent; set { _maxRiskPercent = Math.Clamp (value, 0.01m, 0.25m); OnPropertyChanged (); SaveSettings (); } }
+
+        // Telegram 2FA properties
+        public bool IsAuthenticated { get => _isAuthenticated; set { _isAuthenticated = value; OnPropertyChanged (); } }
+        public string AuthCodeInput { get => _authCodeInput; set { _authCodeInput = value; OnPropertyChanged (); } }
+        public string AuthStatusMessage { get => _authStatusMessage; set { _authStatusMessage = value; OnPropertyChanged (); } }
+        public bool AuthOverlayVisible => !_isAuthenticated;
+        public ICommand SubmitAuthCodeCommand { get; }
+        public ICommand ResendAuthCodeCommand { get; }
 
         // Свойства обновлений
         public bool IsUpdateAvailable
@@ -263,6 +278,10 @@ namespace BinanceBotWpf.ViewModels
             ScrollLogsToEndCommand = new RelayCommand (_ => ScrollLogsToEnd (), _ => true);
             CheckForUpdatesCommand = new RelayCommand (async _ => await CheckForUpdatesAsync (silent: false), _ => !IsCheckingForUpdate);
             UpdateNowCommand = new RelayCommand (async _ => await UpdateNowAsync (), _ => !IsCheckingForUpdate);
+
+            // Telegram 2FA
+            SubmitAuthCodeCommand = new RelayCommand (_ => SubmitAuthCode (), _ => !string.IsNullOrWhiteSpace (AuthCodeInput));
+            ResendAuthCodeCommand = new RelayCommand (async _ => await ResendAuthCode (), _ => true);
 
             // График
             _plotModel = new PlotModel { Title = "Баланс USDC", Background = OxyColors.Transparent, TextColor = OxyColors.White };
@@ -1335,6 +1354,82 @@ namespace BinanceBotWpf.ViewModels
             {
                 return new TradingSettings ();
             }
+        }
+
+        // Telegram 2FA methods
+        public void SetAuthenticator (TelegramAuthenticator authenticator, bool skipAuth = false)
+        {
+            _authenticator = authenticator;
+            _authSkipped = skipAuth;
+            if (skipAuth)
+            {
+                IsAuthenticated = true;
+                AuthStatusMessage = "";
+                OnPropertyChanged (nameof (AuthOverlayVisible));
+                return;
+            }
+
+            IsAuthenticated = false;
+            AuthStatusMessage = "Код отправлен в Telegram. Введите его ниже.";
+            OnPropertyChanged (nameof (AuthOverlayVisible));
+
+            _authenticator.OnAuthSuccess += () =>
+            {
+                Application.Current?.Dispatcher.BeginInvoke (() =>
+                {
+                    IsAuthenticated = true;
+                    AuthStatusMessage = "";
+                    OnPropertyChanged (nameof (AuthOverlayVisible));
+                });
+            };
+            _authenticator.OnAuthFailed += (msg) =>
+            {
+                Application.Current?.Dispatcher.BeginInvoke (() =>
+                {
+                    AuthStatusMessage = msg;
+                    AuthCodeInput = "";
+                });
+            };
+            _authenticator.OnAuthExpired += () =>
+            {
+                Application.Current?.Dispatcher.BeginInvoke (() =>
+                {
+                    AuthStatusMessage = "Код истёк. Нажмите «Отправить заново».";
+                    AuthCodeInput = "";
+                });
+            };
+        }
+
+        private void SubmitAuthCode ()
+        {
+            if (_authenticator == null) return;
+            var result = _authenticator.ValidateCode (AuthCodeInput);
+            switch (result)
+            {
+                case AuthResult.Success:
+                    break;
+                case AuthResult.InvalidCode:
+                    AuthStatusMessage = "Неверный код. Попробуйте ещё раз.";
+                    AuthCodeInput = "";
+                    break;
+                case AuthResult.Expired:
+                    AuthStatusMessage = "Код истёк. Нажмите «Отправить заново».";
+                    AuthCodeInput = "";
+                    break;
+                case AuthResult.RateLimited:
+                    AuthStatusMessage = "Превышен лимит попыток. Код отправлен заново.";
+                    AuthCodeInput = "";
+                    break;
+            }
+        }
+
+        private async Task ResendAuthCode ()
+        {
+            if (_authenticator == null) return;
+            AuthStatusMessage = "Отправка нового кода...";
+            await _authenticator.GenerateAndSendCodeAsync ();
+            AuthStatusMessage = "Новый код отправлен в Telegram. Введите его ниже.";
+            AuthCodeInput = "";
         }
 
         public void Dispose ()

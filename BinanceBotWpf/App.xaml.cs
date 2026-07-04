@@ -160,6 +160,18 @@ namespace BinanceBotWpf
             WriteCrashLog ("[STARTUP] Setting logger...");
             await tradingService.SetLoggerAsync (viewModel.AddLog);
 
+            // Wire Telegram 2FA authenticator to ViewModel
+            var authenticator = tradingService.GetAuthenticator ();
+            if (authenticator != null && telegramConfigured)
+            {
+                viewModel.SetAuthenticator (authenticator, skipAuth: false);
+                await authenticator.GenerateAndSendCodeAsync ();
+            }
+            else if (viewModel != null)
+            {
+                viewModel.SetAuthenticator (null, skipAuth: true);
+            }
+
             WriteCrashLog ("[STARTUP] Creating MainWindow...");
             var mainWindow = new MainWindow (viewModel);
 

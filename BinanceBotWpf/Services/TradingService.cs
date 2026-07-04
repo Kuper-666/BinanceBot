@@ -64,6 +64,7 @@ namespace BinanceBotWpf.Services
         private MainWindowViewModel _ui;
         private volatile bool _isRunning;
         private TelegramNotifier _telegram;
+        private TelegramAuthenticator _authenticator;
         private CancellationTokenSource _shutdownCts;
 
         // Списки и кэш
@@ -260,6 +261,9 @@ namespace BinanceBotWpf.Services
                             msg => _ui?.AddLog (msg));
                         _telegram.StartListening ((cmd, chatId) => _telegramHandler.HandleAsync (cmd, chatId));
                         logger ("⏳ Подключение к Telegram...");
+
+                        // Telegram 2FA authenticator
+                        _authenticator = new TelegramAuthenticator (_telegram, logger);
                     }
                 }
                 catch (Exception ex)
@@ -918,6 +922,7 @@ namespace BinanceBotWpf.Services
         /// Возвращает клиент Binance для доступа к API
         /// </summary>
         public BinanceClient GetBinanceClient() => _client;
+        public TelegramAuthenticator GetAuthenticator() => _authenticator;
 
         private async Task<List<BinanceKline>> GetKlinesCachedAsync (string symbol, string interval, int limit)
         {
