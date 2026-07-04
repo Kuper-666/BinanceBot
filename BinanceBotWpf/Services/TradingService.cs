@@ -1076,12 +1076,16 @@ namespace BinanceBotWpf.Services
                         // 5. Исполнение сигналов (только с подтверждением + новостной фильтр)
                         bool traded = false;
 
-                        // Проверка актуальности цены: пропускаем торговые решения при протухшей цене
+                        // Проверка актуальности цены: пропускаем покупки при протухшей цене, но продажи разрешаем
                         if (_webSocketManager != null && !_webSocketManager.IsPriceFresh (sym))
                         {
                             double age = _webSocketManager.GetPriceAgeSeconds (sym);
-                            _ui?.AddLog ($"⚠️ {sym}: цена протухла ({age:F0}с). Торговые решения пропущены.");
-                            continue;
+                            if (analysis.Action == TradeAction.Buy)
+                            {
+                                _ui?.AddLog ($"⚠️ {sym}: цена протухла ({age:F0}с). Покупка пропущена.");
+                                continue;
+                            }
+                            // Для продаж — разрешаем закрытие позиций даже при протухшей цене
                         }
 
                         // Диагностика: почему Buy не исполняется

@@ -68,8 +68,8 @@ namespace BinanceBotWpf.Services
                 if (_wsManager != null && !_wsManager.IsPriceFresh (sym))
                 {
                     double age = _wsManager.GetPriceAgeSeconds (sym);
-                    _logger?.Invoke ($"⚠️ {sym}: цена протухла ({age:F0}с назад). Защитные действия пропущены.");
-                    continue;
+                    _logger?.Invoke ($"⚠️ {sym}: цена протухла ({age:F0}с назад). Используем последнюю известную цену для защиты.");
+                    // Не пропускаем — продолжаем с последней известной ценой
                 }
 
                 // Если позиция осталась без OCO-защиты на бирже после прошлого сбоя — пробуем восстановить в первую очередь
