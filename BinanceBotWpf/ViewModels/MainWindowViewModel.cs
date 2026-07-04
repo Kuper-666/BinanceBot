@@ -105,6 +105,18 @@ namespace BinanceBotWpf.ViewModels
         private decimal _totalProfitSum = 0;
         private decimal _totalLossSum = 0;
         private string _avgProfitLossDisplay = "Ср. приб/убыток: 0 / 0";
+
+        // Расширенная статистика
+        private decimal _profitFactor = 0;
+        private decimal _averageWin = 0;
+        private decimal _averageLoss = 0;
+        private int _maxWinStreak = 0;
+        private int _maxLoseStreak = 0;
+        private int _currentWinStreak = 0;
+        private int _currentLoseStreak = 0;
+        private TradeLog _bestTrade;
+        private TradeLog _worstTrade;
+        private readonly Dictionary<string, (int Total, int Wins, decimal PnL)> _perSymbolStats = new ();
         private int _currentPositionsCount = 0;
         private int _maxPositions = 2;
         private string _positionsStatusText = "0/2 нет открытых";
@@ -201,6 +213,16 @@ namespace BinanceBotWpf.ViewModels
         public decimal WorstPnL { get => _worstPnL; set { _worstPnL = value; OnPropertyChanged (); } }
         public string MaxDrawdownDisplay { get => _maxDrawdownDisplay; set { _maxDrawdownDisplay = value; OnPropertyChanged (); } }
         public string AvgProfitLossDisplay { get => _avgProfitLossDisplay; set { _avgProfitLossDisplay = value; OnPropertyChanged (); } }
+
+        // Расширенная статистика
+        public decimal ProfitFactor { get => _profitFactor; set { _profitFactor = value; OnPropertyChanged (); } }
+        public decimal AverageWin { get => _averageWin; set { _averageWin = value; OnPropertyChanged (); } }
+        public decimal AverageLoss { get => _averageLoss; set { _averageLoss = value; OnPropertyChanged (); } }
+        public int MaxWinStreak { get => _maxWinStreak; set { _maxWinStreak = value; OnPropertyChanged (); } }
+        public int MaxLoseStreak { get => _maxLoseStreak; set { _maxLoseStreak = value; OnPropertyChanged (); } }
+        public TradeLog BestTrade => _bestTrade;
+        public TradeLog WorstTrade => _worstTrade;
+        public IReadOnlyDictionary<string, (int Total, int Wins, decimal PnL)> PerSymbolStats => _perSymbolStats;
         public string PositionsStatusText { get => _positionsStatusText; set { _positionsStatusText = value; OnPropertyChanged (); } }
         public string RiskPercentDisplay { get => _riskPercentDisplay; set { _riskPercentDisplay = value; OnPropertyChanged (); } }
         public int CurrentPositionsCount { get => _currentPositionsCount; set { _currentPositionsCount = value; OnPropertyChanged (); } }
@@ -1055,23 +1077,42 @@ namespace BinanceBotWpf.ViewModels
             {
                 TradesHistory.Insert (0, trade);
                 TotalTrades++;
+
+                // Per-symbol stats
+                if (!_perSymbolStats.ContainsKey (trade.Symbol))
+                    _perSymbolStats[trade.Symbol] = (0, 0, 0);
+                var sym = _perSymbolStats[trade.Symbol];
+                _perSymbolStats[trade.Symbol] = (sym.Total + 1, sym.Wins + (trade.PnL > 0 ? 1 : 0), sym.PnL + trade.PnL);
+
                 if (trade.PnL > 0)
                 {
                     WinningTrades++;
                     _totalProfitSum += trade.PnL;
                     if (trade.PnL > BestPnL) BestPnL = trade.PnL;
+                    _currentWinStreak++;
+                    _currentLoseStreak = 0;
+                    if (_currentWinStreak > MaxWinStreak) MaxWinStreak = _currentWinStreak;
                 }
                 else if (trade.PnL < 0)
                 {
                     LosingTrades++;
                     _totalLossSum += trade.PnL;
                     if (trade.PnL < WorstPnL) WorstPnL = trade.PnL;
+                    _currentLoseStreak++;
+                    _currentWinStreak = 0;
+                    if (_currentLoseStreak > MaxLoseStreak) MaxLoseStreak = _currentLoseStreak;
                 }
+
+                // Best/worst trade
+                if (_bestTrade == null || trade.PnL > _bestTrade.PnL) _bestTrade = trade;
+                if (_worstTrade == null || trade.PnL < _worstTrade.PnL) _worstTrade = trade;
+
                 TotalPnL += trade.PnL;
                 WinRate = TotalTrades > 0 ? (decimal)WinningTrades / TotalTrades * 100 : 0;
-                decimal avgP = WinningTrades > 0 ? _totalProfitSum / WinningTrades : 0;
-                decimal avgL = LosingTrades > 0 ? Math.Abs (_totalLossSum / LosingTrades) : 0;
-                AvgProfitLossDisplay = $"Ср. приб/убыток: {avgP:F2} / {avgL:F2}";
+                AverageWin = WinningTrades > 0 ? _totalProfitSum / WinningTrades : 0;
+                AverageLoss = LosingTrades > 0 ? Math.Abs (_totalLossSum / LosingTrades) : 0;
+                ProfitFactor = _totalLossSum != 0 ? _totalProfitSum / Math.Abs (_totalLossSum) : 0;
+                AvgProfitLossDisplay = $"Ср. приб/убыток: {AverageWin:F2} / {AverageLoss:F2}";
 
                 if (!silent)
                     AddLog ($"📊 Сделка {trade.Symbol}: {trade.Action} PnL={trade.PnL:F2} ({trade.PnLPercent:F2}%)");

@@ -142,6 +142,7 @@ namespace BinanceBotWpf.Services
             return new ReplyKeyboardMarkup (new[]
             {
                 new KeyboardButton[] { "📊 Статус", "💼 Баланс" },
+                new KeyboardButton[] { "📊 Статистика", "📋 История" },
                 new KeyboardButton[] { "🧠 Переобучить ML", "📁 Экспорт" },
                 new KeyboardButton[] { "▶️ Запуск", "⏹️ Стоп" },
                 new KeyboardButton[] { "📈 График PnL", "🔄 Обновить" },
@@ -179,6 +180,8 @@ namespace BinanceBotWpf.Services
                                 "▶️ Запуск" => "/start",
                                 "⏹️ Стоп" => "/stop",
                                 "📈 График PnL" => "/chart",
+                                "📊 Статистика" => "/stats",
+                                "📋 История" => "/history",
                                 "🔄 Обновить" => "/update",
                                 "❓ Помощь" => "/help",
                                 _ => text

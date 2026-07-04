@@ -159,11 +159,13 @@ namespace BinanceBotWpf.Services
                         int last = Math.Min (trades.Count, 10);
                         var recentTrades = trades.Skip (Math.Max (0, trades.Count - last)).ToList ();
                         decimal runningPnL = 0;
+                        int wins = 0;
                         string chartText = "📈 <b>PnL по сделкам (последние " + last + "):</b>\n\n";
 
                         foreach (var trade in recentTrades)
                         {
                             runningPnL += trade.PnL;
+                            if (trade.PnL > 0) wins++;
                             string bar = "";
                             int bars = (int)(Math.Abs (trade.PnL) * 5);
                             bars = Math.Min (bars, 20);
@@ -172,12 +174,96 @@ namespace BinanceBotWpf.Services
                             chartText += $"{trade.Symbol} {( trade.PnL >= 0 ? "+" : "" )}{trade.PnL:F2} {bar}\n";
                         }
 
+                        decimal wr = last > 0 ? (decimal)wins / last * 100 : 0;
                         chartText += $"\n💰 <b>Итого: {( runningPnL >= 0 ? "+" : "" )}{runningPnL:F2} USDC</b>";
+                        chartText += $"\n🎯 Win Rate: {wr:F0}% ({wins}/{last})";
                         await _telegram.SendMessageAsync (chartText, chatId);
                     }
                     catch (Exception ex)
                     {
                         await _telegram.SendMessageAsync ($"❌ Ошибка графика: {ex.Message}", chatId);
+                    }
+                    break;
+                case "/stats":
+                    try
+                    {
+                        if (_ui == null || _ui.TotalTrades == 0)
+                        {
+                            await _telegram.SendMessageAsync ("📊 Пока нет сделок для статистики.", chatId);
+                            break;
+                        }
+
+                        string pf = _ui.ProfitFactor > 0 ? _ui.ProfitFactor.ToString ("F2") : "—";
+                        string bestText = _ui.BestTrade != null
+                            ? $"{_ui.BestTrade.Symbol} +{_ui.BestTrade.PnL:F2} USDC ({_ui.BestTrade.CloseTime:dd.MM HH:mm})"
+                            : "—";
+                        string worstText = _ui.WorstTrade != null
+                            ? $"{_ui.WorstTrade.Symbol} {_ui.WorstTrade.PnL:F2} USDC ({_ui.WorstTrade.CloseTime:dd.MM HH:mm})"
+                            : "—";
+
+                        string statsText = "📊 <b>СТАТИСТИКА</b>\n\n" +
+                            $"💰 PnL: {(_ui.TotalPnL >= 0 ? "+" : "")}{_ui.TotalPnL:F2} USDC\n" +
+                            $"🎯 Win Rate: {_ui.WinRate:F1}% ({_ui.WinningTrades}/{_ui.TotalTrades})\n" +
+                            $"📈 Сделок: {_ui.TotalTrades} (✅{_ui.WinningTrades} / ❌{_ui.LosingTrades})\n\n" +
+                            $"⚖️ Profit Factor: {pf}\n" +
+                            $"📊 Ср. прибыль: +{_ui.AverageWin:F2} USDC\n" +
+                            $"📊 Ср. убыток: -{_ui.AverageLoss:F2} USDC\n\n" +
+                            $"🔥 Серия побед: {_ui.MaxWinStreak}\n" +
+                            $"❄️ Серия поражений: {_ui.MaxLoseStreak}\n\n" +
+                            $"🏆 Лучшая: {bestText}\n" +
+                            $"💀 Худшая: {worstText}";
+
+                        // Per-symbol breakdown
+                        var symStats = _ui.PerSymbolStats;
+                        if (symStats.Count > 0)
+                        {
+                            statsText += "\n\n📊 <b>По парам:</b>";
+                            foreach (var kvp in symStats.OrderByDescending (k => k.Value.PnL))
+                            {
+                                string symPnL = kvp.Value.PnL >= 0 ? $"+{kvp.Value.PnL:F2}" : $"{kvp.Value.PnL:F2}";
+                                decimal symWR = kvp.Value.Total > 0 ? (decimal)kvp.Value.Wins / kvp.Value.Total * 100 : 0;
+                                statsText += $"\n  {kvp.Key}: {kvp.Value.Total} сделок, WR {symWR:F0}%, {symPnL}";
+                            }
+                        }
+
+                        await _telegram.SendMessageAsync (statsText, chatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        await _telegram.SendMessageAsync ($"❌ Ошибка статистики: {ex.Message}", chatId);
+                    }
+                    break;
+                case "/history":
+                    try
+                    {
+                        var histTrades = _ui?.TradesHistory;
+                        if (histTrades == null || histTrades.Count == 0)
+                        {
+                            await _telegram.SendMessageAsync ("📋 Пока нет сделок в истории.", chatId);
+                            break;
+                        }
+
+                        int count = Math.Min (histTrades.Count, 15);
+                        decimal histPnL = 0;
+                        int histWins = 0;
+                        string histText = $"📋 <b>ИСТОРИЯ СДЕЛОК (последние {count}):</b>\n\n";
+
+                        for (int i = 0; i < count; i++)
+                        {
+                            var t = histTrades[i];
+                            histPnL += t.PnL;
+                            if (t.PnL > 0) histWins++;
+                            string sign = t.PnL >= 0 ? "+" : "";
+                            histText += $"{i + 1}. {t.CloseTime:dd.MM HH:mm} {t.Symbol} {t.Action} {sign}{t.PnL:F2} ({t.PnLPercent:F1}%) {t.Reason}\n";
+                        }
+
+                        decimal histWR = count > 0 ? (decimal)histWins / count * 100 : 0;
+                        histText += $"\n💰 PnL ({count}): {( histPnL >= 0 ? "+" : "" )}{histPnL:F2} USDC | WR: {histWR:F0}%";
+                        await _telegram.SendMessageAsync (histText, chatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        await _telegram.SendMessageAsync ($"❌ Ошибка истории: {ex.Message}", chatId);
                     }
                     break;
                 case "/update":
@@ -324,7 +410,9 @@ namespace BinanceBotWpf.Services
                         "/start – старт\n" +
                         "/export – экспорт\n" +
                         "/retrain – переобучить ML\n" +
-                        "/pnl – статистика PnL\n" +
+                        "/pnl – графики PnL\n" +
+                        "/stats – полная статистика\n" +
+                        "/history – история сделок\n" +
                         "/grid – запустить сетку\n" +
                         "/futures – вкл/выкл фьючерсы\n" +
                         "/dca – вкл/выкл DCA\n" +
