@@ -203,14 +203,20 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync ($"✅ ИИ-сетка запущена для {gridSymbol}", chatId);
                     break;
                 case "/futures":
-                    _ui.FuturesEnabled = !_ui.FuturesEnabled;
-                    string futStatus = _ui.FuturesEnabled ? "✅ Включены" : "❌ Отключены";
-                    await _telegram.SendMessageAsync ($"📊 Фьючерсы: {futStatus}", chatId);
+                    if (_ui != null)
+                    {
+                        _ui.FuturesEnabled = !_ui.FuturesEnabled;
+                        string futStatus = _ui.FuturesEnabled ? "✅ Включены" : "❌ Отключены";
+                        await _telegram.SendMessageAsync ($"📊 Фьючерсы: {futStatus}", chatId);
+                    }
                     break;
                 case "/dca":
-                    _ui.DcaEnabled = !_ui.DcaEnabled;
-                    string dcaStatus = _ui.DcaEnabled ? "✅ Включён" : "❌ Отключён";
-                    await _telegram.SendMessageAsync ($"📊 DCA: {dcaStatus}", chatId);
+                    if (_ui != null)
+                    {
+                        _ui.DcaEnabled = !_ui.DcaEnabled;
+                        string dcaStatus = _ui.DcaEnabled ? "✅ Включён" : "❌ Отключён";
+                        await _telegram.SendMessageAsync ($"📊 DCA: {dcaStatus}", chatId);
+                    }
                     break;
                 case "/optimize":
                     await _telegram.SendMessageAsync ("🧠 Запускаю оптимизацию...", chatId);

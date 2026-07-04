@@ -25,6 +25,7 @@ namespace BinanceBotWpf.Risk
         private DateTime _dailyPnLReset = DateTime.UtcNow.Date;
         private DateTime _weeklyPnLReset = DateTime.UtcNow.Date;
         private readonly List<decimal> _tradeHistory = new ();
+        private readonly object _lock = new ();
 
         // === ПУБЛИЧНЫЕ СВОЙСТВА ===
         public decimal BalanceUSDC { get; set; }
@@ -45,8 +46,11 @@ namespace BinanceBotWpf.Risk
         {
             get
             {
-                ResetDailyIfNeeded ();
-                return _dailyPnL;
+                lock (_lock)
+                {
+                    ResetDailyIfNeeded ();
+                    return _dailyPnL;
+                }
             }
         }
 
@@ -77,7 +81,11 @@ namespace BinanceBotWpf.Risk
 
             // 0. Kill-switch: полная остановка при дневной/недельной просадке
             if (IsKillSwitchActive)
-                return (false, $"🚨 KILL-SWITCH: дневной убыток {Math.Abs (_dailyPnL):F2} USDC ({_dailyPnL / BalanceUSDC:P0}) или недельный {_weeklyPnL:F2} USDC ({_weeklyPnL / BalanceUSDC:P0})");
+            {
+                string dailyPct = BalanceUSDC != 0 ? (_dailyPnL / BalanceUSDC).ToString ("P0") : "N/A";
+                string weeklyPct = BalanceUSDC != 0 ? (_weeklyPnL / BalanceUSDC).ToString ("P0") : "N/A";
+                return (false, $"🚨 KILL-SWITCH: дневной убыток {Math.Abs (_dailyPnL):F2} USDC ({dailyPct}) или недельный {_weeklyPnL:F2} USDC ({weeklyPct})");
+            }
 
             // 1. Лимит открытых позиций
             if (currentOpenPositions >= MaxOpenOrders)
@@ -112,11 +120,14 @@ namespace BinanceBotWpf.Risk
 
         public void RecordTrade(decimal pnlUsdc)
         {
-            _tradeHistory.Add (pnlUsdc);
-            ResetDailyIfNeeded ();
-            ResetWeeklyIfNeeded ();
-            _dailyPnL += pnlUsdc;
-            _weeklyPnL += pnlUsdc;
+            lock (_lock)
+            {
+                _tradeHistory.Add (pnlUsdc);
+                ResetDailyIfNeeded ();
+                ResetWeeklyIfNeeded ();
+                _dailyPnL += pnlUsdc;
+                _weeklyPnL += pnlUsdc;
+            }
         }
 
         public bool IsDailyLossKillSwitchTriggered ()

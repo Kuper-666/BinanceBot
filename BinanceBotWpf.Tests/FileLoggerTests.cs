@@ -97,12 +97,10 @@ namespace BinanceBotWpf.Tests
             logger.Dispose ();
 
             string[] files = Directory.GetFiles (_testDir, "bot_*.log");
-            if (files.Length > 0)
-            {
-                string content = File.ReadAllText (files[0]);
-                Assert.DoesNotContain ("info message", content);
-                Assert.DoesNotContain ("warn message", content);
-            }
+            Assert.True (files.Length > 0, "Log file should exist");
+            string content = File.ReadAllText (files[0]);
+            Assert.DoesNotContain ("info message", content);
+            Assert.DoesNotContain ("warn message", content);
         }
 
         [Fact]

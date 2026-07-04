@@ -68,7 +68,9 @@ namespace BinanceBotWpf.Services
 
         // Списки и кэш
         private readonly List<string> _recentErrors = new ();
-        private readonly ConcurrentDictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
+        private readonly ConcurrentDictionary<(string Symbol, string Interval, int Limit), (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache2 = new ();
+        private readonly System.Collections.Concurrent.ConcurrentBag<(string Symbol, (TradeAction Action, string Reason, Dictionary<string, decimal> Indicators) Analysis, bool HasPosition)> _analysisResults = new ();
+        private readonly SemaphoreSlim _analysisSemaphore = new (5, 5);
 
         // Настройки
         private readonly string _telegramBotToken;
@@ -450,8 +452,8 @@ namespace BinanceBotWpf.Services
             _shutdownCts = null;
 
             // Protector loop survives StopTrading — only killed on app exit
-            try { _protectorCts?.Cancel (); _protectorCts?.Dispose (); }
-            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Protector CTS dispose error: {ex.Message}"); }
+            try { _protectorCts?.Cancel (); }
+            catch (Exception ex) { System.Diagnostics.Debug.WriteLine ($"Protector CTS cancel error: {ex.Message}"); }
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
@@ -919,15 +921,15 @@ namespace BinanceBotWpf.Services
 
         private async Task<List<BinanceKline>> GetKlinesCachedAsync (string symbol, string interval, int limit)
         {
-            string cacheKey = $"{symbol}_{interval}_{limit}";
-            if (_klinesCache.TryGetValue (cacheKey, out var cached) && DateTime.UtcNow < cached.Expiry)
+            var cacheKey = (symbol, interval, limit);
+            if (_klinesCache2.TryGetValue (cacheKey, out var cached) && DateTime.UtcNow < cached.Expiry)
             {
                 return cached.Klines;
             }
             var klines = await _client.GetKlinesAsync (symbol, interval, limit);
             if (klines != null)
             {
-                _klinesCache[cacheKey] = (klines, DateTime.UtcNow + TimeSpan.FromSeconds (30));
+                _klinesCache2[cacheKey] = (klines, DateTime.UtcNow + TimeSpan.FromSeconds (30));
             }
             return klines;
         }
@@ -1014,11 +1016,10 @@ namespace BinanceBotWpf.Services
                         _strategy.EntryTimeframe = _ui.EntryTimeframe ?? "5m";
                     }
 
-                    var analysisResults = new System.Collections.Concurrent.ConcurrentBag<(string Symbol, (TradeAction Action, string Reason, Dictionary<string, decimal> Indicators) Analysis, bool HasPosition)>();
-                    using var analysisSemaphore = new SemaphoreSlim (5, 5);
+                    while (_analysisResults.TryTake(out _)) { }
                     var analysisTasks = pairs.Select (async sym =>
                     {
-                        await analysisSemaphore.WaitAsync ();
+                        await _analysisSemaphore.WaitAsync ();
                         try
                         {
                             var klines = await GetKlinesCachedAsync (sym, candleInterval, 100);
@@ -1026,13 +1027,13 @@ namespace BinanceBotWpf.Services
 
                             var analysis = await _strategy.AnalyzeAsync (sym, klines);
                             bool hasPosition = _positionManager.TryGet (sym, out _);
-                            analysisResults.Add ((sym, analysis, hasPosition));
+                            _analysisResults.Add ((sym, analysis, hasPosition));
                         }
-                        finally { analysisSemaphore.Release (); }
+                        finally { _analysisSemaphore.Release (); }
                     });
                     await Task.WhenAll (analysisTasks);
 
-                    foreach (var (sym, analysis, hasPosition) in analysisResults)
+                    foreach (var (sym, analysis, hasPosition) in _analysisResults)
                     {
                         // Мульти-таймфрейм: подтверждение на мелком TF
                         bool confirmed = true;
@@ -1047,15 +1048,18 @@ namespace BinanceBotWpf.Services
                         }
 
                         // Обновление UI
-                        if (analysis.Indicators.ContainsKey ("price"))
+                        if (analysis.Indicators.TryGetValue ("price", out decimal priceVal))
                         {
-                            _ui.UpdateMarketTable (sym, analysis.Indicators["price"].ToString ("F4"),
+                            analysis.Indicators.TryGetValue ("fastSma", out decimal fastSma);
+                            analysis.Indicators.TryGetValue ("slowSma", out decimal slowSma);
+                            analysis.Indicators.TryGetValue ("rsi", out decimal rsi);
+                            analysis.Indicators.TryGetValue ("macdHist", out decimal macdHist);
+                            _ui.UpdateMarketTable (sym, priceVal.ToString ("F4"),
                                 hasPosition, analysis.Action,
-                                analysis.Indicators.ContainsKey ("fastSma") ? analysis.Indicators["fastSma"] : 0,
-                                analysis.Indicators.ContainsKey ("slowSma") ? analysis.Indicators["slowSma"] : 0,
+                                fastSma, slowSma,
                                 null, null,
-                                analysis.Indicators.ContainsKey ("rsi") ? analysis.Indicators["rsi"] : 50,
-                                analysis.Indicators.ContainsKey ("macdHist") ? analysis.Indicators["macdHist"] : 0,
+                                rsi != 0 ? rsi : 50,
+                                macdHist,
                                 MarketSessionService.GetSessionLabel ());
                         }
 
@@ -1085,25 +1089,18 @@ namespace BinanceBotWpf.Services
 
                         if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
                         {
-                            // Расчёт реальной экспозиции открытых позиций
+                            // Расчёт реальной экспозиции открытых позиций (из кэша анализа)
                             decimal currentTotalExposure = 0;
-                            foreach (string openSym in _positionManager.GetSymbols ())
-                            {
-                                if (_positionManager.TryGet (openSym, out var openPos))
-                                {
-                                    decimal openPrice = await _client.GetPriceAsync (openSym);
-                                    if (openPrice > 0)
-                                        currentTotalExposure += openPos.Quantity * openPrice;
-                                }
-                            }
-
-                            // Расчёт текущей экспозиции на данную пару
                             decimal currentSymbolExposure = 0;
-                            if (_positionManager.TryGet (sym, out var existingPos) && existingPos.Quantity > 0)
+                            foreach (var (openSym, openAnalysis, _) in _analysisResults)
                             {
-                                decimal symPrice = await _client.GetPriceAsync (sym);
-                                if (symPrice > 0)
-                                    currentSymbolExposure = existingPos.Quantity * symPrice;
+                                if (_positionManager.TryGet (openSym, out var openPos) && openAnalysis.Indicators.TryGetValue ("price", out decimal openPrice) && openPrice > 0)
+                                {
+                                    decimal exposure = openPos.Quantity * openPrice;
+                                    currentTotalExposure += exposure;
+                                    if (openSym == sym)
+                                        currentSymbolExposure = exposure;
+                                }
                             }
 
                             // Проверка лимитов RiskManager — реальный размер сделки (как в OrderExecutor)

@@ -165,21 +165,32 @@ namespace BinanceBotWpf.Services
                 return;
             }
 
+            string cooldownMessage = null;
+            string limitMessage = null;
             lock (_cooldownLock)
             {
                 var cooldown = TimeSpan.FromMinutes (BuyCooldownMinutes);
                 if (_lastBuyTime.TryGetValue (symbol, out DateTime lastTime) && DateTime.UtcNow - lastTime < cooldown)
                 {
-                    _ui?.AddLog ($"{symbol}: BUY проигнорирован — кулдаун ({(cooldown - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)");
-                    return;
+                    cooldownMessage = $"{symbol}: BUY проигнорирован — кулдаун ({(cooldown - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)";
                 }
 
                 _recentTradeTimes.RemoveAll (t => DateTime.UtcNow - t > TimeSpan.FromHours (1));
                 if (_recentTradeTimes.Count >= MaxTradesPerHour)
                 {
-                    _ui?.AddLog ($"{symbol}: BUY пропущен — глобальный лимит {MaxTradesPerHour} сделок/час");
-                    return;
+                    limitMessage = $"{symbol}: BUY пропущен — глобальный лимит {MaxTradesPerHour} сделок/час";
                 }
+            }
+
+            if (cooldownMessage != null)
+            {
+                _ui?.AddLog (cooldownMessage);
+                return;
+            }
+            if (limitMessage != null)
+            {
+                _ui?.AddLog (limitMessage);
+                return;
             }
 
             decimal adaptiveSlMult = indicators.ContainsKey ("adaptiveSlMultiplier") ? indicators["adaptiveSlMultiplier"] : 1.0m;

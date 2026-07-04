@@ -9,7 +9,7 @@ using Newtonsoft.Json.Linq;
 namespace BinanceBotWpf.Services
 {
     /// <summary>Периодическая проверка новых аирдропов на Binance (RSS + API).</summary>
-    public class AirdropNotifier
+    public class AirdropNotifier : IDisposable
     {
         private readonly TelegramNotifier _telegram;
         private readonly HttpClient _httpClient;
@@ -110,5 +110,10 @@ namespace BinanceBotWpf.Services
 
         private string FormatTelegramMessage(string title, string pubDate, string link) =>
             $"🎁 <b>Новый аирдроп на Binance!</b>\n\n📢 {title}\n📅 Анонсирован: {pubDate}\n\n🔗 Подробности: {link}";
+
+        public void Dispose ()
+        {
+            _timer?.Dispose ();
+        }
     }
 }

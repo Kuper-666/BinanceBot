@@ -1,4 +1,4 @@
-﻿using Newtonsoft.Json.Linq;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
 {
-    public class StockPriceMonitor
+    public class StockPriceMonitor : IDisposable
     {
         private readonly HttpClient _httpClient;
         private readonly Action<string> _logger;
@@ -90,17 +90,22 @@ namespace BinanceBotWpf.Services
                 tasks.Add (Task.Run (async () =>
                 {
                     var data = await Get24hrTickerAsync (symbol);
-                    if (data != null)
+                    if (data != null && data["lastPrice"] != null && data["priceChangePercent"] != null && data["quoteVolume"] != null)
                     {
-                        decimal price = (decimal)data["lastPrice"];
-                        decimal changePercent = (decimal)data["priceChangePercent"];
-                        decimal volume = (decimal)data["quoteVolume"];
+                        decimal price = data["lastPrice"].Value<decimal> ();
+                        decimal changePercent = data["priceChangePercent"].Value<decimal> ();
+                        decimal volume = data["quoteVolume"].Value<decimal> ();
                         lock (results) { results.Add ((symbol, price, changePercent, volume)); }
                     }
                 }));
             }
             await Task.WhenAll (tasks);
             return results;
+        }
+
+        public void Dispose ()
+        {
+            _httpClient.Dispose ();
         }
     }
 }

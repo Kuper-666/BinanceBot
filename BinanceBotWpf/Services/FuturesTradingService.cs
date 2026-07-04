@@ -87,7 +87,7 @@ namespace BinanceBotWpf.Services
                         else if (signal.Action == TradeAction.Sell)
                         {
                             var positions = await _client.GetPositionsAsync ();
-                            var pos = positions.FirstOrDefault (p => p["symbol"].ToString () == symbol && p["positionAmt"].Value<decimal> () != 0);
+                            var pos = positions.FirstOrDefault (p => p["symbol"] != null && p["symbol"].ToString () == symbol && p["positionAmt"] != null && p["positionAmt"].Value<decimal> () != 0);
                             if (pos != null)
                             {
                                 decimal qty = Math.Abs (pos["positionAmt"].Value<decimal> ());

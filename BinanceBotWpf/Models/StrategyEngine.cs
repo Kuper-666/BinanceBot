@@ -25,9 +25,9 @@ namespace BinanceBotWpf.Models
             try
             {
                 decimal fastSmaCurrent = CalculateSMA (closes, fastPeriod);
-                decimal fastSmaPrevious = CalculateSMA (closes.GetRange (0, closes.Count - 1), fastPeriod);
+                decimal fastSmaPrevious = CalculateSMA (closes, fastPeriod, closes.Count - 1);
                 decimal slowSmaCurrent = CalculateSMA (closes, slowPeriod);
-                decimal slowSmaPrevious = CalculateSMA (closes.GetRange (0, closes.Count - 1), slowPeriod);
+                decimal slowSmaPrevious = CalculateSMA (closes, slowPeriod, closes.Count - 1);
 
                 if (fastSmaPrevious <= slowSmaPrevious && fastSmaCurrent > slowSmaCurrent)
                 {
@@ -53,11 +53,12 @@ namespace BinanceBotWpf.Models
             return signal;
         }
 
-        private decimal CalculateSMA(List<decimal> data, int period)
+        private decimal CalculateSMA(List<decimal> data, int period, int count = -1)
         {
-            if (data.Count < period) return 0m;
+            int dataCount = count >= 0 ? count : data.Count;
+            if (dataCount < period) return 0m;
             decimal sum = 0;
-            for (int i = data.Count - period; i < data.Count; i++)
+            for (int i = dataCount - period; i < dataCount; i++)
                 sum += data[i];
             return sum / period;
         }

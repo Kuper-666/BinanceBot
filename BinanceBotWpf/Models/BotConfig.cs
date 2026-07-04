@@ -132,7 +132,7 @@ namespace BinanceBotWpf.Models
         /// удалить его, поскольку он хранит ключи в открытом виде).
         /// Возвращает null, если ни одного конфига не найдено (первый запуск).
         /// </summary>
-        public static BotConfig LoadOrMigrate(out bool wasMigrated)
+        public static BotConfig? LoadOrMigrate(out bool wasMigrated)
         {
             wasMigrated = false;
             string jsonPath = GetConfigPath ();

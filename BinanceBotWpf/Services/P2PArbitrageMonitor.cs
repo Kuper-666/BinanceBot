@@ -15,7 +15,7 @@ namespace BinanceBotWpf.Services
         public string Direction { get; set; } = string.Empty;
     }
 
-    public class P2PArbitrageMonitor
+    public class P2PArbitrageMonitor : IDisposable
     {
         private readonly HttpClient _http;
         private readonly Action<string> _logger;
@@ -28,6 +28,11 @@ namespace BinanceBotWpf.Services
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds (10) };
             _logger = logger;
             _minSpreadPercent = minSpreadPercent;
+        }
+
+        public void Dispose ()
+        {
+            _http.Dispose ();
         }
 
         public async Task<List<P2PArbitrageOpportunity>> CheckOpportunitiesAsync()

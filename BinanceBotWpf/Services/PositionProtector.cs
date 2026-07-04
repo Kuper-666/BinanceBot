@@ -209,8 +209,8 @@ namespace BinanceBotWpf.Services
         }
 
         // ✅ Счётчики ошибок добавлены как поля класса:
-         private readonly Dictionary<string, int> _ocoFailCount = new();
-         private readonly Dictionary<string, DateTime> _ocoNextRetry = new();
+         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _ocoFailCount = new();
+         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _ocoNextRetry = new();
 
         private async Task UpdateOcoOrder(string symbol, OpenPosition pos)
         {
@@ -256,7 +256,7 @@ namespace BinanceBotWpf.Services
                         pos.OcoOrderListId = (long)newOco["orderListId"];
                         pos.IsUnprotected = false;
                         _ocoFailCount[symbol] = 0;   // ✅ Сброс счётчика при успехе
-                        _ocoNextRetry.Remove (symbol);
+                        _ocoNextRetry.TryRemove (symbol, out _);
                         _logger?.Invoke ($"✅ OCO ордер {symbol}: SL={pos.StopLossPrice:F4}, TP={pos.TakeProfitPrice:F4}");
                         return;
                     }

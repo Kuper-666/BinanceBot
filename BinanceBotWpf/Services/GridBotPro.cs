@@ -37,6 +37,7 @@ namespace BinanceBotWpf.Services
         private readonly Dictionary<decimal, string> _activeSellOrders = new ();
         private readonly Dictionary<string, decimal> _filledBuyPrices = new ();
         private readonly Dictionary<string, decimal> _sellIdToBuyPrice = new ();
+        private readonly Dictionary<string, decimal> _orderIdToPrice = new ();
         private readonly HashSet<string> _processedOrderIds = new ();
         private readonly object _lock = new ();
 
@@ -146,7 +147,11 @@ namespace BinanceBotWpf.Services
                     if (order != null)
                     {
                         string orderId = order["orderId"]?.ToString () ?? "";
-                        lock (_lock) { _activeBuyOrders[buyLevels[i]] = orderId; }
+                        lock (_lock)
+                        {
+                            _activeBuyOrders[buyLevels[i]] = orderId;
+                            _orderIdToPrice[orderId] = buyLevels[i];
+                        }
                         placed++;
                     }
                 }
@@ -158,7 +163,11 @@ namespace BinanceBotWpf.Services
                     if (order != null)
                     {
                         string orderId = order["orderId"]?.ToString () ?? "";
-                        lock (_lock) { _activeSellOrders[sellLevels[i]] = orderId; }
+                        lock (_lock)
+                        {
+                            _activeSellOrders[sellLevels[i]] = orderId;
+                            _orderIdToPrice[orderId] = sellLevels[i];
+                        }
                         placed++;
                     }
                 }
@@ -184,13 +193,11 @@ namespace BinanceBotWpf.Services
                     var openOrders = await _client.GetAllOrdersAsync (_symbol, limit: 50);
                     if (openOrders == null) continue;
 
-                    var filledIds = openOrders
-                        .Where (o => o["status"]?.ToString () == "FILLED")
-                        .ToList ();
-
-                    foreach (var filled in filledIds)
+                    foreach (var filled in openOrders)
                     {
                         if (token.IsCancellationRequested) break;
+
+                        if (filled["status"]?.ToString () != "FILLED") continue;
 
                         string orderId = filled["orderId"]?.ToString ();
 
@@ -211,8 +218,11 @@ namespace BinanceBotWpf.Services
                         {
                             lock (_lock)
                             {
-                                foreach (var kvp in _activeBuyOrders.Where (k => k.Value == orderId).ToList ())
-                                    _activeBuyOrders.Remove (kvp.Key);
+                                if (_orderIdToPrice.TryGetValue (orderId, out decimal orderPrice))
+                                {
+                                    _activeBuyOrders.Remove (orderPrice);
+                                    _orderIdToPrice.Remove (orderId);
+                                }
                                 _filledBuyPrices[orderId] = fillPrice;
                             }
 
@@ -228,6 +238,7 @@ namespace BinanceBotWpf.Services
                                     {
                                         _activeSellOrders[targetSell] = newId;
                                         _sellIdToBuyPrice[newId] = fillPrice;
+                                        _orderIdToPrice[newId] = targetSell;
                                     }
                                     _logger?.Invoke ($"📗 Buy исполнен @ {fillPrice:F6} → встречный sell {sellQty} @ {targetSell:F6}");
                                 }
@@ -237,19 +248,18 @@ namespace BinanceBotWpf.Services
                         {
                             lock (_lock)
                             {
-                                foreach (var kvp in _activeSellOrders.Where (k => k.Value == orderId).ToList ())
-                                    _activeSellOrders.Remove (kvp.Key);
+                                if (_orderIdToPrice.TryGetValue (orderId, out decimal orderPrice))
+                                {
+                                    _activeSellOrders.Remove (orderPrice);
+                                    _orderIdToPrice.Remove (orderId);
+                                }
                             }
 
                             // Use _sellIdToBuyPrice for correct profit tracking
-                            decimal buyPrice;
+                            decimal buyPrice = 0;
                             lock (_lock)
                             {
-                                if (!_sellIdToBuyPrice.TryGetValue (orderId, out buyPrice))
-                                {
-                                    // Fallback: try _filledBuyPrices for legacy data
-                                    _filledBuyPrices.TryGetValue (orderId, out buyPrice);
-                                }
+                                _sellIdToBuyPrice.TryGetValue (orderId, out buyPrice);
                             }
 
                             if (buyPrice > 0)
@@ -286,7 +296,11 @@ namespace BinanceBotWpf.Services
                                 if (buyOrder != null)
                                 {
                                     string newId = buyOrder["orderId"]?.ToString () ?? "";
-                                    lock (_lock) { _activeBuyOrders[targetBuy] = newId; }
+                                    lock (_lock)
+                                    {
+                                        _activeBuyOrders[targetBuy] = newId;
+                                        _orderIdToPrice[newId] = targetBuy;
+                                    }
                                     _logger?.Invoke ($"📕 Sell исполнен → встречный buy {buyQty} @ {targetBuy:F6}");
                                 }
                             }
@@ -300,15 +314,7 @@ namespace BinanceBotWpf.Services
                     {
                         if (_processedOrderIds.Count > 200)
                         {
-                            // Remove oldest half instead of clearing all to prevent duplicate processing
-                            int toRemove = _processedOrderIds.Count / 2;
-                            int removed = 0;
-                            foreach (var id in _processedOrderIds.ToList ())
-                            {
-                                if (removed >= toRemove) break;
-                                _processedOrderIds.Remove (id);
-                                removed++;
-                            }
+                            _processedOrderIds.Clear ();
                         }
                     }
                 }
@@ -331,12 +337,20 @@ namespace BinanceBotWpf.Services
             decimal upperBound = _centerPrice * (1 + _rangePercent * 1.1m);
             decimal lowerBound = _centerPrice * (1 - _rangePercent * 1.1m);
 
-            List<decimal> staleBuys;
-            List<decimal> staleSells;
+            List<decimal> staleBuys = new List<decimal> ();
+            List<decimal> staleSells = new List<decimal> ();
             lock (_lock)
             {
-                staleBuys = _activeBuyOrders.Keys.Where (k => k < lowerBound || k > upperBound).ToList ();
-                staleSells = _activeSellOrders.Keys.Where (k => k < lowerBound || k > upperBound).ToList ();
+                foreach (var kvp in _activeBuyOrders)
+                {
+                    if (kvp.Key < lowerBound || kvp.Key > upperBound)
+                        staleBuys.Add (kvp.Key);
+                }
+                foreach (var kvp in _activeSellOrders)
+                {
+                    if (kvp.Key < lowerBound || kvp.Key > upperBound)
+                        staleSells.Add (kvp.Key);
+                }
             }
 
             foreach (decimal price in staleBuys)
@@ -386,6 +400,7 @@ namespace BinanceBotWpf.Services
                 _activeSellOrders.Clear ();
                 _filledBuyPrices.Clear ();
                 _sellIdToBuyPrice.Clear ();
+                _orderIdToPrice.Clear ();
                 _processedOrderIds.Clear ();
             }
 

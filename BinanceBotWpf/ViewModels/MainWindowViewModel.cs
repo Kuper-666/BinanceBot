@@ -453,7 +453,7 @@ namespace BinanceBotWpf.ViewModels
             string formattedMessage = $"[{timestamp}] {message}";
 
             if (Application.Current == null) return;
-            Application.Current.Dispatcher.Invoke (() =>
+            Application.Current.Dispatcher.BeginInvoke (() =>
             {
                 _allLogs.Add (formattedMessage);
                 if (_allLogs.Count > 1000) _allLogs.RemoveAt (0);
@@ -1035,15 +1035,21 @@ namespace BinanceBotWpf.ViewModels
             Application.Current.Dispatcher.Invoke (() =>
             {
                 TradesHistory.Insert (0, trade);
-                TotalTrades = TradesHistory.Count;
-                WinningTrades = TradesHistory.Count (t => t.PnL > 0);
-                LosingTrades = TradesHistory.Count (t => t.PnL < 0);
-                TotalPnL = TradesHistory.Sum (t => t.PnL);
+                TotalTrades++;
+                if (trade.PnL > 0)
+                {
+                    WinningTrades++;
+                    _totalProfitSum += trade.PnL;
+                    if (trade.PnL > BestPnL) BestPnL = trade.PnL;
+                }
+                else if (trade.PnL < 0)
+                {
+                    LosingTrades++;
+                    _totalLossSum += trade.PnL;
+                    if (trade.PnL < WorstPnL) WorstPnL = trade.PnL;
+                }
+                TotalPnL += trade.PnL;
                 WinRate = TotalTrades > 0 ? (decimal)WinningTrades / TotalTrades * 100 : 0;
-                BestPnL = TotalTrades > 0 ? TradesHistory.Max (t => t.PnL) : 0;
-                WorstPnL = TotalTrades > 0 ? TradesHistory.Min (t => t.PnL) : 0;
-                if (trade.PnL > 0) _totalProfitSum += trade.PnL;
-                else _totalLossSum += trade.PnL;
                 decimal avgP = WinningTrades > 0 ? _totalProfitSum / WinningTrades : 0;
                 decimal avgL = LosingTrades > 0 ? Math.Abs (_totalLossSum / LosingTrades) : 0;
                 AvgProfitLossDisplay = $"Ср. приб/убыток: {avgP:F2} / {avgL:F2}";

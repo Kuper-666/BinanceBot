@@ -19,7 +19,7 @@ namespace BinanceBotWpf.Services
         public string[] PnL7d { get; set; } = Array.Empty<string> ();
     }
 
-    public class CopyTradingAnalyzer
+    public class CopyTradingAnalyzer : IDisposable
     {
         private readonly HttpClient _http;
         private readonly Action<string> _logger;
@@ -30,6 +30,11 @@ namespace BinanceBotWpf.Services
         {
             _http = new HttpClient { Timeout = TimeSpan.FromSeconds (15) };
             _logger = logger;
+        }
+
+        public void Dispose ()
+        {
+            _http.Dispose ();
         }
 
         public async Task<List<TopTraderProfile>> AnalyzeTopTradersAsync(int maxTraders = 10)

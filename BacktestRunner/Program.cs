@@ -56,13 +56,14 @@ namespace BacktestRunner
             {
                 Console.Write ($"📥 Загрузка {pair}... ");
                 List<Kline> klines = await DownloadKlinesAsync (pair, interval, candles);
-                Console.WriteLine ($"{klines.Count} свечей ({klines.First ().OpenTime:dd.MM} – {klines.Last ().OpenTime:dd.MM.yyyy})");
 
                 if (klines.Count < 200)
                 {
-                    Console.WriteLine ("  ⚠️ Мало данных, пропуск");
+                    Console.WriteLine ($"{klines.Count} свечей — мало данных, пропуск");
                     continue;
                 }
+
+                Console.WriteLine ($"{klines.Count} свечей ({klines.First ().OpenTime:dd.MM} – {klines.Last ().OpenTime:dd.MM.yyyy})");
 
                 BacktestResult basicResult = RunBasicSmaStrategy (klines, capital);
                 BacktestResult enhancedResult = RunEnhancedStrategy (klines, capital);
@@ -420,7 +421,8 @@ namespace BacktestRunner
                     }
                 }
 
-                decimal volR = volumes[i] / volumes.Skip (Math.Max (0, i - 20)).Take (20).Average ();
+                decimal avgVol20 = volumes.Skip (Math.Max (0, i - 20)).Take (20).Average ();
+                decimal volR = avgVol20 > 0 ? volumes[i] / avgVol20 : 1m;
                 decimal atrP = closes[i] > 0 && atrList[i] > 0 ? atrList[i] / closes[i] : 0;
                 bool risk = volR > volThresh || atrP > atrThresh || rsi[i] > rsiHigh || rsi[i] < rsiLow;
                 if (risk)
@@ -867,7 +869,8 @@ namespace BacktestRunner
 
                 if (useValidator)
                 {
-                    decimal volRatio = volumes[i] / volumes.Skip (Math.Max (0, i - 20)).Take (20).Average ();
+                    decimal avgVol20 = volumes.Skip (Math.Max (0, i - 20)).Take (20).Average ();
+                    decimal volRatio = avgVol20 > 0 ? volumes[i] / avgVol20 : 1m;
                     decimal atrPercent = closes[i] > 0 && atrList[i] > 0 ? atrList[i] / closes[i] : 0;
 
                     bool riskFlag = false;
@@ -1090,7 +1093,8 @@ namespace BacktestRunner
 
                     if (useValidator)
                     {
-                        decimal volRatio = volumes[i] / volumes.Skip (Math.Max (0, i - 20)).Take (20).Average ();
+                        decimal avgVol20 = volumes.Skip (Math.Max (0, i - 20)).Take (20).Average ();
+                    decimal volRatio = avgVol20 > 0 ? volumes[i] / avgVol20 : 1m;
                         decimal atrPercent = closes[i] > 0 && atrList[i] > 0 ? atrList[i] / closes[i] : 0;
                         if (volRatio > 8m || atrPercent > 0.15m || rsi[i] > 80 || rsi[i] < 20) buySignal = false;
                     }

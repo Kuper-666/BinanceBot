@@ -15,7 +15,7 @@ namespace BinanceBotWpf.Services
         private readonly BinanceClient _client;
         private readonly MainWindowViewModel _ui;
         private readonly Action<string> _logger;
-        private readonly Dictionary<string, (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
+        private readonly Dictionary<(string Symbol, string Interval), (List<BinanceKline> Klines, DateTime Expiry)> _klinesCache = new ();
         private readonly TimeSpan _cacheDuration = TimeSpan.FromSeconds (60);
         private readonly StrategyEngine _strategy = new ();
 
@@ -28,13 +28,14 @@ namespace BinanceBotWpf.Services
 
         public async Task<List<BinanceKline>> GetKlinesCachedAsync(string symbol, string interval, int limit)
         {
+            var cacheKey = (symbol, interval);
             lock (_klinesCache)
             {
-                if (_klinesCache.TryGetValue (symbol, out var cached) && DateTime.UtcNow < cached.Expiry)
+                if (_klinesCache.TryGetValue (cacheKey, out var cached) && DateTime.UtcNow < cached.Expiry)
                     return cached.Klines;
             }
             var klines = await _client.GetKlinesAsync (symbol, interval, limit);
-            lock (_klinesCache) { _klinesCache[symbol] = (klines, DateTime.UtcNow + _cacheDuration); }
+            lock (_klinesCache) { _klinesCache[cacheKey] = (klines, DateTime.UtcNow + _cacheDuration); }
             return klines;
         }
 
@@ -46,13 +47,16 @@ namespace BinanceBotWpf.Services
             {
                 try
                 {
-                    var klines = await GetKlinesCachedAsync (sym, "1h", 100); // 1h: стандартный интервал анализа
+                    var klines = await GetKlinesCachedAsync (sym, "1h", 100);
                     if (klines?.Count < Math.Max (fastSmaPeriod, slowSmaPeriod) + 2) continue;
                     var closes = klines.Select (k => k.Close).ToList ();
                     var volumes = klines.Select (k => k.Volume).ToList ();
                     decimal price = closes.Last ();
                     decimal volume = volumes.Last ();
-                    decimal avgVolume = volumes.TakeLast (20).Average ();
+                    int takeCount = Math.Min (20, volumes.Count);
+                    decimal avgVolume = 0;
+                    for (int i = volumes.Count - takeCount; i < volumes.Count; i++) avgVolume += volumes[i];
+                    avgVolume /= takeCount;
                     if (volume < avgVolume * 0.8m) continue;
 
                     var signal = _strategy.AnalyzePairWithWallet (sym, closes, fastSmaPeriod, slowSmaPeriod, price);
@@ -78,20 +82,35 @@ namespace BinanceBotWpf.Services
                     _ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist, MarketSessionService.GetSessionLabel ());
                     results.Add ((sym, signal.Action, price, rsi, fastSma, slowSma, volatility, volume, avgVolume, macdHist, bbWidth));
                 }
-                catch (Exception ex) { _logger?.Invoke ($"❌ Ошибка анализа {sym}: {ex.Message}"); }
+                catch (Exception ex) { _logger?.Invoke ($"Ошибка анализа {sym}: {ex.Message}"); }
             }
             return results;
         }
 
-        private decimal CalculateSma(List<decimal> data, int period) => data.Skip (data.Count - period).Average ();
+        private decimal CalculateSma(List<decimal> data, int period)
+        {
+            int start = data.Count - period;
+            decimal sum = 0;
+            for (int i = start; i < data.Count; i++) sum += data[i];
+            return sum / period;
+        }
+
         private decimal CalculateRsi(List<decimal> closes) => TechnicalAnalysis.RSI (closes, 14).LastOrDefault () ?? 50;
+
         private decimal CalculateVolatility(List<decimal> data, int period)
         {
             if (data == null || data.Count < period || period <= 0) return 0.02m;
-            var last = data.TakeLast (period).ToList ();
-            decimal avg = last.Average ();
+            decimal sum = 0;
+            int start = data.Count - period;
+            for (int i = start; i < data.Count; i++) sum += data[i];
+            decimal avg = sum / period;
             if (avg == 0 || avg > 1_000_000m) return 0.02m;
-            decimal sumSq = last.Select (x => ( x - avg ) * ( x - avg )).Sum ();
+            decimal sumSq = 0;
+            for (int i = start; i < data.Count; i++)
+            {
+                decimal diff = data[i] - avg;
+                sumSq += diff * diff;
+            }
             decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / period ));
             decimal volatility = stdDev / avg;
             if (volatility > 1.0m || volatility < 0.001m) return 0.02m;

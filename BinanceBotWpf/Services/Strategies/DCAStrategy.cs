@@ -68,6 +68,7 @@ namespace BinanceBotWpf.Services.Strategies
                 if (buyAmount < MinNotional)
                 {
                     _logger?.Invoke ($"⚠️ DCA {symbol}: сумма покупки {buyAmount:F2} USDC < минимального {MinNotional} USDC");
+                    _lastCheckTime = DateTime.UtcNow;
                     return false;
                 }
                 _lastCheckTime = DateTime.UtcNow;
@@ -75,6 +76,7 @@ namespace BinanceBotWpf.Services.Strategies
                 return true;
             }
 
+            _lastCheckTime = DateTime.UtcNow;
             return false;
         }
 

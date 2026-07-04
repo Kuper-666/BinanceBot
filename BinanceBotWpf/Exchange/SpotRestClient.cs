@@ -648,8 +648,9 @@ namespace BinanceBotWpf.Exchange
             }
             try
             {
-                var response = await _httpClient.GetAsync ($"/api/v3/ticker/price?symbol={symbol}");
-                if (response.IsSuccessStatusCode)
+                var request = new HttpRequestMessage (HttpMethod.Get, $"/api/v3/ticker/price?symbol={symbol}");
+                var response = await SendWithRetryAsync (request);
+                if (response != null && response.IsSuccessStatusCode)
                 {
                     string body = await response.Content.ReadAsStringAsync ();
                     var json = JObject.Parse (body);

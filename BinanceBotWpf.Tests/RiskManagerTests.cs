@@ -1,4 +1,3 @@
-using System.Reflection;
 using BinanceBotWpf.Risk;
 using Xunit;
 
@@ -6,17 +5,11 @@ namespace BinanceBotWpf.Tests
 {
     public class RiskManagerTests
     {
-        private static void SetBalance (RiskManager rm, decimal balance)
-        {
-            typeof (RiskManager).GetProperty ("BalanceUSDC", BindingFlags.Public | BindingFlags.Instance)
-                ?.SetValue (rm, balance);
-        }
-
         [Fact]
         public void CanOpenPosition_BelowMaxOpenOrders_ReturnsAllowed ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             var (allowed, reason) = rm.CanOpenPosition (currentOpenPositions: 2, orderValueUsdc: 50m);
 
             Assert.True (allowed);
@@ -27,7 +20,7 @@ namespace BinanceBotWpf.Tests
         public void CanOpenPosition_AtMaxOpenOrders_ReturnsBlocked ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxOpenOrders = 3;
             var (allowed, reason) = rm.CanOpenPosition (currentOpenPositions: 3, orderValueUsdc: 50m);
 
@@ -39,7 +32,7 @@ namespace BinanceBotWpf.Tests
         public void CanOpenPosition_ExceedsMaxDailyLoss_ReturnsBlocked ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 500m);
+            rm.BalanceUSDC = 500m;
             rm.MaxDailyLossPercent = 0.10m;
 
             rm.RecordTrade (-30m);
@@ -57,7 +50,7 @@ namespace BinanceBotWpf.Tests
         public void CanOpenPosition_DailyProfit_DoesNotBlock ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.RecordTrade (10m);
             rm.RecordTrade (5m);
 
@@ -81,7 +74,7 @@ namespace BinanceBotWpf.Tests
         public void CanOpenPosition_MaxExposure_ReturnsBlocked ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxExposurePercent = 0.50m;
 
             var (allowed, reason) = rm.CanOpenPosition (currentOpenPositions: 0, orderValueUsdc: 600m);
@@ -94,7 +87,7 @@ namespace BinanceBotWpf.Tests
         public void CanOpenPosition_AllLimitsDisabled_ReturnsAllowed ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 10000m);
+            rm.BalanceUSDC = 10000m;
             rm.MaxOpenOrders = 100;
             rm.MaxDailyLossPercent = 1.0m;
             rm.MaxExposurePercent = 1.0m;

@@ -1,4 +1,3 @@
-using System.Reflection;
 using BinanceBotWpf.Risk;
 using Xunit;
 
@@ -6,17 +5,11 @@ namespace BinanceBotWpf.Tests
 {
     public class RiskManagerExtendedTests
     {
-        private static void SetBalance (RiskManager rm, decimal balance)
-        {
-            typeof (RiskManager).GetProperty ("BalanceUSDC", BindingFlags.Public | BindingFlags.Instance)
-                ?.SetValue (rm, balance);
-        }
-
         [Fact]
         public void CanOpenPosition_PerSymbolExposure_ExceedsLimit_ReturnsBlocked ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxExposurePerSymbolPercent = 0.20m; // 20% = 200 USDC на пару
 
             // Уже 180 USDC в паре + 30 USDC новый ордер = 210 > 200
@@ -34,7 +27,7 @@ namespace BinanceBotWpf.Tests
         public void CanOpenPosition_PerSymbolExposure_UnderLimit_ReturnsAllowed ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxExposurePerSymbolPercent = 0.20m;
 
             // 100 USDC в паре + 50 USDC новый = 150 < 200
@@ -51,7 +44,7 @@ namespace BinanceBotWpf.Tests
         public void IsKillSwitchActive_DailyLossExceeded_ReturnsTrue ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxDailyLossPercent = 0.10m;
 
             rm.RecordTrade (-80m);
@@ -65,7 +58,7 @@ namespace BinanceBotWpf.Tests
         public void IsKillSwitchActive_DailyLossUnderLimit_ReturnsFalse ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxDailyLossPercent = 0.10m;
 
             rm.RecordTrade (-50m);
@@ -78,7 +71,7 @@ namespace BinanceBotWpf.Tests
         public void IsKillSwitchActive_WeeklyLossExceeded_ReturnsTrue ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxWeeklyLossPercent = 0.20m;
 
             rm.RecordTrade (-120m);
@@ -91,7 +84,7 @@ namespace BinanceBotWpf.Tests
         public void CanOpenPosition_KillSwitchActive_ReturnsBlocked ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
             rm.MaxDailyLossPercent = 0.10m;
 
             rm.RecordTrade (-110m); // > 10% of 1000
@@ -103,15 +96,14 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void WeeklyPnL_ResetsOnNewWeek ()
+        public void DailyPnL_AccumulatesCorrectly ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
 
             rm.RecordTrade (-50m);
             Assert.Equal (-50m, rm.DailyPnL);
 
-            // Simulate weekly reset by recording a profit
             rm.RecordTrade (200m);
             Assert.Equal (150m, rm.DailyPnL);
         }
@@ -120,7 +112,7 @@ namespace BinanceBotWpf.Tests
         public void RecordTrade_AccumulatesBothDailyAndWeekly ()
         {
             var rm = new RiskManager ();
-            SetBalance (rm, 1000m);
+            rm.BalanceUSDC = 1000m;
 
             rm.RecordTrade (10m);
             rm.RecordTrade (-3m);
