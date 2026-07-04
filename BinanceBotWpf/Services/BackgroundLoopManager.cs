@@ -237,5 +237,40 @@ namespace BinanceBotWpf.Services
             try { _whaleMonitor?.Dispose (); }
             catch { }
         }
+
+        /// <summary>
+        /// Периодический мониторинг здоровья: память, GC, логирование.
+        /// Запускается каждые 30 минут.
+        /// </summary>
+        public async Task HealthMonitorLoop ()
+        {
+            while (_isRunning)
+            {
+                try
+                {
+                    await Task.Delay (TimeSpan.FromMinutes (30), _shutdownCts?.Token ?? CancellationToken.None);
+                    if (!_isRunning) break;
+
+                    long memBytes = GC.GetTotalMemory (forceFullCollection: false);
+                    double memMB = memBytes / (1024.0 * 1024.0);
+                    int gen0 = GC.CollectionCount (0);
+                    int gen1 = GC.CollectionCount (1);
+                    int gen2 = GC.CollectionCount (2);
+
+                    _ui?.AddLog ($"💓 Здоровье: память {memMB:F1} MB | GC: gen0={gen0} gen1={gen1} gen2={gen2}");
+
+                    // Принудительный GC если память > 500 MB
+                    if (memMB > 500)
+                    {
+                        _ui?.AddLog ($"⚠️ Высокое потребление памяти ({memMB:F0} MB). Запускаю GC...");
+                        GC.Collect (2, GCCollectionMode.Forced, blocking: true);
+                        long afterGC = GC.GetTotalMemory (forceFullCollection: false);
+                        _ui?.AddLog ($"✅ GC завершён. Память: {afterGC / (1024.0 * 1024.0):F1} MB");
+                    }
+                }
+                catch (OperationCanceledException) { break; }
+                catch { }
+            }
+        }
     }
 }

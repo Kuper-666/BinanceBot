@@ -781,6 +781,31 @@ namespace BinanceBotWpf.ViewModels
             catch (Exception ex) { AddLog ($"Ошибка экспорта: {ex.Message}"); }
         }
 
+        public string ExportTradesCsv ()
+        {
+            try
+            {
+                string destDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Export");
+                Directory.CreateDirectory (destDir);
+                string filePath = Path.Combine (destDir, $"trades_{DateTime.Now:yyyyMMdd_HHmmss}.csv");
+
+                using var writer = new StreamWriter (filePath);
+                writer.WriteLine ("Symbol,Action,EntryPrice,ExitPrice,Quantity,PnL,PnLPercent,OpenTime,CloseTime,Duration,Reason");
+                foreach (var t in TradesHistory)
+                {
+                    string sign = t.PnL >= 0 ? "+" : "";
+                    writer.WriteLine ($"{t.Symbol},{t.Action},{t.EntryPrice},{t.ExitPrice},{t.Quantity},{sign}{t.PnL},{t.PnLPercent},{t.OpenTime:O},{t.CloseTime:O},{t.Duration.TotalMinutes:F1},{t.Reason}");
+                }
+
+                return filePath;
+            }
+            catch (Exception ex)
+            {
+                AddLog ($"Ошибка экспорта CSV: {ex.Message}");
+                return null;
+            }
+        }
+
         public void UpdateWalletDisplay(string balance)
         {
             Application.Current.Dispatcher.Invoke (() =>

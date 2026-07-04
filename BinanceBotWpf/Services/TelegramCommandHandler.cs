@@ -126,8 +126,18 @@ namespace BinanceBotWpf.Services
                         await _telegram.SendMessageAsync ("Бот уже запущен.", chatId);
                     break;
                 case "/export":
-                    _ui?.ExportData ();
-                    await _telegram.SendMessageAsync ("📁 Данные экспортированы в папку Export.", chatId);
+                    try
+                    {
+                        string csvPath = _ui?.ExportTradesCsv ();
+                        if (!string.IsNullOrEmpty (csvPath))
+                            await _telegram.SendMessageAsync ($"📁 История сделок экспортирована:\n<code>{csvPath}</code>", chatId);
+                        else
+                            await _telegram.SendMessageAsync ("⚠️ Нет сделок для экспорта.", chatId);
+                    }
+                    catch (Exception ex)
+                    {
+                        await _telegram.SendMessageAsync ($"❌ Ошибка экспорта: {ex.Message}", chatId);
+                    }
                     break;
                 case "/retrain":
                     await _telegram.SendMessageAsync ("🔄 Запускаю переобучение ML модели...", chatId);

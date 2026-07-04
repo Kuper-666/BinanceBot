@@ -347,6 +347,7 @@ namespace BinanceBotWpf.Services
             _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.WhaleLoop, "WhaleLoop"));
             _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.EarnOptimizeLoop, "EarnOptimize"));
             _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.FearGreedLoop, "FearGreed"));
+            _ = Task.Run (() => RunLoopWithRestart (_backgroundLoopManager.HealthMonitorLoop, "HealthMonitor"));
 
             // PositionProtector runs independently — survives StopTrading()
             StartProtectorLoop ();
@@ -372,14 +373,18 @@ namespace BinanceBotWpf.Services
                             }
                         }
 
-                        // Периодический скан протухших WebSocket-соединений (каждые 60с = каждые 6 итераций)
+                        // Периодический скан протухших WebSocket-соединений (каждые 30с = каждые 3 итерации)
                         staleScanCounter++;
-                        if (staleScanCounter >= 6 && _webSocketManager != null)
+                        if (staleScanCounter >= 3 && _webSocketManager != null)
                         {
                             staleScanCounter = 0;
-                            int reconnected = _webSocketManager.ForceReconnectStaleSymbols ();
-                            if (reconnected > 0)
-                                _ui?.AddLog ($"🔄 WebSocket: переподключено {reconnected} символов с протухшими ценами");
+                            string[] stale = _webSocketManager.GetStaleSymbols ();
+                            if (stale.Length > 0)
+                            {
+                                int reconnected = _webSocketManager.ForceReconnectStaleSymbols ();
+                                if (reconnected > 0)
+                                    _ui?.AddLog ($"🔄 WebSocket: переподключено {reconnected}/{stale.Length} символов с протухшими ценами");
+                            }
                         }
 
                         // Sync trailing stop from UI
@@ -758,12 +763,12 @@ namespace BinanceBotWpf.Services
 
                 ui.AddLog ($"📊 Загружено {filteredPairs.Count} пар для баланса {balance:F2} USDC (макс. {maxPositions} позиций)");
 
-                foreach (var sym in filteredPairs)
+                var displayTasks = filteredPairs.Select (async sym =>
                 {
                     try
                     {
                         var klines = await _client.GetKlinesAsync (sym, "1h", 50);
-                        if (klines == null || klines.Count < 30) continue;
+                        if (klines == null || klines.Count < 30) return;
 
                         var closes = klines.Select (k => k.Close).ToList ();
                         decimal price = closes.Last ();
@@ -777,13 +782,13 @@ namespace BinanceBotWpf.Services
                         var signal = new StrategyEngine ().AnalyzePairWithWallet (sym, closes, 9, 21, price);
 
                         ui.UpdateMarketTable (sym, price.ToString ("F4"), false, signal.Action, fastSma, slowSma, null, null, rsi, macdHist, MarketSessionService.GetSessionLabel ());
-                        await Task.Delay (150, _shutdownCts?.Token ?? CancellationToken.None);
                     }
                     catch (Exception ex)
                     {
                         ui.AddLog ($"⚠️ {sym}: {ex.Message}");
                     }
-                }
+                });
+                await Task.WhenAll (displayTasks);
 
                 ui.AddLog ($"✅ Таблица обновлена: {filteredPairs.Count} пар");
             }
