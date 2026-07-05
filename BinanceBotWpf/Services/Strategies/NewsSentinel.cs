@@ -52,6 +52,10 @@ namespace BinanceBotWpf.Services.Strategies
             }
         }
 
+        /// <summary>
+        /// Проверяет наличие высокорисковых новостей для конкретной пары.
+        /// При проверке конкретной пары считает только новости, упоминающие именно её (не generic `*`).
+        /// </summary>
         public bool IsHighImpactNewsActive (string symbol = null)
         {
             try
@@ -64,20 +68,22 @@ namespace BinanceBotWpf.Services.Strategies
 
                 if (!string.IsNullOrEmpty (symbol))
                 {
+                    string baseSymbol = symbol.Replace ("USDC", "").Replace ("USDT", "");
                     cmd.CommandText = @"
-                        SELECT COUNT(*) FROM news 
-                        WHERE sentiment = 'negative' 
+                        SELECT COUNT(*) FROM news
+                        WHERE sentiment = 'negative'
                         AND impact >= @threshold
                         AND fetched_at >= @cutoff
-                        AND (symbols LIKE @sym OR symbols = '*')
+                        AND symbols LIKE @sym
+                        AND symbols != '*'
                     ";
-                    cmd.Parameters.AddWithValue ("@sym", $"%{symbol}%");
+                    cmd.Parameters.AddWithValue ("@sym", $"%{baseSymbol}%");
                 }
                 else
                 {
                     cmd.CommandText = @"
-                        SELECT COUNT(*) FROM news 
-                        WHERE sentiment = 'negative' 
+                        SELECT COUNT(*) FROM news
+                        WHERE sentiment = 'negative'
                         AND impact >= @threshold
                         AND fetched_at >= @cutoff
                     ";
@@ -142,7 +148,7 @@ namespace BinanceBotWpf.Services.Strategies
                 connection.Open ();
                 using var cmd = connection.CreateCommand ();
                 cmd.CommandText = @"
-                    INSERT INTO news (title, source, sentiment, impact, symbols, fetched_at) 
+                    INSERT INTO news (title, source, sentiment, impact, symbols, fetched_at)
                     VALUES (@title, @source, @sentiment, @impact, @symbols, @fetched_at)
                 ";
                 cmd.Parameters.AddWithValue ("@title", title);
