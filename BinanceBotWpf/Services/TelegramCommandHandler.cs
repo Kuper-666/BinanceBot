@@ -24,11 +24,16 @@ namespace BinanceBotWpf.Services
         private readonly List<string> _activePairs;
         private readonly Func<bool> _isRunning;
         private readonly Func<Task> _stopTrading;
+        private readonly Func<MainWindowViewModel, Task> _startTrading;
         private readonly Func<string, Task> _startAutoGrid;
         private readonly Func<Task> _stopGrid;
         private readonly Func<string> _getStatusText;
         private readonly Func<string> _getPerformanceStats;
         private readonly Action<string> _log;
+
+        // Command cooldown:防止 спам тяжёлых команд
+        private readonly Dictionary<string, DateTime> _lastCommandTime = new ();
+        private static readonly TimeSpan CommandCooldown = TimeSpan.FromSeconds (3);
 
         public TelegramCommandHandler (
             TelegramNotifier telegram,
@@ -46,6 +51,7 @@ namespace BinanceBotWpf.Services
             List<string> activePairs,
             Func<bool> isRunning,
             Func<Task> stopTrading,
+            Func<MainWindowViewModel, Task> startTrading,
             Func<string, Task> startAutoGrid,
             Func<Task> stopGrid,
             Func<string> getStatusText,
@@ -67,6 +73,7 @@ namespace BinanceBotWpf.Services
             _activePairs = activePairs;
             _isRunning = isRunning;
             _stopTrading = stopTrading;
+            _startTrading = startTrading;
             _startAutoGrid = startAutoGrid;
             _stopGrid = stopGrid;
             _getStatusText = getStatusText;
@@ -99,6 +106,17 @@ namespace BinanceBotWpf.Services
                 case "❓ Помощь": cmd = "/help"; break;
             }
 
+            // Cooldown:防止 спам тяжёлых команд
+            string cooldownKey = cmd.Split (' ')[0];
+            if (_lastCommandTime.TryGetValue (cooldownKey, out DateTime lastTime)
+                && DateTime.UtcNow - lastTime < CommandCooldown)
+            {
+                return; // Тихо игнорируем повтор
+            }
+            _lastCommandTime[cooldownKey] = DateTime.UtcNow;
+
+            try
+            {
             switch (cmd)
             {
                 case "/status":
@@ -119,8 +137,16 @@ namespace BinanceBotWpf.Services
                 case "/start":
                     if (!_isRunning () && _ui != null)
                     {
-                        await _telegram.SendMessageAsync ("🔄 Перезапуск бота...", chatId);
-                        _ui?.AddLog ("🔄 Telegram: перезапуск бота...");
+                        await _telegram.SendMessageAsync ("🔄 Запуск торгового бота...", chatId);
+                        try
+                        {
+                            await _startTrading (_ui);
+                            await _telegram.SendMessageAsync ("✅ Торговый бот запущен.", chatId);
+                        }
+                        catch (Exception ex)
+                        {
+                            await _telegram.SendMessageAsync ($"❌ Ошибка запуска: {ex.Message}", chatId);
+                        }
                     }
                     else
                         await _telegram.SendMessageAsync ("Бот уже запущен.", chatId);
@@ -279,7 +305,7 @@ namespace BinanceBotWpf.Services
                 case "/update":
                     await _telegram.SendMessageAsync ("🔄 Проверяю обновления...", chatId);
                     var updater = new UpdateManager (msg => _ui?.AddLog (msg));
-                    bool updated = await updater.CheckAndUpdateAsync (silent: false);
+                    bool updated = await updater.CheckAndUpdateAsync (silent: false, hasOpenPositions: _positionManager.Count > 0);
                     if (updated)
                         await _telegram.SendMessageAsync ("✅ Обновление установлено. Бот будет перезапущен.", chatId);
                     else
@@ -294,9 +320,7 @@ namespace BinanceBotWpf.Services
                     await _telegram.SendMessageAsync (_getPerformanceStats (), chatId);
                     break;
                 case "/grid":
-                    string gridSymbol = _tradingSettings?.GridSymbol ?? "BTCUSDC";
-                    await _startAutoGrid (gridSymbol);
-                    await _telegram.SendMessageAsync ($"✅ ИИ-сетка запущена для {gridSymbol}", chatId);
+                    await _telegram.SendMessageAsync ("⚠️ Grid-режим временно отключён, используйте спот-стратегию.", chatId);
                     break;
                 case "/futures":
                     if (_ui != null)
@@ -418,12 +442,11 @@ namespace BinanceBotWpf.Services
                         "/balance – баланс\n" +
                         "/stop – стоп торговли\n" +
                         "/start – старт\n" +
-                        "/export – экспорт\n" +
+                        "/export – экспорт CSV\n" +
                         "/retrain – переобучить ML\n" +
                         "/pnl – графики PnL\n" +
                         "/stats – полная статистика\n" +
                         "/history – история сделок\n" +
-                        "/grid – запустить сетку\n" +
                         "/futures – вкл/выкл фьючерсы\n" +
                         "/dca – вкл/выкл DCA\n" +
                         "/optimize – оптимизация\n" +
@@ -443,6 +466,11 @@ namespace BinanceBotWpf.Services
                 default:
                     await _telegram.SendMessageAsync ("Неизвестная команда. /help", chatId);
                     break;
+            }
+            }
+            catch (Exception ex)
+            {
+                await _telegram.SendMessageAsync ($"❌ Ошибка: {ex.Message}", chatId);
             }
         }
     }

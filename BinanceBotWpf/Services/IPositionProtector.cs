@@ -15,6 +15,6 @@ namespace BinanceBotWpf.Services
         TimeSpan MaxHoldTime { get; set; }
         decimal PartialCloseQtyPercent { get; set; }
 
-        Task<List<string>> CheckAndProtectAsync (Func<string, decimal> getPrice);
+        Task<List<string>> CheckAndProtectAsync (Func<string, decimal> getPrice, Func<string, Task<decimal>> restPriceFetcher = null);
     }
 }

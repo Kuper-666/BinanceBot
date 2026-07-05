@@ -254,6 +254,7 @@ namespace BinanceBotWpf.Services
                             (PriceAlertManager)_priceAlertManager, _ui, _recentErrors, _pairManager.GetActivePairs (),
                             () => _isRunning,
                             () => { StopTrading (); return Task.CompletedTask; },
+                            async (vm) => { await StartTradingAsync (vm); },
                             async (sym) => { _ui?.AddLog ("⚠️ Сетка отключена."); await Task.CompletedTask; },
                             () => StopGridAsync (),
                             () => GetStatusText (),
@@ -366,7 +367,12 @@ namespace BinanceBotWpf.Services
                     {
                         if (_isRunning)
                         {
-                            var toClose = await _positionProtector.CheckAndProtectAsync (GetCurrentPrice);
+                            var toClose = await _positionProtector.CheckAndProtectAsync (GetCurrentPrice, async (sym) =>
+                            {
+                                if (_futuresClient != null)
+                                    return await _futuresClient.GetPriceAsync (sym);
+                                return await _client.GetPriceAsync (sym);
+                            });
                             foreach (var sym in toClose)
                             {
                                 await _orderExecutor.ExecuteSellAsync (sym);
@@ -959,6 +965,14 @@ namespace BinanceBotWpf.Services
                         continue;
                     }
 
+                    // REST-фолбэк для получения актуальных цен при протухшем WebSocket
+                    Func<string, Task<decimal>> restPriceFetcher = async (sym) =>
+                    {
+                        if (_futuresClient != null)
+                            return await _futuresClient.GetPriceAsync (sym);
+                        return await _client.GetPriceAsync (sym);
+                    };
+
                     // Kill-switch: полная остановка при дневной/недельной просадке
                     if (_riskManager.IsKillSwitchActive)
                     {
@@ -1085,7 +1099,20 @@ namespace BinanceBotWpf.Services
                                 _ui?.AddLog ($"⚠️ {sym}: цена протухла ({age:F0}с). Покупка пропущена.");
                                 continue;
                             }
-                            // Для продаж — разрешаем закрытие позиций даже при протухшей цене
+                            // Для продаж — обновляем цену через REST перед исполнением
+                            if (analysis.Action == TradeAction.Sell && restPriceFetcher != null)
+                            {
+                                try
+                                {
+                                    decimal restPrice = await restPriceFetcher (sym);
+                                    if (restPrice > 0)
+                                    {
+                                        _webSocketManager.UpdatePrice (sym, restPrice);
+                                        _ui?.AddLog ($"🔄 {sym}: цена обновлена через REST для продажи ({restPrice:F6})");
+                                    }
+                                }
+                                catch { }
+                            }
                         }
 
                         // Диагностика: почему Buy не исполняется

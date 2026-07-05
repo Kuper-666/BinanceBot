@@ -53,7 +53,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Проверка и обновление всех защит
         /// </summary>
-        public async Task<List<string>> CheckAndProtectAsync(Func<string, decimal> getCurrentPrice)
+        public async Task<List<string>> CheckAndProtectAsync(Func<string, decimal> getCurrentPrice, Func<string, Task<decimal>> restPriceFetcher = null)
         {
             var toClose = new List<string> ();
 
@@ -62,15 +62,27 @@ namespace BinanceBotWpf.Services
                 if (!_positionManager.TryGet (sym, out var pos)) continue;
 
                 decimal price = getCurrentPrice (sym);
-                if (price <= 0) continue;
 
-                // Проверка актуальности цены через WebSocket
-                if (_wsManager != null && !_wsManager.IsPriceFresh (sym))
+                // Если цена протухла — пробуем подтянуть через REST API
+                if (_wsManager != null && !_wsManager.IsPriceFresh (sym) && restPriceFetcher != null)
                 {
-                    double age = _wsManager.GetPriceAgeSeconds (sym);
-                    _logger?.Invoke ($"⚠️ {sym}: цена протухла ({age:F0}с назад). Используем последнюю известную цену для защиты.");
-                    // Не пропускаем — продолжаем с последней известной ценой
+                    try
+                    {
+                        decimal restPrice = await restPriceFetcher (sym);
+                        if (restPrice > 0)
+                        {
+                            price = restPrice;
+                            _wsManager?.UpdatePrice (sym, restPrice);
+                            _logger?.Invoke ($"🔄 {sym}: цена обновлена через REST ({restPrice:F6})");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger?.Invoke ($"⚠️ {sym}: REST-фолбэк цены не удался ({ex.Message}), используем кэш");
+                    }
                 }
+
+                if (price <= 0) continue;
 
                 // Если позиция осталась без OCO-защиты на бирже после прошлого сбоя — пробуем восстановить в первую очередь
                 if (pos.IsUnprotected)
