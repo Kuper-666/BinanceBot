@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -32,8 +32,16 @@ namespace ModelTrainer
     {
         static void Main(string[] args)
         {
-            // Путь к папке с экспортированными данными (там лежат features.csv и trades_*.csv)
-            string dataPath = @"C:\Users\Radik\Desktop\уроки по C#\BinanceBotWpf\BinanceBotWpf\bin\Debug\net8.0-windows\Export\";
+            string dataPath = args.Length > 0
+                ? args[0]
+                : Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Export");
+
+            if (!Directory.Exists (dataPath))
+            {
+                Console.WriteLine ($"Папка не найдена: {dataPath}");
+                Console.WriteLine ("Использование: DataDownloader <путь_к_экспорту>");
+                return;
+            }
             // или используйте диалог выбора папки
 
             Console.WriteLine ("Загрузка и объединение данных...");
@@ -112,7 +120,7 @@ namespace ModelTrainer
             {
                 string action = r.Action;
                 if (action != "SELL_CLOSE") continue;
-                DateTime dt = DateTime.Parse (r.DateTime);
+                DateTime dt = DateTime.Parse (r.DateTime, System.Globalization.CultureInfo.InvariantCulture);
                 string symbol = r.Symbol;
                 decimal pnl = decimal.Parse (r.PnL, System.Globalization.CultureInfo.InvariantCulture);
                 result.Add ((dt, symbol, pnl > 0));
@@ -132,7 +140,7 @@ namespace ModelTrainer
             var records = csv.GetRecords<dynamic> ();
             foreach (var r in records)
             {
-                DateTime ts = DateTime.Parse (r.Timestamp);
+                DateTime ts = DateTime.Parse (r.Timestamp, System.Globalization.CultureInfo.InvariantCulture);
                 string symbol = r.Symbol;
                 decimal fast = decimal.Parse (r.FastSma, System.Globalization.CultureInfo.InvariantCulture);
                 decimal slow = decimal.Parse (r.SlowSma, System.Globalization.CultureInfo.InvariantCulture);

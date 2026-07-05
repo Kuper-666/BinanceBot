@@ -134,7 +134,7 @@ namespace BinanceBotWpf
 
             var services = new ServiceCollection ();
             WriteCrashLog ("[STARTUP] Configuring services...");
-            ConfigureServices (services, apiKey, apiSecret, isTestnet, minUsdcBalance, telegramBotToken, telegramChatId);
+            ConfigureServices (services, config, apiKey, apiSecret, isTestnet, minUsdcBalance, telegramBotToken, telegramChatId);
             WriteCrashLog ("[STARTUP] Building provider...");
             _serviceProvider = services.BuildServiceProvider ();
             WriteCrashLog ("[STARTUP] Provider built OK");
@@ -216,6 +216,7 @@ namespace BinanceBotWpf
         }
 
         private static void ConfigureServices (ServiceCollection services,
+            BotConfig config,
             string apiKey, string apiSecret, bool isTestnet,
             decimal minUsdcBalance, string telegramBotToken, string telegramChatId)
         {
@@ -225,8 +226,8 @@ namespace BinanceBotWpf
             string positionsPath = Path.Combine (dataDir, "open_positions.json");
             var sharedHttpClient = new System.Net.Http.HttpClient { Timeout = TimeSpan.FromSeconds (30) };
 
-            // BotConfig
-            services.AddSingleton<BotConfig> (sp => BotConfig.LoadOrMigrate (out _));
+            // BotConfig — используем уже загруженный экземпляр, не создаём новый
+            services.AddSingleton<BotConfig> (sp => config);
 
             // Core services
             services.AddSingleton<IEventBus, EventBus> ();
