@@ -45,6 +45,21 @@ namespace BinanceBotWpf.Services.Strategies
                     CREATE INDEX IF NOT EXISTS idx_sentiment ON news(sentiment);
                 ";
                 cmd.ExecuteNonQuery ();
+
+                // Remove existing duplicates before creating unique index
+                cmd.CommandText = @"
+                    DELETE FROM news WHERE id NOT IN (
+                        SELECT MAX(id) FROM news GROUP BY title
+                    );
+                ";
+                int removed = cmd.ExecuteNonQuery ();
+                if (removed > 0)
+                {
+                    _logger?.Invoke ($"🧹 NewsSentinel: удалено {removed} дублей при запуске");
+                }
+
+                cmd.CommandText = "CREATE UNIQUE INDEX IF NOT EXISTS idx_unique_title ON news(title);";
+                cmd.ExecuteNonQuery ();
             }
             catch (Exception ex)
             {
@@ -70,7 +85,7 @@ namespace BinanceBotWpf.Services.Strategies
                 {
                     string baseSymbol = symbol.Replace ("USDC", "").Replace ("USDT", "");
                     cmd.CommandText = @"
-                        SELECT COUNT(*) FROM news
+                        SELECT COUNT(DISTINCT title) FROM news
                         WHERE sentiment = 'negative'
                         AND impact >= @threshold
                         AND fetched_at >= @cutoff
@@ -82,7 +97,7 @@ namespace BinanceBotWpf.Services.Strategies
                 else
                 {
                     cmd.CommandText = @"
-                        SELECT COUNT(*) FROM news
+                        SELECT COUNT(DISTINCT title) FROM news
                         WHERE sentiment = 'negative'
                         AND impact >= @threshold
                         AND fetched_at >= @cutoff
@@ -115,7 +130,7 @@ namespace BinanceBotWpf.Services.Strategies
                 connection.Open ();
                 using var cmd = connection.CreateCommand ();
                 string cutoff = DateTime.UtcNow.AddHours (-hours).ToString ("yyyy-MM-ddTHH:mm:ssZ");
-                cmd.CommandText = "SELECT title, source, sentiment, impact, symbols, fetched_at FROM news WHERE fetched_at >= @cutoff ORDER BY fetched_at DESC LIMIT 50";
+                cmd.CommandText = "SELECT title, source, sentiment, impact, symbols, fetched_at FROM news WHERE fetched_at >= @cutoff GROUP BY title ORDER BY fetched_at DESC LIMIT 50";
                 cmd.Parameters.AddWithValue ("@cutoff", cutoff);
 
                 using var reader = cmd.ExecuteReader ();
@@ -148,7 +163,7 @@ namespace BinanceBotWpf.Services.Strategies
                 connection.Open ();
                 using var cmd = connection.CreateCommand ();
                 cmd.CommandText = @"
-                    INSERT INTO news (title, source, sentiment, impact, symbols, fetched_at)
+                    INSERT OR IGNORE INTO news (title, source, sentiment, impact, symbols, fetched_at)
                     VALUES (@title, @source, @sentiment, @impact, @symbols, @fetched_at)
                 ";
                 cmd.Parameters.AddWithValue ("@title", title);
