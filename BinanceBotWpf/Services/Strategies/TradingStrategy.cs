@@ -222,10 +222,14 @@ namespace BinanceBotWpf.Services.Strategies
                         baseSignal.Action = TradeAction.Sell;
                         baseSignal.Reason = $"BB отскок от верхней + RSI={rsi:F1}";
                     }
-                    // SMA trend direction (всегда показываем направление)
+                    // SMA trend direction (без сигнала — только для логов)
                     else if (fastSma > slowSma)
                     {
-                        baseSignal.Reason = $"SMA uptrend F:{fastSma:F2} > S:{slowSma:F2}";
+                        baseSignal.Reason = $"Нет сигнала (SMA uptrend F:{fastSma:F2} > S:{slowSma:F2})";
+                    }
+                    else if (fastSma < slowSma)
+                    {
+                        baseSignal.Reason = $"Нет сигнала (SMA downtrend F:{fastSma:F2} < {slowSma:F2})";
                     }
                     else if (fastSma < slowSma)
                     {

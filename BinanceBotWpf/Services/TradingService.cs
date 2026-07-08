@@ -1155,6 +1155,20 @@ namespace BinanceBotWpf.Services
                             {
                                 _ui?.AddLog ($"🚫 {sym}: позиция заблокирована высокорисковыми новостями");
                             }
+                            else if (_signalFilter != null && analysis.Indicators.TryGetValue ("price", out decimal filterPrice)
+                                && analysis.Indicators.TryGetValue ("rsi", out decimal filterRsi)
+                                && analysis.Indicators.TryGetValue ("fastSma", out decimal filterFast)
+                                && analysis.Indicators.TryGetValue ("slowSma", out decimal filterSlow)
+                                && analysis.Indicators.TryGetValue ("volumeRatio", out decimal filterVol))
+                            {
+                                bool filterPassed = await _signalFilter.ShouldBuyAsync (sym, filterPrice, filterRsi,
+                                    filterFast, filterSlow, filterVol, 1m, analysis.Indicators.GetValueOrDefault ("macdHist"),
+                                    analysis.Indicators.GetValueOrDefault ("prevMacdHist"), null, null, null);
+                                if (!filterPassed)
+                                {
+                                    _ui?.AddLog ($"📊 {sym}: покупка отклонена SignalFilter (RSI={filterRsi:F1}, Vol={filterVol:F2})");
+                                }
+                            }
                             else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
                             {
                                 var fgCached = await _fearGreedProvider.GetCurrentAsync ();

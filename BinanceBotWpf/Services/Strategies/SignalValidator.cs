@@ -17,6 +17,7 @@ namespace BinanceBotWpf.Services.Strategies
         private MLContext _mlContext;
         private ITransformer _onnxModel;
         private bool _modelLoaded;
+        private PredictionEngine<SignalValidationInput, OnnxSignalOutput> _predEngine;
 
         private static readonly string[] _onnxCandidatePaths = new[]
         {
@@ -58,6 +59,7 @@ namespace BinanceBotWpf.Services.Strategies
             {
                 _mlContext = new MLContext ();
                 _onnxModel = _mlContext.Model.Load (foundPath, out _);
+                _predEngine = _mlContext.Model.CreatePredictionEngine<SignalValidationInput, OnnxSignalOutput> (_onnxModel);
                 _modelLoaded = true;
                 _logger?.Invoke ($"✅ ONNX валидатор загружен: {foundPath}");
             }
@@ -80,8 +82,7 @@ namespace BinanceBotWpf.Services.Strategies
         {
             try
             {
-                var predEngine = _mlContext.Model.CreatePredictionEngine<SignalValidationInput, OnnxSignalOutput> (_onnxModel);
-                var prediction = predEngine.Predict (input);
+                var prediction = _predEngine.Predict (input);
 
                 return new ValidationResult
                 {

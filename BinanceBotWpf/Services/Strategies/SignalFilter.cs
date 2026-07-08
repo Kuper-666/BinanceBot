@@ -14,8 +14,8 @@ namespace BinanceBotWpf.Services.Strategies
         private readonly Action<string> _logger;
 
         // Параметры фильтрации
-        public int MinRsiForBuy { get; set; } = 30;
-        public int MaxRsiForSell { get; set; } = 70;
+        public int MinRsiForBuy { get; set; } = 35;
+        public int MaxRsiForSell { get; set; } = 65;
         public decimal MinVolumeRatio { get; set; } = 0.8m;
         public decimal MinAdxForTrend { get; set; } = 25;
         public bool RequireTrendConfirm { get; set; } = true;
