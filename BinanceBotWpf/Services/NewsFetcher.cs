@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
 using System.Threading;
@@ -15,6 +16,8 @@ namespace BinanceBotWpf.Services
         private readonly Action<string> _logger;
         private Timer _timer;
         private readonly TimeSpan _interval = TimeSpan.FromMinutes(10);
+        private readonly HashSet<string> _seenTitles = new();
+        private bool _cacheSeeded;
 
         private static readonly string[] NegativeKeywords = new[]
         {
@@ -66,13 +69,21 @@ namespace BinanceBotWpf.Services
 
         private async Task FetchGoogleNewsRssAsync()
         {
+            if (!_cacheSeeded)
+            {
+                _seenTitles.UnionWith(_sentinel.GetRecentTitles(24));
+                _cacheSeeded = true;
+            }
+
             string[] feeds = new[]
             {
                 "https://news.google.com/rss/search?q=crypto+hack+OR+ban+OR+regulation+OR+listing+when:1d&hl=en",
                 "https://news.google.com/rss/search?q=bitcoin+OR+ethereum+OR+binance+when:1d&hl=en"
             };
 
-            int inserted = 0;
+            var candidates = new List<(string title, string source, string sentiment, int impact, string symbols)>();
+            int skipped = 0;
+
             foreach (string feedUrl in feeds)
             {
                 try
@@ -85,17 +96,15 @@ namespace BinanceBotWpf.Services
                     {
                         string title = item.Element("title")?.Value ?? "";
                         string source = item.Element("source")?.Value ?? "Google News";
-                        string link = item.Element("link")?.Value ?? "";
-                        string pubDate = item.Element("pubDate")?.Value ?? "";
 
                         if (string.IsNullOrWhiteSpace(title)) continue;
+                        if (!_seenTitles.Add(title)) { skipped++; continue; }
 
                         string sentiment = ClassifySentiment(title);
                         int impact = CalculateImpact(title);
                         string symbols = ExtractSymbols(title);
 
-                        int rows = _sentinel.InsertNews(title, source, sentiment, impact, symbols);
-                        if (rows > 0) inserted++;
+                        candidates.Add((title, source, sentiment, impact, symbols));
                     }
                 }
                 catch
@@ -104,10 +113,11 @@ namespace BinanceBotWpf.Services
                 }
             }
 
-            if (inserted > 0)
+            if (candidates.Count > 0)
             {
+                int inserted = _sentinel.InsertNewsBatch(candidates);
                 _sentinel.CleanupOldNews(48);
-                _logger?.Invoke($"📰 NewsFetcher: добавлено {inserted} новостей в NewsSentinel");
+                _logger?.Invoke($"📰 NewsFetcher: +{inserted} новых, {skipped} пропущено (кеш)");
             }
         }
 

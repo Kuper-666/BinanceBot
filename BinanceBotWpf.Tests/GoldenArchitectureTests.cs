@@ -624,6 +624,78 @@ namespace BinanceBotWpf.Tests
             var news = _sentinel.GetRecentNews ();
             Assert.Single (news, n => n.Title == "Repeated title");
         }
+
+        [Fact]
+        public void NewsSentinel_InsertNewsBatch_InsertsNewOnly()
+        {
+            var items = new List<(string, string, string, int, string)>
+            {
+                ("Batch A", "Source", "positive", 1, "BTC"),
+                ("Batch B", "Source", "negative", 3, "ETH"),
+                ("Batch C", "Source", "neutral", 0, "*"),
+            };
+
+            int inserted = _sentinel.InsertNewsBatch (items);
+
+            Assert.Equal (3, inserted);
+            var stats = _sentinel.GetStats ();
+            Assert.Equal (3, stats.TotalCount);
+        }
+
+        [Fact]
+        public void NewsSentinel_InsertNewsBatch_SkipsDuplicates()
+        {
+            _sentinel.InsertNews ("Existing", "Source", "neutral", 0, "*");
+
+            var items = new List<(string, string, string, int, string)>
+            {
+                ("Existing", "Source", "neutral", 0, "*"),
+                ("New title", "Source", "positive", 1, "BTC"),
+            };
+
+            int inserted = _sentinel.InsertNewsBatch (items);
+
+            Assert.Equal (1, inserted);
+            var stats = _sentinel.GetStats ();
+            Assert.Equal (2, stats.TotalCount);
+        }
+
+        [Fact]
+        public void NewsSentinel_InsertNewsBatch_SkipsEmptyTitles()
+        {
+            var items = new List<(string, string, string, int, string)>
+            {
+                ("", "Source", "neutral", 0, "*"),
+                ("   ", "Source", "neutral", 0, "*"),
+                ("Valid title", "Source", "positive", 1, "BTC"),
+            };
+
+            int inserted = _sentinel.InsertNewsBatch (items);
+
+            Assert.Equal (1, inserted);
+        }
+
+        [Fact]
+        public void NewsSentinel_GetRecentTitles_ReturnsDistinctSet()
+        {
+            _sentinel.InsertNews ("Title A", "Source", "neutral", 0, "*");
+            _sentinel.InsertNews ("Title B", "Source", "neutral", 0, "*");
+            _sentinel.InsertNews ("Title A", "Source2", "positive", 1, "BTC");
+
+            HashSet<string> titles = _sentinel.GetRecentTitles (hours: 1);
+
+            Assert.Equal (2, titles.Count);
+            Assert.Contains ("Title A", titles);
+            Assert.Contains ("Title B", titles);
+        }
+
+        [Fact]
+        public void NewsSentinel_GetRecentTitles_EmptyDb_ReturnsEmptySet()
+        {
+            HashSet<string> titles = _sentinel.GetRecentTitles ();
+
+            Assert.Empty (titles);
+        }
     }
 
     public class AdaptiveAgentADX_Tests

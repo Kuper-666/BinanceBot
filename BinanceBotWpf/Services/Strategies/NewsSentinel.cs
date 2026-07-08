@@ -184,6 +184,81 @@ namespace BinanceBotWpf.Services.Strategies
             }
         }
 
+        /// <summary>
+        /// Batch insert: single connection + transaction. Returns count of actually inserted rows.
+        /// </summary>
+        public int InsertNewsBatch (IEnumerable<(string title, string source, string sentiment, int impact, string symbols)> items)
+        {
+            if (_diskFull) return 0;
+            int inserted = 0;
+            try
+            {
+                using var connection = new SqliteConnection ($"Data Source={_dbPath}");
+                connection.Open ();
+                using var transaction = connection.BeginTransaction ();
+                using var cmd = connection.CreateCommand ();
+                cmd.Transaction = transaction;
+                cmd.CommandText = @"
+                    INSERT OR IGNORE INTO news (title, source, sentiment, impact, symbols, fetched_at)
+                    VALUES (@title, @source, @sentiment, @impact, @symbols, @fetched_at)
+                ";
+                var pTitle = cmd.Parameters.Add ("@title", Microsoft.Data.Sqlite.SqliteType.Text);
+                var pSource = cmd.Parameters.Add ("@source", Microsoft.Data.Sqlite.SqliteType.Text);
+                var pSentiment = cmd.Parameters.Add ("@sentiment", Microsoft.Data.Sqlite.SqliteType.Text);
+                var pImpact = cmd.Parameters.Add ("@impact", Microsoft.Data.Sqlite.SqliteType.Integer);
+                var pSymbols = cmd.Parameters.Add ("@symbols", Microsoft.Data.Sqlite.SqliteType.Text);
+                var pFetchedAt = cmd.Parameters.Add ("@fetched_at", Microsoft.Data.Sqlite.SqliteType.Text);
+
+                string now = DateTime.UtcNow.ToString ("yyyy-MM-ddTHH:mm:ssZ");
+                foreach (var item in items)
+                {
+                    if (string.IsNullOrWhiteSpace (item.title)) continue;
+                    pTitle.Value = item.title;
+                    pSource.Value = item.source ?? "";
+                    pSentiment.Value = item.sentiment ?? "neutral";
+                    pImpact.Value = item.impact;
+                    pSymbols.Value = item.symbols ?? "*";
+                    pFetchedAt.Value = now;
+                    inserted += cmd.ExecuteNonQuery ();
+                }
+
+                transaction.Commit ();
+            }
+            catch (Exception ex)
+            {
+                string msg = ex.Message;
+                _logger?.Invoke ($"⚠️ NewsSentinel batch insert error: {msg}");
+                if (msg.Contains ("disk is full") || msg.Contains ("database or disk is full"))
+                    _diskFull = true;
+                return 0;
+            }
+            return inserted;
+        }
+
+        /// <summary>
+        /// Returns all distinct titles from the last N hours. Used to seed the dedup cache.
+        /// </summary>
+        public HashSet<string> GetRecentTitles (int hours = 24)
+        {
+            var titles = new HashSet<string> ();
+            try
+            {
+                using var connection = new SqliteConnection ($"Data Source={_dbPath}");
+                connection.Open ();
+                using var cmd = connection.CreateCommand ();
+                string cutoff = DateTime.UtcNow.AddHours (-hours).ToString ("yyyy-MM-ddTHH:mm:ssZ");
+                cmd.CommandText = "SELECT DISTINCT title FROM news WHERE fetched_at >= @cutoff";
+                cmd.Parameters.AddWithValue ("@cutoff", cutoff);
+                using var reader = cmd.ExecuteReader ();
+                while (reader.Read ())
+                {
+                    titles.Add (reader.GetString (0));
+                }
+            }
+            catch { }
+            return titles;
+        }
+
         public int CleanupOldNews (int maxAgeHours = 48)
         {
             try

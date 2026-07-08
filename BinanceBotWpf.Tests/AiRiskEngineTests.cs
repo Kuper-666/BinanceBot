@@ -119,5 +119,80 @@ namespace BinanceBotWpf.Tests
             Assert.True (result.TakeProfitPercent > result.StopLossPercent,
                 "TakeProfit should be greater than StopLoss");
         }
+
+        [Fact]
+        public async System.Threading.Tasks.Task CalculateRiskAsync_ZeroBalance_ReturnsMinimalRisk ()
+        {
+            var result = await _engine.CalculateRiskAsync (
+                symbol: "BTCUSDC",
+                balance: 0m,
+                price: 100000m,
+                fastSma: 99000m,
+                slowSma: 98000m,
+                rsi: 50m,
+                volumeRatio: 1.0m,
+                macdHist: 0m,
+                bbWidth: 0.03m,
+                obv: 0m);
+
+            Assert.Equal (0, result.Grid.Levels);
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task CalculateRiskAsync_ExtremeRSI_StillReturnsValid ()
+        {
+            var result = await _engine.CalculateRiskAsync (
+                symbol: "ETHUSDC",
+                balance: 500m,
+                price: 3000m,
+                fastSma: 3100m,
+                slowSma: 2900m,
+                rsi: 95m,
+                volumeRatio: 2.0m,
+                macdHist: 0.01m,
+                bbWidth: 0.05m,
+                obv: 1000m);
+
+            Assert.True (result.StopLossPercent > 0);
+            Assert.True (result.TakeProfitPercent > result.StopLossPercent);
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task CalculateRiskAsync_VeryLowBalance_GridDisabled ()
+        {
+            var result = await _engine.CalculateRiskAsync (
+                symbol: "DOGEUSDC",
+                balance: 1m,
+                price: 0.15m,
+                fastSma: 0.14m,
+                slowSma: 0.13m,
+                rsi: 30m,
+                volumeRatio: 0.5m,
+                macdHist: -0.001m,
+                bbWidth: 0.02m,
+                obv: -100m);
+
+            Assert.Equal (0, result.Grid.Levels);
+            Assert.True (result.RiskPerTradePercent > 0);
+        }
+
+        [Fact]
+        public async System.Threading.Tasks.Task CalculateRiskAsync_NegativeMACD_StillReturnsValid ()
+        {
+            var result = await _engine.CalculateRiskAsync (
+                symbol: "SOLUSDC",
+                balance: 200m,
+                price: 150m,
+                fastSma: 155m,
+                slowSma: 160m,
+                rsi: 35m,
+                volumeRatio: 0.8m,
+                macdHist: -0.5m,
+                bbWidth: 0.04m,
+                obv: -500m);
+
+            Assert.True (result.StopLossPercent > 0);
+            Assert.True (result.TakeProfitPercent > 0);
+        }
     }
 }

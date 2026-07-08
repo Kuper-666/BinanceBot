@@ -119,5 +119,49 @@ namespace BinanceBotWpf.Tests
             Assert.NotNull (result);
             Assert.True (result.MaxDrawdown >= 0m);
         }
+
+        [Fact]
+        public void Run_EmptyKlines_ReturnsNull()
+        {
+            var result = _engine.Run (new List<BinanceKline> (), 9, 21, 14, 0.02m, 0.04m);
+
+            Assert.Null (result);
+        }
+
+        [Fact]
+        public void Run_SingleKline_ReturnsNull()
+        {
+            var klines = GenerateKlines (1, 100m, 0.01m);
+
+            var result = _engine.Run (klines, 9, 21, 14, 0.02m, 0.04m);
+
+            Assert.Null (result);
+        }
+
+        [Fact]
+        public void Run_ExtremeVolatility_ProducesValidResult()
+        {
+            var klines = GenerateKlines (500, 100m, 0.05m);
+
+            var result = _engine.Run (klines, fastSmaPeriod: 9, slowSmaPeriod: 21, rsiPeriod: 14,
+                stopLossPercent: 0.02m, takeProfitPercent: 0.04m);
+
+            Assert.NotNull (result);
+            Assert.True (result.MaxDrawdown >= 0m);
+            Assert.Equal (result.WinningTrades + result.LosingTrades, result.TotalTrades);
+        }
+
+        [Fact]
+        public void Run_TightStopLoss_ProducesValidResult()
+        {
+            var klines = GenerateKlines (500, 100m, 0.005m);
+
+            var result = _engine.Run (klines, fastSmaPeriod: 9, slowSmaPeriod: 21, rsiPeriod: 14,
+                stopLossPercent: 0.001m, takeProfitPercent: 0.10m);
+
+            Assert.NotNull (result);
+            Assert.Equal (result.WinningTrades + result.LosingTrades, result.TotalTrades);
+            Assert.True (result.MaxDrawdown >= 0m);
+        }
     }
 }
