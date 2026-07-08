@@ -53,7 +53,13 @@ namespace BinanceBotWpf.Exchange
                     }
                     catch (Exception ex)
                     {
-                        _logger?.Invoke ($"WebSocket ошибка: {ex.Message}");
+                        string msg = ex.Message;
+                        bool isNormalDisconnect = msg.Contains ("remote party closed") ||
+                                                  msg.Contains ("Graceful") ||
+                                                  (ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely);
+                        _logger?.Invoke (isNormalDisconnect
+                            ? $"WebSocket: нормальное закрытие соединения"
+                            : $"WebSocket ошибка: {msg}");
                     }
                     finally
                     {
