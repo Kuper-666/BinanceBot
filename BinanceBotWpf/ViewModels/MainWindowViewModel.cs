@@ -3,6 +3,7 @@ using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Linq;
+using System.Text.Json;
 using System.Windows.Input;
 using System.Threading;
 using System.Threading.Tasks;
@@ -838,7 +839,7 @@ namespace BinanceBotWpf.ViewModels
                     {
                         result.Add (new Dictionary<string, object>
                         {
-                            ["time"] = DateTimeAxis.ToDouble (pt.X),
+                            ["time"] = pt.X,
                             ["balance"] = (decimal)pt.Y
                         });
                     }
@@ -859,8 +860,8 @@ namespace BinanceBotWpf.ViewModels
                     {
                         if (pt.TryGetValue ("time", out object timeObj) && pt.TryGetValue ("balance", out object balObj))
                         {
-                            double time = Convert.ToDouble (timeObj);
-                            decimal balance = Convert.ToDecimal (balObj);
+                            double time = timeObj is JsonElement je ? je.GetDouble () : Convert.ToDouble (timeObj);
+                            decimal balance = balObj is JsonElement jb ? (decimal)jb.GetDouble () : Convert.ToDecimal (balObj);
                             series.Points.Add (new DataPoint (time, (double)balance));
                         }
                     }
