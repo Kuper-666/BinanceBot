@@ -68,7 +68,7 @@ namespace BinanceBotWpf.Services.Strategies
 
             // 3. Трендовый фильтр (цена выше SMA50)
             bool trendOk = true;
-            if (RequireTrendConfirm && closes.Count >= 50)
+            if (RequireTrendConfirm && closes != null && closes.Count >= 50)
             {
                 decimal sma50 = closes.Skip (closes.Count - 50).Average ();
                 trendOk = price > sma50;

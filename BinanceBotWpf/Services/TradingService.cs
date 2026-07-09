@@ -1147,27 +1147,34 @@ namespace BinanceBotWpf.Services
                             // Проверка лимитов RiskManager — реальный размер сделки (как в OrderExecutor)
                             decimal maxRiskPerTrade = RiskCalculator.CalculateRiskAmount (spotBalance, 0.02m);
                             var riskCheck = _riskManager.CanOpenPosition (_positionManager.Count, maxRiskPerTrade, currentTotalExposure, 0, currentSymbolExposure);
-                            if (!riskCheck.Allowed)
+                            // SignalFilter: проверка качества сигнала
+                            bool signalBlocked = false;
+                            if (_signalFilter != null && analysis.Indicators.ContainsKey ("price"))
+                            {
+                                decimal fp = analysis.Indicators["price"];
+                                decimal fr = analysis.Indicators.GetValueOrDefault ("rsi");
+                                decimal ff = analysis.Indicators.GetValueOrDefault ("fastSma");
+                                decimal fs = analysis.Indicators.GetValueOrDefault ("slowSma");
+                                decimal fv = analysis.Indicators.GetValueOrDefault ("volumeRatio");
+                                bool ok = await _signalFilter.ShouldBuyAsync (sym, fp, fr, ff, fs, fv,
+                                    spotBalance > 0 ? spotBalance : 1m,
+                                    analysis.Indicators.GetValueOrDefault ("macdHist"),
+                                    analysis.Indicators.GetValueOrDefault ("prevMacdHist"),
+                                    null, null, null);
+                                if (!ok)
+                                {
+                                    signalBlocked = true;
+                                    _ui?.AddLog ($"📊 {sym}: покупка отклонена SignalFilter (RSI={fr:F1}, Vol={fv:F2})");
+                                }
+                            }
+
+                            if (!riskCheck.Allowed || signalBlocked)
                             {
                                 _ui?.AddLog ($"🛡️ {sym}: покупка заблокирована — {riskCheck.Reason}");
                             }
                             else if (!_strategy.CheckNewsBeforePosition (sym))
                             {
                                 _ui?.AddLog ($"🚫 {sym}: позиция заблокирована высокорисковыми новостями");
-                            }
-                            else if (_signalFilter != null && analysis.Indicators.TryGetValue ("price", out decimal filterPrice)
-                                && analysis.Indicators.TryGetValue ("rsi", out decimal filterRsi)
-                                && analysis.Indicators.TryGetValue ("fastSma", out decimal filterFast)
-                                && analysis.Indicators.TryGetValue ("slowSma", out decimal filterSlow)
-                                && analysis.Indicators.TryGetValue ("volumeRatio", out decimal filterVol))
-                            {
-                                bool filterPassed = await _signalFilter.ShouldBuyAsync (sym, filterPrice, filterRsi,
-                                    filterFast, filterSlow, filterVol, 1m, analysis.Indicators.GetValueOrDefault ("macdHist"),
-                                    analysis.Indicators.GetValueOrDefault ("prevMacdHist"), null, null, null);
-                                if (!filterPassed)
-                                {
-                                    _ui?.AddLog ($"📊 {sym}: покупка отклонена SignalFilter (RSI={filterRsi:F1}, Vol={filterVol:F2})");
-                                }
                             }
                             else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
                             {
