@@ -78,11 +78,11 @@ namespace BinanceBotWpf.Services.Strategies
                 }
             }
 
-            // 4. MACD фильтр (гистограмма растёт)
+            // 4. MACD фильтр (гистограмма растёт — достаточно восходящего импульса)
             bool macdOk = true;
             if (RequireMacdConfirm)
             {
-                macdOk = macdHistogram > prevMacdHistogram && macdHistogram > 0;
+                macdOk = macdHistogram > prevMacdHistogram;
                 if (!macdOk)
                 {
                     _logger?.Invoke ($"📊 {symbol}: MACD гистограмма не растёт ({macdHistogram:F4})");
