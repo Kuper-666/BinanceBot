@@ -67,6 +67,10 @@ namespace BinanceBotWpf.Models
         public int ValidatorRsiLow { get; set; } = 20;
         public int ValidatorRsiHigh { get; set; } = 80;
 
+        // Ужесточение сигналов
+        public int LossCooldownMinutes { get; set; } = 30;
+        public decimal MinConfidenceToTrade { get; set; } = 0.55m;
+
         // Расшифрованные значения для использования в коде (не сериализуются в JSON)
         [JsonIgnore]
         public string ApiKey

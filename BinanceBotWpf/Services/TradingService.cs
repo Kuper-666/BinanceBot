@@ -186,18 +186,25 @@ namespace BinanceBotWpf.Services
                 decimal atrThresh = cfg?.ValidatorAtrThreshold ?? 0.15m;
                 int rsiLow = cfg?.ValidatorRsiLow ?? 20;
                 int rsiHigh = cfg?.ValidatorRsiHigh ?? 80;
+                decimal minConfidence = _tradingSettings?.MinConfidenceToTrade ?? 0.55m;
 
                 var adaptiveAgent = new AdaptiveAgent (logger, slMult, periodMult);
                 _strategy.SetAdaptiveAgent (adaptiveAgent, adaptiveEnabled);
                 _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {(adaptiveEnabled ? "включён" : "выключен")} SL×{slMult} Period×{periodMult}");
 
-                var signalValidator = new SignalValidator (logger, volThresh, atrThresh, rsiLow, rsiHigh);
+                var signalValidator = new SignalValidator (logger, volThresh, atrThresh, rsiLow, rsiHigh, minConfidence);
                 _strategy.SetSignalValidator (signalValidator, validatorEnabled);
-                _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")} Vol>{volThresh} ATR>{atrThresh} RSI {rsiLow}/{rsiHigh}");
+                _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")} Vol>{volThresh} ATR>{atrThresh} RSI {rsiLow}/{rsiHigh} conf>={minConfidence:P0}");
 
                 var newsSentinel = new NewsSentinel (logger);
                 _strategy.SetNewsSentinel (newsSentinel, newsEnabled);
                 _ui?.AddLog ($"📰 Эшелон 3 (NewsSentinel): {(newsEnabled ? "включён" : "выключен")}");
+
+                // Объёмный фильтр
+                bool requireVol = _tradingSettings?.RequireVolumeConfirmation ?? true;
+                decimal minVolRatio = _tradingSettings?.MinVolumeRatio ?? 0.8m;
+                _strategy.SetVolumeFilter (requireVol, minVolRatio);
+                _ui?.AddLog ($"📊 Объёмный фильтр: {(requireVol ? $"включён (мин. {minVolRatio}x)" : "выключен")}");
 
                 _newsFetcher = new NewsFetcher (SharedHttpClient.Instance, newsSentinel, logger);
                 _newsFetcher.Start ();
@@ -472,6 +479,20 @@ namespace BinanceBotWpf.Services
         }
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
+
+        private bool IsInLossCooldown ()
+        {
+            int cooldownMinutes = _tradingSettings?.LossCooldownMinutes ?? 30;
+            if (cooldownMinutes <= 0) return false;
+
+            var trades = _ui?.TradesHistory;
+            if (trades == null || trades.Count == 0) return false;
+
+            var lastTrade = trades[0];
+            if (lastTrade.PnL >= 0) return false;
+
+            return (DateTime.UtcNow - lastTrade.CloseTime).TotalMinutes < cooldownMinutes;
+        }
 
         /// <summary>
         /// Capture current trading state for persistence.
@@ -1155,6 +1176,11 @@ namespace BinanceBotWpf.Services
                             else if (!_strategy.CheckNewsBeforePosition (sym))
                             {
                                 _ui?.AddLog ($"🚫 {sym}: позиция заблокирована высокорисковыми новостями");
+                            }
+                            else if (IsInLossCooldown ())
+                            {
+                                int cooldownMin = _tradingSettings?.LossCooldownMinutes ?? 30;
+                                _ui?.AddLog ($"⏸️ {sym}: кулдаун после убытка ({cooldownMin} мин)");
                             }
                             else if (_fearGreedProvider != null && _fearGreedProvider.IsExtremeGreed ())
                             {

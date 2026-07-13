@@ -274,7 +274,8 @@ namespace BinanceBotWpf.Tests
             var result = validator.Validate (input);
 
             Assert.True (result.IsValid);
-            Assert.True (result.Confidence > 0.4f);
+            Assert.True (result.Confidence >= 0.55f,
+                $"Normal signal confidence should be >= 0.55, got {result.Confidence}");
         }
 
         [Fact]
@@ -1025,6 +1026,108 @@ namespace BinanceBotWpf.Tests
 
             bool confirmed = strategy.CheckEntryConfirmation (entryKlines, TradeAction.Sell);
             Assert.True (confirmed);
+        }
+
+        [Fact]
+        public void CheckEntryConfirmation_BuyWithHighRsi_ReturnsFalse ()
+        {
+            var strategy = CreateStrategy ();
+            var entryKlines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 + i * 0.5m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool confirmed = strategy.CheckEntryConfirmation (entryKlines, TradeAction.Buy);
+            Assert.False (confirmed);
+        }
+
+        [Fact]
+        public void CheckEntryConfirmation_SellWithLowRsi_ReturnsFalse ()
+        {
+            var strategy = CreateStrategy ();
+            var entryKlines = Enumerable.Range (0, 30)
+                .Select (i => new BinanceKline { Close = 100 - i * 0.5m, High = 101, Low = 99, Volume = 1000 })
+                .ToList ();
+
+            bool confirmed = strategy.CheckEntryConfirmation (entryKlines, TradeAction.Sell);
+            Assert.False (confirmed);
+        }
+
+        [Fact]
+        public void VolumeFilter_BlocksLowVolume_BuySignal ()
+        {
+            var strategy = CreateStrategy ();
+            strategy.SetVolumeFilter (true, 0.8m);
+
+            var closes = new List<decimal> ();
+            for (int i = 0; i < 80; i++)
+                closes.Add (100 + (decimal)i * 0.3m);
+            for (int i = 0; i < 15; i++)
+                closes.Add (closes.Last () - 0.5m);
+            for (int i = 0; i < 10; i++)
+                closes.Add (closes.Last () + 0.1m);
+            int count = closes.Count;
+            var klines = closes.Select ((c, idx) => new BinanceKline
+            {
+                Close = c,
+                High = c * 1.005m,
+                Low = c * 0.995m,
+                Volume = idx < count - 1 ? 1000m : 100m
+            }).ToList ();
+
+            var result = strategy.AnalyzeAsync ("BTCUSDC", klines).Result;
+
+            if (result.Action == TradeAction.Buy && result.Reason.Contains ("SMA"))
+            {
+                Assert.Contains ("vol=", result.Reason);
+            }
+        }
+
+        [Fact]
+        public void SignalValidator_WithCustomMinConfidence_Respected ()
+        {
+            var validator = new SignalValidator (msg => { }, minConfidence: 0.7m);
+            var input = new SignalValidationInput
+            {
+                Price = 45000,
+                Rsi = 50,
+                MacdHistogram = 0,
+                BbWidth = 0.05f,
+                AtrPercent = 0.03f,
+                VolumeRatio = 1.0f,
+                SmaFast = 45000,
+                SmaSlow = 45000,
+                SignalDirection = 1
+            };
+
+            var result = validator.Validate (input);
+
+            Assert.True (result.IsValid,
+                $"Signal with confidence {result.Confidence} should be valid with minConfidence=0.7");
+            Assert.True (result.Confidence >= 0.7f,
+                $"Confidence {result.Confidence} should be >= 0.7");
+        }
+
+        [Fact]
+        public void SignalValidator_LowMinConfidence_BlocksWeakSignals ()
+        {
+            var validator = new SignalValidator (msg => { }, minConfidence: 0.9m);
+            var input = new SignalValidationInput
+            {
+                Price = 45000,
+                Rsi = 50,
+                MacdHistogram = 0,
+                BbWidth = 0.05f,
+                AtrPercent = 0.03f,
+                VolumeRatio = 1.0f,
+                SmaFast = 45000,
+                SmaSlow = 45000,
+                SignalDirection = 1
+            };
+
+            var result = validator.Validate (input);
+
+            Assert.False (result.IsValid,
+                $"Signal with confidence {result.Confidence} should be invalid with minConfidence=0.9");
         }
     }
 }

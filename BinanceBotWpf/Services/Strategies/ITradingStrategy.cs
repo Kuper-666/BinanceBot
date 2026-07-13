@@ -16,6 +16,7 @@ namespace BinanceBotWpf.Services.Strategies
         void SetAdaptiveAgent (AdaptiveAgent agent, bool enabled);
         void SetSignalValidator (SignalValidator validator, bool enabled);
         void SetNewsSentinel (NewsSentinel sentinel, bool enabled);
+        void SetVolumeFilter (bool requireConfirmation, decimal minRatio);
 
         Task<(TradeAction Action, string Reason, Dictionary<string, decimal> Indicators)>
             AnalyzeAsync (string symbol, List<BinanceKline> klines);

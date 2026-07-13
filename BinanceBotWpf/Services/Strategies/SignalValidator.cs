@@ -28,13 +28,16 @@ namespace BinanceBotWpf.Services.Strategies
 
         public bool IsModelLoaded => _modelLoaded;
 
-        public SignalValidator (Action<string> logger, decimal volumeThreshold = 8.0m, decimal atrThreshold = 0.15m, int rsiLow = 20, int rsiHigh = 80)
+        private readonly decimal _minConfidence;
+
+        public SignalValidator (Action<string> logger, decimal volumeThreshold = 8.0m, decimal atrThreshold = 0.15m, int rsiLow = 20, int rsiHigh = 80, decimal minConfidence = 0.55m)
         {
             _logger = logger;
             _volumeThreshold = volumeThreshold;
             _atrThreshold = atrThreshold;
             _rsiLow = rsiLow;
             _rsiHigh = rsiHigh;
+            _minConfidence = minConfidence;
             LoadOnnxModel ();
         }
 
@@ -178,12 +181,12 @@ namespace BinanceBotWpf.Services.Strategies
 
             confidence = Math.Clamp (confidence, 0f, 1f);
 
-            if (totalFactors > 0 && positiveFactors < totalFactors * 0.3)
+            if (totalFactors > 0 && positiveFactors < totalFactors * 0.4)
             {
                 riskFlag = true;
             }
 
-            bool isValid = confidence > 0.45f && !riskFlag;
+            bool isValid = confidence > (float)_minConfidence && !riskFlag;
 
             _logger?.Invoke ($"🔍 Эврическая валидация: valid={isValid}, conf={confidence:P0}, risk={riskFlag} ({positiveFactors}/{totalFactors} factors)");
 

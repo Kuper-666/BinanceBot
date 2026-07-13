@@ -111,6 +111,14 @@ namespace BinanceBotWpf.Models
         public int MaxTradesPerHour { get; set; } = 3;
         public int MaxHoldTimeHours { get; set; } = 24;
 
+        // Ужесточение сигналов
+        public int RsiExtremeOversold { get; set; } = 30;
+        public int RsiExtremeOverbought { get; set; } = 70;
+        public decimal MacdMinHistogram { get; set; } = 0.002m;
+        public int MinConfirmingIndicators { get; set; } = 2;
+        public int LossCooldownMinutes { get; set; } = 30;
+        public decimal MinConfidenceToTrade { get; set; } = 0.55m;
+
         /// <summary>
         /// Сохранить настройки в файл
         /// </summary>
