@@ -273,6 +273,17 @@ namespace BinanceBotWpf.Services
                         return;
                     }
 
+                    // Проверяем конкретную ошибку баланса — нет смысла retry
+                    string lastErr = _client.LastOrderError ?? "";
+                    if (lastErr.Contains ("-2010") || lastErr.Contains ("insufficient balance"))
+                    {
+                        _ocoFailCount[symbol] = 0;
+                        _ocoNextRetry[symbol] = DateTime.UtcNow.AddMinutes (30);
+                        pos.IsUnprotected = true;
+                        _logger?.Invoke ($"🚫 {symbol}: OCO — недостаточно баланса ({pos.Quantity:F6} {baseAsset}). Повтор через 30 мин.");
+                        return;
+                    }
+
                     if (attempt < 3)
                     {
                         int delaySec = (int)Math.Pow (2, attempt); // 2с, 4с
