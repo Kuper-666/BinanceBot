@@ -19,7 +19,7 @@ namespace BinanceBotWpf.Services.Strategies
         public decimal MinVolumeRatio { get; set; } = 0.8m;
         public decimal MinAdxForTrend { get; set; } = 25;
         public bool RequireTrendConfirm { get; set; } = true;
-        public bool RequireMacdConfirm { get; set; } = true;
+        public bool RequireMacdConfirm { get; set; } = false;
 
         public SignalFilter(Action<string> logger)
         {
