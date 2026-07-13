@@ -1157,7 +1157,7 @@ namespace BinanceBotWpf.Services
                                 decimal fs = analysis.Indicators.GetValueOrDefault ("slowSma");
                                 decimal fv = analysis.Indicators.GetValueOrDefault ("volumeRatio");
                                 bool ok = await _signalFilter.ShouldBuyAsync (sym, fp, fr, ff, fs, fv,
-                                    spotBalance > 0 ? spotBalance : 1m,
+                                    1m,
                                     analysis.Indicators.GetValueOrDefault ("macdHist"),
                                     analysis.Indicators.GetValueOrDefault ("prevMacdHist"),
                                     null, null, null);
