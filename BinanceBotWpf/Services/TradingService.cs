@@ -1170,7 +1170,10 @@ namespace BinanceBotWpf.Services
 
                             if (!riskCheck.Allowed || signalBlocked)
                             {
-                                _ui?.AddLog ($"🛡️ {sym}: покупка заблокирована — {riskCheck.Reason}");
+                                if (signalBlocked)
+                                    _ui?.AddLog ($"🛡️ {sym}: покупка отменена (SignalFilter)");
+                                else
+                                    _ui?.AddLog ($"🛡️ {sym}: покупка заблокирована — {riskCheck.Reason}");
                             }
                             else if (!_strategy.CheckNewsBeforePosition (sym))
                             {

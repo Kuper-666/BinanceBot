@@ -89,8 +89,8 @@ namespace BinanceBotWpf.Services.Strategies
                 }
             }
 
-            // 5. SMA сигнал (быстрый выше медленного)
-            bool smaOk = fastSma > slowSma;
+            // 5. SMA сигнал (быстрый выше или равен медленному — crossover в процессе)
+            bool smaOk = fastSma >= slowSma;
             if (!smaOk)
             {
                 _logger?.Invoke ($"📊 {symbol}: SMA {fastSma:F2} < {slowSma:F2}");
