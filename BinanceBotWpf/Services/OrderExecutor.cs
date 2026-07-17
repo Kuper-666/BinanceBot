@@ -332,6 +332,25 @@ namespace BinanceBotWpf.Services
                 }
             }
 
+            decimal symbolMinNotional = await _client.GetMinNotionalAsync (symbol);
+            decimal sellNotional = qtyToSell * price;
+            if (sellNotional < symbolMinNotional)
+            {
+                decimal minQtyForNotional = Math.Ceiling (symbolMinNotional / price / stepSize) * stepSize;
+                if (minQtyForNotional <= spotBalance)
+                {
+                    qtyToSell = minQtyForNotional;
+                    sellNotional = qtyToSell * price;
+                    _ui?.AddLog ($"{symbol}: продажа поднята до {qtyToSell} ({sellNotional:F2} USDC) для MIN_NOTIONAL ({symbolMinNotional} USDC)");
+                }
+                else
+                {
+                    _ui?.AddLog ($"{symbol}: SELL невозможен — на споте {spotBalance} {asset}, а минимум {minQtyForNotional} ({minQtyForNotional * price:F2} USDC). Удаляю позицию.");
+                    await _positionManager.RemoveAsync (symbol);
+                    return;
+                }
+            }
+
             if (pos.OcoOrderListId != 0)
             {
                 await _client.CancelOcoOrder (symbol, pos.OcoOrderListId);
