@@ -919,7 +919,7 @@ namespace BinanceBotWpf.Services
                 {
                     if (!_balanceLoopEnabled) { await Task.Delay (5000, _shutdownCts?.Token ?? CancellationToken.None); continue; }
 
-                    int delayMs = _positionManager.Count > 0 ? 60000 : 3600000;
+                    int delayMs = _positionManager.Count > 0 ? 60000 : 300000;
                     await Task.Delay (delayMs, _shutdownCts?.Token ?? CancellationToken.None);
                     if (!_isRunning) break;
 
