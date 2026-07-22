@@ -405,11 +405,13 @@ namespace BinanceBotWpf.Services
                 _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
 
                 string emoji = pnl >= 0 ? "🟢" : "🔴";
+                string pnlSign = pnl >= 0 ? "+" : "";
+                string pnlPctSign = pnlPct >= 0 ? "+" : "";
                 await _sendNotification ($"{emoji} <b>ПРОДАЖА</b>\n" +
                     $"📊 {symbol}\n" +
                     $"💵 Вход: {pos.EntryPrice:F4} → Выход: {limitPrice:F4}\n" +
                     $"📦 Количество: {qtyToSell}\n" +
-                    $"📈 PnL: {pnl:+F2;-F2} USDC ({pnlPct:+F2;-F2}%)\n" +
+                    $"📈 PnL: {pnlSign}{pnl:F2} USDC ({pnlPctSign}{pnlPct:F2}%)\n" +
                     $"⏱ Длительность: {(DateTime.UtcNow - pos.OpenTime):hh\\:mm}");
             }
             else
