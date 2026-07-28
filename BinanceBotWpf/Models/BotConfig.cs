@@ -33,7 +33,7 @@ namespace BinanceBotWpf.Models
         public bool IsTestnet { get; set; } = true;
         public decimal MinUsdcBalance { get; set; } = 5.50m;
         public string TelegramChatId { get; set; } = "";
-        
+
         /// <summary>
         /// Интервал свечей для анализа. Минимум 1 час.
         /// Поддерживаются: 1h (default), 4h, 1d, 1w, 1M

@@ -6,7 +6,7 @@ namespace BinanceBotWpf.Tests
     public class RiskManagerTests
     {
         [Fact]
-        public void CanOpenPosition_BelowMaxOpenOrders_ReturnsAllowed ()
+        public void CanOpenPosition_BelowMaxOpenOrders_ReturnsAllowed()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -17,7 +17,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CanOpenPosition_AtMaxOpenOrders_ReturnsBlocked ()
+        public void CanOpenPosition_AtMaxOpenOrders_ReturnsBlocked()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -29,7 +29,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CanOpenPosition_ExceedsMaxDailyLoss_ReturnsBlocked ()
+        public void CanOpenPosition_ExceedsMaxDailyLoss_ReturnsBlocked()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 500m;
@@ -47,7 +47,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CanOpenPosition_DailyProfit_DoesNotBlock ()
+        public void CanOpenPosition_DailyProfit_DoesNotBlock()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -60,7 +60,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void RecordTrade_AccumulatesPnL ()
+        public void RecordTrade_AccumulatesPnL()
         {
             var rm = new RiskManager ();
             rm.RecordTrade (10m);
@@ -71,7 +71,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CanOpenPosition_MaxExposure_ReturnsBlocked ()
+        public void CanOpenPosition_MaxExposure_ReturnsBlocked()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -84,7 +84,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CanOpenPosition_AllLimitsDisabled_ReturnsAllowed ()
+        public void CanOpenPosition_AllLimitsDisabled_ReturnsAllowed()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 10000m;

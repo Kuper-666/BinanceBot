@@ -1,9 +1,9 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {
@@ -38,7 +38,7 @@ namespace BinanceBotWpf.Services
         /// Установить менеджер WebSocket для проверки актуальности цен.
         /// Если цена для символа протухла (> MaxPriceAgeSeconds), защитные действия пропускаются.
         /// </summary>
-        public void SetWebSocketManager (WebSocketPriceManager wsManager)
+        public void SetWebSocketManager(WebSocketPriceManager wsManager)
         {
             _wsManager = wsManager;
         }
@@ -221,8 +221,8 @@ namespace BinanceBotWpf.Services
         }
 
         // ✅ Счётчики ошибок добавлены как поля класса:
-         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _ocoFailCount = new();
-         private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _ocoNextRetry = new();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, int> _ocoFailCount = new ();
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _ocoNextRetry = new ();
 
         private async Task UpdateOcoOrder(string symbol, OpenPosition pos)
         {

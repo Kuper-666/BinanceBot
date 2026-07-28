@@ -11,8 +11,8 @@ namespace BinanceBotWpf.Risk
         bool CanTrade { get; }
         bool IsKillSwitchActive { get; }
 
-        (bool Allowed, string Reason) CanOpenPosition (int currentOpenPositions, decimal orderValueUsdc, decimal currentTotalExposure = 0, decimal tradePnL = 0, decimal currentSymbolExposure = 0);
-        void RecordTrade (decimal pnlUsdc);
-        bool IsDailyLossKillSwitchTriggered ();
+        (bool Allowed, string Reason) CanOpenPosition(int currentOpenPositions, decimal orderValueUsdc, decimal currentTotalExposure = 0, decimal tradePnL = 0, decimal currentSymbolExposure = 0);
+        void RecordTrade(decimal pnlUsdc);
+        bool IsDailyLossKillSwitchTriggered();
     }
 }

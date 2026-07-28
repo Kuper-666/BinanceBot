@@ -5,7 +5,7 @@ namespace BinanceBotWpf.Exchange
 {
     public interface IKlineProvider
     {
-        Task<List<BinanceKline>> GetKlinesAsync (string symbol, string interval, int limit);
-        bool HasRealTimeData (string symbol, string interval);
+        Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit);
+        bool HasRealTimeData(string symbol, string interval);
     }
 }

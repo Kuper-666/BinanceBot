@@ -1,9 +1,9 @@
+using BinanceBotWpf.Models;
+using BinanceBotWpf.Services.Strategies;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
-using BinanceBotWpf.Services.Strategies;
 
 namespace BinanceBotWpf.Services
 {
@@ -134,23 +134,23 @@ namespace BinanceBotWpf.Services
                         pos.HighestPriceSinceOpen = candleHigh;
 
                     // Trailing stop: SL растёт с ценой
-                    decimal trailingSL = pos.HighestPriceSinceOpen * (1 - TrailingStopPercent);
+                    decimal trailingSL = pos.HighestPriceSinceOpen * ( 1 - TrailingStopPercent );
                     decimal currentSL = Math.Max (stopLossPercent > 0
-                        ? pos.EntryPrice * (1 - stopLossPercent)
+                        ? pos.EntryPrice * ( 1 - stopLossPercent )
                         : 0, trailingSL);
 
                     // Partial close: при +5% профита закрываем 50%, SL в безубыток
-                    if (!pos.PartialClosed && candleHigh >= pos.EntryPrice * (1 + PartialCloseProfitPercent))
+                    if (!pos.PartialClosed && candleHigh >= pos.EntryPrice * ( 1 + PartialCloseProfitPercent ))
                     {
                         decimal closeQty = RoundToStep (pos.Quantity * PartialCloseQtyPercent, 0.00001m);
                         if (closeQty > 0 && closeQty < pos.Quantity)
                         {
-                            decimal exitPrice = ApplySlippage (pos.EntryPrice * (1 + PartialCloseProfitPercent), isBuy: false);
+                            decimal exitPrice = ApplySlippage (pos.EntryPrice * ( 1 + PartialCloseProfitPercent ), isBuy: false);
                             decimal partialProceeds = closeQty * exitPrice;
                             decimal partialFee = partialProceeds * FeePercent;
                             capital += partialProceeds - partialFee;
 
-                            decimal pnl = (exitPrice - pos.EntryPrice) / pos.EntryPrice;
+                            decimal pnl = ( exitPrice - pos.EntryPrice ) / pos.EntryPrice;
                             if (pnl > 0.0001m) { winningTrades++; totalGrossProfit += partialProceeds * pnl; }
                             else if (pnl < -0.0001m) { losingTrades++; totalGrossLoss += Math.Abs (partialProceeds * pnl); }
                             else breakEvenTrades++;
@@ -163,8 +163,8 @@ namespace BinanceBotWpf.Services
 
                     // Проверка закрытия по SL/TP/Sell signal/MaxHoldTime
                     bool stopHit = candleLow <= currentSL;
-                    bool takeHit = candleHigh >= pos.EntryPrice * (1 + takeProfitPercent);
-                    bool maxHold = (candleTime - pos.OpenTime).TotalHours >= MaxHoldTimeHours;
+                    bool takeHit = candleHigh >= pos.EntryPrice * ( 1 + takeProfitPercent );
+                    bool maxHold = ( candleTime - pos.OpenTime ).TotalHours >= MaxHoldTimeHours;
 
                     if (sellSignal || stopHit || takeHit || maxHold)
                     {
@@ -172,7 +172,7 @@ namespace BinanceBotWpf.Services
                         if (stopHit && !takeHit)
                             exitPrice = ApplySlippage (currentSL, isBuy: false);
                         else if (takeHit)
-                            exitPrice = ApplySlippage (pos.EntryPrice * (1 + takeProfitPercent), isBuy: false);
+                            exitPrice = ApplySlippage (pos.EntryPrice * ( 1 + takeProfitPercent ), isBuy: false);
                         else
                             exitPrice = ApplySlippage (candleClose, isBuy: false);
 
@@ -180,7 +180,7 @@ namespace BinanceBotWpf.Services
                         decimal fee = proceeds * FeePercent;
                         capital += proceeds - fee;
 
-                        decimal tradePnl = (exitPrice - pos.EntryPrice) / pos.EntryPrice;
+                        decimal tradePnl = ( exitPrice - pos.EntryPrice ) / pos.EntryPrice;
                         if (tradePnl > 0.0001m)
                         {
                             winningTrades++;
@@ -218,7 +218,7 @@ namespace BinanceBotWpf.Services
                         {
                             decimal cost = qty * entryPrice;
                             decimal fee = cost * FeePercent;
-                            capital -= (cost + fee);
+                            capital -= ( cost + fee );
 
                             pos = new SimPosition
                             {
@@ -239,7 +239,7 @@ namespace BinanceBotWpf.Services
                     ? capital + pos.Quantity * candleClose
                     : capital;
                 if (currentEquity > peakCapital) peakCapital = currentEquity;
-                decimal dd = (peakCapital - currentEquity) / peakCapital * 100;
+                decimal dd = ( peakCapital - currentEquity ) / peakCapital * 100;
                 if (dd > maxDrawdown) maxDrawdown = dd;
 
                 equityCurve.Add (currentEquity);
@@ -253,20 +253,20 @@ namespace BinanceBotWpf.Services
                 decimal fee = proceeds * FeePercent;
                 capital += proceeds - fee;
 
-                decimal tradePnl = (exitPrice - pos.EntryPrice) / pos.EntryPrice;
+                decimal tradePnl = ( exitPrice - pos.EntryPrice ) / pos.EntryPrice;
                 if (tradePnl > 0.0001m) { winningTrades++; totalGrossProfit += proceeds * tradePnl; }
                 else if (tradePnl < -0.0001m) { losingTrades++; totalGrossLoss += Math.Abs (proceeds * tradePnl); }
                 else breakEvenTrades++;
             }
 
-            decimal totalReturn = (capital - initialCapital) / initialCapital * 100;
+            decimal totalReturn = ( capital - initialCapital ) / initialCapital * 100;
             int totalTrades = winningTrades + losingTrades + breakEvenTrades;
             decimal winRate = totalTrades > 0 ? (decimal)winningTrades / totalTrades * 100 : 0;
 
             decimal sharpeRatio = CalculateSharpe (equityCurve, SharpeAnnualization);
             decimal profitFactor = totalGrossLoss > 0 && totalGrossProfit > 0
                 ? totalGrossProfit / totalGrossLoss
-                : (totalGrossProfit > 0 ? 999m : 0);
+                : ( totalGrossProfit > 0 ? 999m : 0 );
 
             return new BacktestResult
             {
@@ -333,23 +333,23 @@ namespace BinanceBotWpf.Services
                     if (candleHigh > pos.HighestPriceSinceOpen)
                         pos.HighestPriceSinceOpen = candleHigh;
 
-                    decimal trailingSL = pos.HighestPriceSinceOpen * (1 - TrailingStopPercent);
+                    decimal trailingSL = pos.HighestPriceSinceOpen * ( 1 - TrailingStopPercent );
                     decimal currentSL = Math.Max (
-                        stopLossPercent > 0 ? pos.EntryPrice * (1 - stopLossPercent) : 0,
+                        stopLossPercent > 0 ? pos.EntryPrice * ( 1 - stopLossPercent ) : 0,
                         trailingSL);
 
                     // Partial close
-                    if (!pos.PartialClosed && candleHigh >= pos.EntryPrice * (1 + PartialCloseProfitPercent))
+                    if (!pos.PartialClosed && candleHigh >= pos.EntryPrice * ( 1 + PartialCloseProfitPercent ))
                     {
                         decimal closeQty = RoundToStep (pos.Quantity * PartialCloseQtyPercent, 0.00001m);
                         if (closeQty > 0 && closeQty < pos.Quantity)
                         {
-                            decimal exitPrice = ApplySlippage (pos.EntryPrice * (1 + PartialCloseProfitPercent), isBuy: false);
+                            decimal exitPrice = ApplySlippage (pos.EntryPrice * ( 1 + PartialCloseProfitPercent ), isBuy: false);
                             decimal partialProceeds = closeQty * exitPrice;
                             decimal partialFee = partialProceeds * FeePercent;
                             capital += partialProceeds - partialFee;
 
-                            decimal pnl = (exitPrice - pos.EntryPrice) / pos.EntryPrice;
+                            decimal pnl = ( exitPrice - pos.EntryPrice ) / pos.EntryPrice;
                             if (pnl > 0.0001m) { winningTrades++; totalGrossProfit += partialProceeds * pnl; }
                             else if (pnl < -0.0001m) { losingTrades++; totalGrossLoss += Math.Abs (partialProceeds * pnl); }
                             else breakEvenTrades++;
@@ -361,8 +361,8 @@ namespace BinanceBotWpf.Services
                     }
 
                     bool stopHit = candleLow <= currentSL;
-                    bool takeHit = candleHigh >= pos.EntryPrice * (1 + takeProfitPercent);
-                    bool maxHold = (candleTime - pos.OpenTime).TotalHours >= MaxHoldTimeHours;
+                    bool takeHit = candleHigh >= pos.EntryPrice * ( 1 + takeProfitPercent );
+                    bool maxHold = ( candleTime - pos.OpenTime ).TotalHours >= MaxHoldTimeHours;
 
                     if (analysis.Action == TradeAction.Sell || stopHit || takeHit || maxHold)
                     {
@@ -370,7 +370,7 @@ namespace BinanceBotWpf.Services
                         if (stopHit && !takeHit)
                             exitPrice = ApplySlippage (currentSL, isBuy: false);
                         else if (takeHit)
-                            exitPrice = ApplySlippage (pos.EntryPrice * (1 + takeProfitPercent), isBuy: false);
+                            exitPrice = ApplySlippage (pos.EntryPrice * ( 1 + takeProfitPercent ), isBuy: false);
                         else
                             exitPrice = ApplySlippage (candleClose, isBuy: false);
 
@@ -378,7 +378,7 @@ namespace BinanceBotWpf.Services
                         decimal fee = proceeds * FeePercent;
                         capital += proceeds - fee;
 
-                        decimal tradePnl = (exitPrice - pos.EntryPrice) / pos.EntryPrice;
+                        decimal tradePnl = ( exitPrice - pos.EntryPrice ) / pos.EntryPrice;
                         if (tradePnl > 0.0001m) { winningTrades++; totalGrossProfit += proceeds * tradePnl; }
                         else if (tradePnl < -0.0001m) { losingTrades++; totalGrossLoss += Math.Abs (proceeds * tradePnl); }
                         else breakEvenTrades++;
@@ -401,7 +401,7 @@ namespace BinanceBotWpf.Services
                         {
                             decimal cost = qty * entryPrice;
                             decimal fee = cost * FeePercent;
-                            capital -= (cost + fee);
+                            capital -= ( cost + fee );
 
                             pos = new SimPosition
                             {
@@ -422,7 +422,7 @@ namespace BinanceBotWpf.Services
                     ? capital + pos.Quantity * candleClose
                     : capital;
                 if (currentEquity > peakCapital) peakCapital = currentEquity;
-                decimal dd = (peakCapital - currentEquity) / peakCapital * 100;
+                decimal dd = ( peakCapital - currentEquity ) / peakCapital * 100;
                 if (dd > maxDrawdown) maxDrawdown = dd;
 
                 equityCurve.Add (currentEquity);
@@ -436,20 +436,20 @@ namespace BinanceBotWpf.Services
                 decimal fee = proceeds * FeePercent;
                 capital += proceeds - fee;
 
-                decimal tradePnl = (exitPrice - pos.EntryPrice) / pos.EntryPrice;
+                decimal tradePnl = ( exitPrice - pos.EntryPrice ) / pos.EntryPrice;
                 if (tradePnl > 0.0001m) { winningTrades++; totalGrossProfit += proceeds * tradePnl; }
                 else if (tradePnl < -0.0001m) { losingTrades++; totalGrossLoss += Math.Abs (proceeds * tradePnl); }
                 else breakEvenTrades++;
             }
 
-            decimal totalReturn = (capital - initialCapital) / initialCapital * 100;
+            decimal totalReturn = ( capital - initialCapital ) / initialCapital * 100;
             int totalTrades = winningTrades + losingTrades + breakEvenTrades;
             decimal winRate = totalTrades > 0 ? (decimal)winningTrades / totalTrades * 100 : 0;
 
             decimal sharpeRatio = CalculateSharpe (equityCurve, SharpeAnnualization);
             decimal profitFactor = totalGrossLoss > 0 && totalGrossProfit > 0
                 ? totalGrossProfit / totalGrossLoss
-                : (totalGrossProfit > 0 ? 999m : 0);
+                : ( totalGrossProfit > 0 ? 999m : 0 );
 
             return new BacktestResult
             {
@@ -523,18 +523,18 @@ namespace BinanceBotWpf.Services
 
         // ─── Вспомогательные методы ───
 
-        private static decimal ApplySlippage (decimal price, bool isBuy)
+        private static decimal ApplySlippage(decimal price, bool isBuy)
         {
-            return isBuy ? price * (1 + SlippagePercent) : price * (1 - SlippagePercent);
+            return isBuy ? price * ( 1 + SlippagePercent ) : price * ( 1 - SlippagePercent );
         }
 
-        private static decimal RoundToStep (decimal qty, decimal stepSize)
+        private static decimal RoundToStep(decimal qty, decimal stepSize)
         {
             if (stepSize <= 0) return qty;
             return Math.Floor (qty / stepSize) * stepSize;
         }
 
-        private static bool CanTrade (
+        private static bool CanTrade(
             string symbol, DateTime candleTime,
             Dictionary<string, DateTime> lastTradeTimes,
             List<DateTime> recentTradeTimes)
@@ -552,7 +552,7 @@ namespace BinanceBotWpf.Services
             return true;
         }
 
-        private static void TrackCooldown (
+        private static void TrackCooldown(
             string symbol, DateTime candleTime,
             Dictionary<string, DateTime> lastTradeTimes,
             List<DateTime> recentTradeTimes)
@@ -561,23 +561,23 @@ namespace BinanceBotWpf.Services
             recentTradeTimes.Add (candleTime);
         }
 
-        private static decimal CalculateSharpe (List<decimal> equityCurve, int annualizationFactor)
+        private static decimal CalculateSharpe(List<decimal> equityCurve, int annualizationFactor)
         {
             if (equityCurve.Count < 2) return 0;
             var returns = new List<decimal> ();
             for (int i = 1; i < equityCurve.Count; i++)
             {
                 if (equityCurve[i - 1] != 0)
-                    returns.Add ((equityCurve[i] - equityCurve[i - 1]) / equityCurve[i - 1]);
+                    returns.Add (( equityCurve[i] - equityCurve[i - 1] ) / equityCurve[i - 1]);
             }
             if (returns.Count == 0) return 0;
             decimal avgReturn = returns.Average ();
-            decimal sumSq = returns.Select (v => (v - avgReturn) * (v - avgReturn)).Sum ();
-            decimal stdDev = (decimal)Math.Sqrt ((double)(sumSq / returns.Count));
+            decimal sumSq = returns.Select (v => ( v - avgReturn ) * ( v - avgReturn )).Sum ();
+            decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / returns.Count ));
             return stdDev > 0 ? avgReturn / stdDev * (decimal)Math.Sqrt (annualizationFactor) : 0;
         }
 
-        private List<decimal> CalculateSmaList (List<decimal> data, int period)
+        private List<decimal> CalculateSmaList(List<decimal> data, int period)
         {
             var result = new List<decimal> (data.Count);
             decimal sum = 0;
@@ -598,7 +598,7 @@ namespace BinanceBotWpf.Services
             return result;
         }
 
-        private List<decimal> CalculateRsiList (List<decimal> closes, int period)
+        private List<decimal> CalculateRsiList(List<decimal> closes, int period)
         {
             var rsiValues = TechnicalAnalysis.RSI (closes, period);
             return rsiValues.Select (v => v ?? 50).ToList ();

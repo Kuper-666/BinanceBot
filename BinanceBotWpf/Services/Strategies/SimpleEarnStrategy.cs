@@ -1,7 +1,7 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services.Strategies
 {

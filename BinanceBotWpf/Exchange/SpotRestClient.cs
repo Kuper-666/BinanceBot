@@ -1,4 +1,7 @@
+using BinanceBotWpf.Models;
+using BinanceBotWpf.Services;
 using Newtonsoft.Json.Linq;
+using Polly;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -10,10 +13,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-
-using BinanceBotWpf.Models;
-using BinanceBotWpf.Services;
-using Polly;
 
 namespace BinanceBotWpf.Exchange
 {
@@ -46,14 +45,14 @@ namespace BinanceBotWpf.Exchange
         private void Log(string message) => OnLogGenerated?.Invoke (message);
 
         private static string TruncateLog(string s, int maxLen = 200) =>
-            string.IsNullOrEmpty (s) ? "" : (s.Length <= maxLen ? s : s.Substring (0, maxLen) + "...");
+            string.IsNullOrEmpty (s) ? "" : ( s.Length <= maxLen ? s : s.Substring (0, maxLen) + "..." );
 
-        private Uri MakeUri (string path)
+        private Uri MakeUri(string path)
         {
             return new Uri (_httpClient.BaseAddress, path);
         }
 
-        private static string NormalizeSymbol (string symbol)
+        private static string NormalizeSymbol(string symbol)
         {
             return symbol?.Trim ().ToUpperInvariant () ?? string.Empty;
         }
@@ -78,18 +77,18 @@ namespace BinanceBotWpf.Exchange
             {
                 ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) =>
                 {
-                    #if DEBUG
+#if DEBUG
                     if (sslPolicyErrors != System.Net.Security.SslPolicyErrors.None)
                     {
-                        Log($"⚠️ SSL Warning (DEBUG): {sslPolicyErrors}");
+                        Log ($"⚠️ SSL Warning (DEBUG): {sslPolicyErrors}");
                     }
                     return true;
-                    #else
+#else
                     if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
                         return true;
                     Log($"⚠️ SSL Error: {sslPolicyErrors}");
                     return false;
-                    #endif
+#endif
                 },
                 AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
             };
@@ -107,7 +106,7 @@ namespace BinanceBotWpf.Exchange
         private DateTime _lastSyncTime = DateTime.MinValue;
         private readonly SemaphoreSlim _syncLock = new (1, 1);
 
-        private async Task EnsureTimeSyncedAsync ()
+        private async Task EnsureTimeSyncedAsync()
         {
             if (( DateTime.UtcNow - _lastSyncTime ).TotalMinutes < 5) return;
             await _syncLock.WaitAsync ();
@@ -120,7 +119,7 @@ namespace BinanceBotWpf.Exchange
             finally { _syncLock.Release (); }
         }
 
-        private async Task ResyncAndRetryAsync ()
+        private async Task ResyncAndRetryAsync()
         {
             Log ("🔄 Пересинхронизация времени из-за -1021 ошибки...");
             await _syncLock.WaitAsync ();
@@ -200,7 +199,7 @@ namespace BinanceBotWpf.Exchange
                 }, context);
         }
 
-        private HttpRequestMessage CloneRequest (HttpRequestMessage original, string body)
+        private HttpRequestMessage CloneRequest(HttpRequestMessage original, string body)
         {
             var clone = new HttpRequestMessage (original.Method, original.RequestUri);
             if (body != null)
@@ -643,7 +642,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             _rateLimiter.Dispose ();
             _throttleLock.Dispose ();
@@ -681,7 +680,7 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit = 500)
         {
-            return await GetKlinesAsync(symbol, interval, limit, endTime: null);
+            return await GetKlinesAsync (symbol, interval, limit, endTime: null);
         }
 
         public async Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit, DateTime? endTime)
@@ -781,16 +780,16 @@ namespace BinanceBotWpf.Exchange
                                    "  • IP адрес разрешён в настройках API (IP Whitelist)\n" +
                                    "  • Подписи запросов генерируются корректно\n" +
                                    "  • Часовые ограничения (US market hours, если торгуете акциями)";
-                        
+
                         case -2010:
                             return $"INSUFFICIENT BALANCE ({code}): {msg}";
-                        
+
                         case -1013:
                             return $"INVALID QUANTITY ({code}): {msg}\n💡 Количество не соответствует LOT_SIZE фильтру";
-                        
+
                         case -2016:
                             return $"NO TRADING WINDOW ({code}): {msg}\n💡 Рынок закрыт или есть ограничения на торговлю";
-                        
+
                         default:
                             return $"Binance API Error ({code}): {msg}";
                     }
@@ -1129,7 +1128,7 @@ namespace BinanceBotWpf.Exchange
                     string json = await response.Content.ReadAsStringAsync ();
                     _exchangeInfo = JObject.Parse (json);
                     _exchangeInfoExpiry = DateTime.UtcNow.AddHours (24);
-                    var symbols = _exchangeInfo ["symbols"];
+                    var symbols = _exchangeInfo["symbols"];
                     Log ($"📊 Spot exchangeInfo: {symbols?.Count () ?? 0} символов загружено");
                     return _exchangeInfo;
                 }

@@ -4,7 +4,7 @@ using System.Linq;
 
 namespace BinanceBotWpf.Models
 {
-    public class ImprovedStrategy
+    public static class ImprovedStrategy
     {
         /// <summary>
         /// Комбинированный сигнал на основе RSI, Bollinger Bands, MACD и фильтра тренда.

@@ -30,7 +30,7 @@ namespace BinanceBotWpf.Services
             _minSpreadPercent = minSpreadPercent;
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             _http.Dispose ();
         }
@@ -51,7 +51,7 @@ namespace BinanceBotWpf.Services
                         decimal p2pSell = await GetP2PAveragePriceAsync (asset, "SELL");
                         if (p2pSell <= 0) continue;
 
-                        decimal spread = ((p2pSell - spotPrice) / spotPrice) * 100;
+                        decimal spread = ( ( p2pSell - spotPrice ) / spotPrice ) * 100;
                         if (Math.Abs (spread) >= _minSpreadPercent)
                         {
                             var opp = new P2PArbitrageOpportunity

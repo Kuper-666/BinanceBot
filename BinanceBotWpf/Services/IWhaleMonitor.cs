@@ -6,6 +6,6 @@ namespace BinanceBotWpf.Services
     public interface IWhaleMonitor : IDisposable
     {
         event Action<WhaleAlert> OnWhaleDetected;
-        Task StartAsync (string[] symbols);
+        Task StartAsync(string[] symbols);
     }
 }

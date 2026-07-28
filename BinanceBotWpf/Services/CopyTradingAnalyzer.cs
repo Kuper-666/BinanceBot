@@ -32,7 +32,7 @@ namespace BinanceBotWpf.Services
             _logger = logger;
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             _http.Dispose ();
         }

@@ -1,11 +1,11 @@
+using BinanceBotWpf.Models;
+using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
-using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
 {
@@ -118,7 +118,7 @@ namespace BinanceBotWpf.Services
                                         // Средняя доходность по парам (а не сумма — иначе 5 пар искусственно завышают результат)
                                         decimal avgReturn = perPairResults.Average (r => r.TotalReturn);
                                         decimal maxDrawdown = perPairResults.Max (r => r.MaxDrawdown);
-                                        decimal winRate = totalTrades > 0 ? (decimal) totalWins / totalTrades * 100 : 0;
+                                        decimal winRate = totalTrades > 0 ? (decimal)totalWins / totalTrades * 100 : 0;
 
                                         decimal avgSharpe = perPairResults.Average (r => r.SharpeRatio);
                                         decimal avgProfitFactor = perPairResults.Average (r => r.ProfitFactor);

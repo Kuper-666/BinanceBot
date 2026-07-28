@@ -14,12 +14,12 @@ namespace BinanceBotWpf.Services
 
     public static class MarketSessionService
     {
-        public static MarketSession GetCurrentSession ()
+        public static MarketSession GetCurrentSession()
         {
             return GetCurrentSession (DateTime.UtcNow);
         }
 
-        public static MarketSession GetCurrentSession (DateTime utcNow)
+        public static MarketSession GetCurrentSession(DateTime utcNow)
         {
             if (utcNow.DayOfWeek == DayOfWeek.Saturday || utcNow.DayOfWeek == DayOfWeek.Sunday)
             {
@@ -44,7 +44,7 @@ namespace BinanceBotWpf.Services
             return MarketSession.OffHours;
         }
 
-        public static string GetSessionLabel (MarketSession session)
+        public static string GetSessionLabel(MarketSession session)
         {
             return session switch
             {
@@ -58,24 +58,24 @@ namespace BinanceBotWpf.Services
             };
         }
 
-        public static string GetSessionLabel ()
+        public static string GetSessionLabel()
         {
             return GetSessionLabel (GetCurrentSession ());
         }
 
-        public static bool IsHighVolumeSession (MarketSession session)
+        public static bool IsHighVolumeSession(MarketSession session)
         {
             return session == MarketSession.EuropeUsOverlap
                 || session == MarketSession.Europe
                 || session == MarketSession.Us;
         }
 
-        public static bool IsHighVolumeSession ()
+        public static bool IsHighVolumeSession()
         {
             return IsHighVolumeSession (GetCurrentSession ());
         }
 
-        public static bool ShouldTrade (MarketSession session, bool restrictToEuUs = false)
+        public static bool ShouldTrade(MarketSession session, bool restrictToEuUs = false)
         {
             if (session == MarketSession.Weekend)
                 return false;

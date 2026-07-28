@@ -1,6 +1,6 @@
+using BinanceBotWpf.Services;
 using System;
 using System.IO;
-using BinanceBotWpf.Services;
 using Xunit;
 
 namespace BinanceBotWpf.Tests
@@ -9,18 +9,18 @@ namespace BinanceBotWpf.Tests
     {
         private readonly string _testDir;
 
-        public FileLoggerTests ()
+        public FileLoggerTests()
         {
             _testDir = Path.Combine (Path.GetTempPath (), $"FileLoggerTest_{Guid.NewGuid ():N}");
             Directory.CreateDirectory (_testDir);
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             try { Directory.Delete (_testDir, true); } catch { }
         }
 
-        private string ReadLogFile ()
+        private string ReadLogFile()
         {
             string[] files = Directory.GetFiles (_testDir, "bot_*.log");
             Assert.True (files.Length > 0, "No log file created");
@@ -28,7 +28,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Log_CreatesLogFile ()
+        public void Log_CreatesLogFile()
         {
             var logger = new FileLogger (_testDir);
             logger.Error ("Test", "Hello");
@@ -39,7 +39,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Log_WritesContentToFile ()
+        public void Log_WritesContentToFile()
         {
             var logger = new FileLogger (_testDir);
             logger.Error ("Test", "Message123");
@@ -52,7 +52,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Log_WritesTimestamp ()
+        public void Log_WritesTimestamp()
         {
             var logger = new FileLogger (_testDir);
             logger.Error ("Src", "Warning");
@@ -63,7 +63,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Log_Error_WritesErrorLevel ()
+        public void Log_Error_WritesErrorLevel()
         {
             var logger = new FileLogger (_testDir);
             logger.Error ("Src", "Error occurred");
@@ -74,7 +74,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Log_MultipleCalls_AllWritten ()
+        public void Log_MultipleCalls_AllWritten()
         {
             var logger = new FileLogger (_testDir);
             logger.Error ("A", "First");
@@ -89,7 +89,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Log_InfoAndWarn_NotWritten ()
+        public void Log_InfoAndWarn_NotWritten()
         {
             var logger = new FileLogger (_testDir);
             logger.Info ("Test", "info message");
@@ -104,7 +104,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Dispose_CanBeCalledMultipleTimes ()
+        public void Dispose_CanBeCalledMultipleTimes()
         {
             var logger = new FileLogger (_testDir);
             logger.Error ("Test", "data");
@@ -113,7 +113,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Log_AfterDispose_DoesNotThrow ()
+        public void Log_AfterDispose_DoesNotThrow()
         {
             var logger = new FileLogger (_testDir);
             logger.Dispose ();

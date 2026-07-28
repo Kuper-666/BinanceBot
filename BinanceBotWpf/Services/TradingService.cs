@@ -1,18 +1,18 @@
+using BinanceBotWpf.Exchange;
+using BinanceBotWpf.Models;
+using BinanceBotWpf.Risk;
+using BinanceBotWpf.Services.Strategies;
+using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
-using System.Net.Http;
 using System.Linq;
+using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
-using BinanceBotWpf.Exchange;
-using BinanceBotWpf.Risk;
-using BinanceBotWpf.Services.Strategies;
-using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
 {
@@ -90,7 +90,7 @@ namespace BinanceBotWpf.Services
         private readonly TimeSpan CircuitBreakerCooldown = TimeSpan.FromMinutes (5);
 
         // TradingService.cs, конструктор — все зависимости через DI:
-        public TradingService (
+        public TradingService(
             IBinanceClient client,
             IWalletManager wallet,
             IEarnManager earn,
@@ -149,15 +149,16 @@ namespace BinanceBotWpf.Services
             _backgroundLoopManager = new BackgroundLoopManager (_client, _wallet, _earnStrategy, _fearGreedProvider);
 
             // State persistence
-            string dataDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Data");
-            _statePersistence = new StatePersistence(dataDir);
+            string dataDir = Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data");
+            _statePersistence = new StatePersistence (dataDir);
         }
 
         private bool _loggerSet = false;
 
-        public async Task SetLoggerAsync(Action<string> logger)
+        public Task SetLoggerAsync(Action<string> logger)
         {
-            if (_loggerSet) return;
+            if (_loggerSet)
+                return Task.CompletedTask;
             _loggerSet = true;
 
             ServiceLogger.Instance.SetRootLogger (logger);
@@ -170,7 +171,7 @@ namespace BinanceBotWpf.Services
             if (_futuresClient is FuturesRestClient frc)
                 frc.OnLogGenerated += logger;
 
-            _strategy.SetMlManager((MlModelManager)_mlManager);
+            _strategy.SetMlManager ((MlModelManager)_mlManager);
 
             // ═══════ Золотая архитектура: 3 эшелона ИИ ═══════
             try
@@ -190,21 +191,21 @@ namespace BinanceBotWpf.Services
 
                 var adaptiveAgent = new AdaptiveAgent (logger, slMult, periodMult);
                 _strategy.SetAdaptiveAgent (adaptiveAgent, adaptiveEnabled);
-                _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {(adaptiveEnabled ? "включён" : "выключен")} SL×{slMult} Period×{periodMult}");
+                _ui?.AddLog ($"🔧 Эшелон 1 (AdaptiveAgent): {( adaptiveEnabled ? "включён" : "выключен" )} SL×{slMult} Period×{periodMult}");
 
                 var signalValidator = new SignalValidator (logger, volThresh, atrThresh, rsiLow, rsiHigh, minConfidence);
                 _strategy.SetSignalValidator (signalValidator, validatorEnabled);
-                _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {(validatorEnabled ? "включён" : "выключен")} Vol>{volThresh} ATR>{atrThresh} RSI {rsiLow}/{rsiHigh} conf>={minConfidence:P0}");
+                _ui?.AddLog ($"🔍 Эшелон 2 (SignalValidator): {( validatorEnabled ? "включён" : "выключен" )} Vol>{volThresh} ATR>{atrThresh} RSI {rsiLow}/{rsiHigh} conf>={minConfidence:P0}");
 
                 var newsSentinel = new NewsSentinel (logger);
                 _strategy.SetNewsSentinel (newsSentinel, newsEnabled);
-                _ui?.AddLog ($"📰 Эшелон 3 (NewsSentinel): {(newsEnabled ? "включён" : "выключен")}");
+                _ui?.AddLog ($"📰 Эшелон 3 (NewsSentinel): {( newsEnabled ? "включён" : "выключен" )}");
 
                 // Объёмный фильтр
                 bool requireVol = _tradingSettings?.RequireVolumeConfirmation ?? true;
                 decimal minVolRatio = _tradingSettings?.MinVolumeRatio ?? 0.8m;
                 _strategy.SetVolumeFilter (requireVol, minVolRatio);
-                _ui?.AddLog ($"📊 Объёмный фильтр: {(requireVol ? $"включён (мин. {minVolRatio}x)" : "выключен")}");
+                _ui?.AddLog ($"📊 Объёмный фильтр: {( requireVol ? $"включён (мин. {minVolRatio}x)" : "выключен" )}");
 
                 _newsFetcher = new NewsFetcher (SharedHttpClient.Instance, newsSentinel, logger);
                 _newsFetcher.Start ();
@@ -294,13 +295,13 @@ namespace BinanceBotWpf.Services
             try
             {
                 var httpClient = SharedHttpClient.Instance;
-                
+
                 _updateChecker = new UpdateChecker (httpClient, logger, notifyTelegram);
                 _updateChecker.OnNewVersionAvailable += (version, url) =>
                 {
                     _ui?.AddLog ($"🎉 Новая версия {version} доступна!");
                 };
-                
+
                 logger ("✅ Проверка обновлений инициализирована");
             }
             catch (Exception ex)
@@ -313,6 +314,7 @@ namespace BinanceBotWpf.Services
             {
                 _ui?.AddLog ($"🔔 {alert.Symbol} {alert.Direction} {alert.TargetPrice} сработал!");
             };
+            return Task.CompletedTask;
         }
 
         public async Task StartTradingAsync(MainWindowViewModel vm)
@@ -343,9 +345,9 @@ namespace BinanceBotWpf.Services
             }
 
             // Restore trading state from file
-            _statePersistence.Register(GetCurrentState, RestoreState);
-            _statePersistence.Restore();
-            _statePersistence.StartAutoSave();
+            _statePersistence.Register (GetCurrentState, RestoreState);
+            _statePersistence.Restore ();
+            _statePersistence.StartAutoSave ();
 
             _ = Task.Run (() => RunLoopWithRestart (BalanceLoop, "BalanceLoop"));
             _ = Task.Run (() => RunLoopWithRestart (TradingLoop, "TradingLoop"));
@@ -361,7 +363,7 @@ namespace BinanceBotWpf.Services
             StartProtectorLoop ();
         }
 
-        private void StartProtectorLoop ()
+        private void StartProtectorLoop()
         {
             if (_protectorLoopTask != null && !_protectorLoopTask.IsCompleted) return;
             _protectorCts = new CancellationTokenSource ();
@@ -417,7 +419,7 @@ namespace BinanceBotWpf.Services
             });
         }
 
-        private async Task RunLoopWithRestart (Func<Task> loop, string name)
+        private async Task RunLoopWithRestart(Func<Task> loop, string name)
         {
             while (_isRunning)
             {
@@ -480,7 +482,7 @@ namespace BinanceBotWpf.Services
 
         public decimal GetCurrentPriceForSymbol(string symbol) => GetCurrentPrice (symbol);
 
-        private bool IsInLossCooldown ()
+        private bool IsInLossCooldown()
         {
             int cooldownMinutes = _tradingSettings?.LossCooldownMinutes ?? 30;
             if (cooldownMinutes <= 0) return false;
@@ -491,13 +493,13 @@ namespace BinanceBotWpf.Services
             var lastTrade = trades[0];
             if (lastTrade.PnL >= 0) return false;
 
-            return (DateTime.UtcNow - lastTrade.CloseTime).TotalMinutes < cooldownMinutes;
+            return ( DateTime.UtcNow - lastTrade.CloseTime ).TotalMinutes < cooldownMinutes;
         }
 
         /// <summary>
         /// Capture current trading state for persistence.
         /// </summary>
-        private TradingState GetCurrentState ()
+        private TradingState GetCurrentState()
         {
             List<TradeLog> trades = _ui?.TradesHistory?.ToList () ?? new List<TradeLog> ();
             Dictionary<string, DateTime> lastBuyTime = _orderExecutor.GetLastBuyTimes ();
@@ -507,19 +509,19 @@ namespace BinanceBotWpf.Services
                 {
                     LastBuyTime = lastBuyTime,
                     RecentTradeTimes = recentTradeTimes,
-                TradesHistory = trades,
-                TotalPnL = _ui?.TotalPnL ?? 0,
-                WinRate = _ui?.WinRate ?? 0,
-                TotalTrades = _ui?.TotalTrades ?? 0,
-                WinningTrades = _ui?.WinningTrades ?? 0,
-                LosingTrades = _ui?.LosingTrades ?? 0,
-                BestPnL = _ui?.BestPnL ?? 0,
-                WorstPnL = _ui?.WorstPnL ?? 0,
-                PeakBalance = _ui?.PeakBalance ?? 0,
-                MaxDrawdown = _ui?.MaxDrawdown ?? 0,
-                TotalProfitSum = _ui?.TotalProfitSum ?? 0,
-                TotalLossSum = _ui?.TotalLossSum ?? 0,
-                EquityHistory = _ui?.GetBalanceHistory () ?? new List<Dictionary<string, object>> (),
+                    TradesHistory = trades,
+                    TotalPnL = _ui?.TotalPnL ?? 0,
+                    WinRate = _ui?.WinRate ?? 0,
+                    TotalTrades = _ui?.TotalTrades ?? 0,
+                    WinningTrades = _ui?.WinningTrades ?? 0,
+                    LosingTrades = _ui?.LosingTrades ?? 0,
+                    BestPnL = _ui?.BestPnL ?? 0,
+                    WorstPnL = _ui?.WorstPnL ?? 0,
+                    PeakBalance = _ui?.PeakBalance ?? 0,
+                    MaxDrawdown = _ui?.MaxDrawdown ?? 0,
+                    TotalProfitSum = _ui?.TotalProfitSum ?? 0,
+                    TotalLossSum = _ui?.TotalLossSum ?? 0,
+                    EquityHistory = _ui?.GetBalanceHistory () ?? new List<Dictionary<string, object>> (),
                 };
             }
         }
@@ -527,7 +529,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Restore trading state from saved snapshot.
         /// </summary>
-        private void RestoreState (TradingState state)
+        private void RestoreState(TradingState state)
         {
             if (state == null) return;
 
@@ -583,14 +585,14 @@ namespace BinanceBotWpf.Services
 
             // Инициализация WebSocket менеджера
             bool hasFuturesKeys = !string.IsNullOrEmpty (_config?.FuturesApiKey);
-            bool useFutures = hasFuturesKeys && (_ui?.FuturesEnabled == true || _tradingSettings?.FuturesEnabled == true);
+            bool useFutures = hasFuturesKeys && ( _ui?.FuturesEnabled == true || _tradingSettings?.FuturesEnabled == true );
             if (_webSocketManager != null)
             {
                 _webSocketManager.Dispose ();
             }
             _webSocketManager = new WebSocketPriceManager (msg => _ui?.AddLog (msg), useFutures);
             _pairManager.SetWebSocketManager (_webSocketManager);
-            _ui?.AddLog ($"🔌 WebSocket эндпоинт: {(useFutures ? "фьючерсы (fstream.binance.com)" : "спот (stream.binance.com)")}");
+            _ui?.AddLog ($"🔌 WebSocket эндпоинт: {( useFutures ? "фьючерсы (fstream.binance.com)" : "спот (stream.binance.com)" )}");
 
             await _wallet.UpdateBalance ();
             decimal initBal = _wallet.GetTotalBalance ("USDC");
@@ -679,7 +681,7 @@ namespace BinanceBotWpf.Services
                     _ui?.AddLog ($"⚠️ Ошибка инициализации фьючерсов: {ex.Message}");
                 }
             }
-            
+
             // Проверка обновлений версии на GitHub (не блокирует инициализацию)
             if (_updateChecker != null)
             {
@@ -701,7 +703,7 @@ namespace BinanceBotWpf.Services
 
                 _webhookServer = new WebhookServer (port, msg => _ui?.AddLog (msg));
                 _webhookServer.Start (async (source, body) => await _tradingViewHandler.HandleWebhookAsync (source, body));
-                _ui?.AddLog ($"📡 TradingView webhook: порт {port}, секрет {(_tradingSettings.TradingViewSecret?.Length > 0 ? "настроен" : "НЕТ")}");
+                _ui?.AddLog ($"📡 TradingView webhook: порт {port}, секрет {( _tradingSettings.TradingViewSecret?.Length > 0 ? "настроен" : "НЕТ" )}");
             }
 
             // Авто-запуск сетки с параметрами от ИИ (если включена)
@@ -740,7 +742,7 @@ namespace BinanceBotWpf.Services
         /// Загружает пары и индикаторы для отображения в таблице до старта торговли.
         /// Вызывается при запуске приложения, чтобы таблица не была пустой.
         /// </summary>
-        public async Task LoadPairsForDisplayAsync (MainWindowViewModel ui)
+        public async Task LoadPairsForDisplayAsync(MainWindowViewModel ui)
         {
             try
             {
@@ -839,7 +841,7 @@ namespace BinanceBotWpf.Services
         /// Если USDT=0 но USDC>0 — автоматически конвертирует USDC→USDT (futures→spot→trade→futures).
         /// Возвращает (asset, balance).
         /// </summary>
-        private async Task<(string asset, decimal balance)> GetFuturesStablecoinBalance ()
+        private async Task<(string asset, decimal balance)> GetFuturesStablecoinBalance()
         {
             decimal usdt = await _futuresClient.GetAccountBalanceAsync ("USDT");
             if (usdt > 0) return ("USDT", usdt);
@@ -956,7 +958,7 @@ namespace BinanceBotWpf.Services
         public BinanceClient GetBinanceClient() => _client;
         public TelegramAuthenticator GetAuthenticator() => _authenticator;
 
-        private async Task<List<BinanceKline>> GetKlinesCachedAsync (string symbol, string interval, int limit)
+        private async Task<List<BinanceKline>> GetKlinesCachedAsync(string symbol, string interval, int limit)
         {
             var cacheKey = (symbol, interval, limit);
             if (_klinesCache2.TryGetValue (cacheKey, out var cached) && DateTime.UtcNow < cached.Expiry)
@@ -1006,7 +1008,7 @@ namespace BinanceBotWpf.Services
 
                     // 0. Проверка новостей и макро-событий
                     if (_tradingSettings?.AvoidNewsTime == true
-                        && (_newsProvider?.HasRealApi == true || _macroCalendar?.HasRealApi == true))
+                        && ( _newsProvider?.HasRealApi == true || _macroCalendar?.HasRealApi == true ))
                     {
                         bool newsNear = await _newsProvider.IsEventNearAsync (30);
                         bool macroNear = await _macroCalendar.IsHighImpactEventNearAsync (60);
@@ -1061,7 +1063,7 @@ namespace BinanceBotWpf.Services
                         _strategy.EntryTimeframe = _ui.EntryTimeframe ?? "5m";
                     }
 
-                    while (_analysisResults.TryTake(out _)) { }
+                    while (_analysisResults.TryTake (out _)) { }
                     var analysisTasks = pairs.Select (async sym =>
                     {
                         await _analysisSemaphore.WaitAsync ();
@@ -1143,13 +1145,13 @@ namespace BinanceBotWpf.Services
                             {
                                 _ui?.AddLog ($"🔍 {sym}: Buy ЗАБЛОКИРОВАН — multi-TF подтверждение НЕ пройдено ({entryInterval})");
                             }
-                            else if (_positionManager.Count >= (_ui?.MaxConcurrentTrades ?? 3))
+                            else if (_positionManager.Count >= ( _ui?.MaxConcurrentTrades ?? 3 ))
                             {
                                 _ui?.AddLog ($"🔍 {sym}: Buy ЗАБЛОКИРОВАН — макс. позиций {_positionManager.Count}/{_ui?.MaxConcurrentTrades ?? 3}");
                             }
                         }
 
-                        if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+                        if (analysis.Action == TradeAction.Buy && !hasPosition && confirmed && _positionManager.Count < ( _ui?.MaxConcurrentTrades ?? 3 ))
                         {
                             // Расчёт реальной экспозиции открытых позиций (из кэша анализа)
                             decimal currentTotalExposure = 0;
@@ -1204,7 +1206,7 @@ namespace BinanceBotWpf.Services
                         }
 
                         // 6. Volume Breakout стратегия (если включена)
-                        if (_ui?.VolumeBreakoutEnabled == true && !hasPosition && _positionManager.Count < (_ui?.MaxConcurrentTrades ?? 3))
+                        if (_ui?.VolumeBreakoutEnabled == true && !hasPosition && _positionManager.Count < ( _ui?.MaxConcurrentTrades ?? 3 ))
                         {
                             var symKlines = await GetKlinesCachedAsync (sym, candleInterval, 100);
                             if (symKlines != null && _volumeBreakout.CheckVolumeBreakout (symKlines))
@@ -1277,7 +1279,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task SendTradeNotification (string message)
+        private async Task SendTradeNotification(string message)
         {
             try
             {
@@ -1312,9 +1314,9 @@ namespace BinanceBotWpf.Services
             string echelonStatus = "";
             if (_tradingSettings != null)
             {
-                echelonStatus = $"\n🧠 Эшелоны: AD={(_tradingSettings.AdaptiveAgentEnabled ? "✅" : "❌")} " +
-                    $"SV={(_tradingSettings.SignalValidatorEnabled ? "✅" : "❌")} " +
-                    $"NS={(_tradingSettings.NewsSentinelEnabled ? "✅" : "❌")}";
+                echelonStatus = $"\n🧠 Эшелоны: AD={( _tradingSettings.AdaptiveAgentEnabled ? "✅" : "❌" )} " +
+                    $"SV={( _tradingSettings.SignalValidatorEnabled ? "✅" : "❌" )} " +
+                    $"NS={( _tradingSettings.NewsSentinelEnabled ? "✅" : "❌" )}";
             }
 
             string posDetails = "";

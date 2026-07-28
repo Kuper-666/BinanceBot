@@ -1,5 +1,5 @@
-using System.Collections.Generic;
 using BinanceBotWpf.Models;
+using System.Collections.Generic;
 
 namespace BinanceBotWpf.Services.Strategies
 {
@@ -7,6 +7,6 @@ namespace BinanceBotWpf.Services.Strategies
     {
         decimal VolumeMultiplier { get; set; }
         decimal StopLossPercent { get; set; }
-        bool CheckVolumeBreakout (List<BinanceKline> klines);
+        bool CheckVolumeBreakout(List<BinanceKline> klines);
     }
 }

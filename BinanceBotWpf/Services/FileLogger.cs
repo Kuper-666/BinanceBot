@@ -12,7 +12,7 @@ namespace BinanceBotWpf.Services
         private DateTime _currentFileDate;
         private bool _disposed;
 
-        public FileLogger (string logDir = null)
+        public FileLogger(string logDir = null)
         {
             _logDir = logDir ?? Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Logs");
             if (!Directory.Exists (_logDir))
@@ -20,7 +20,7 @@ namespace BinanceBotWpf.Services
             RotateIfNeeded ();
         }
 
-        public void Log (string level, string source, string message)
+        public void Log(string level, string source, string message)
         {
             if (_disposed) return;
             if (level != "ERROR" && level != "CRIT") return;
@@ -37,11 +37,11 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public void Info (string source, string message) => Log ("INFO", source, message);
-        public void Warn (string source, string message) => Log ("WARN", source, message);
-        public void Error (string source, string message) => Log ("ERROR", source, message);
+        public void Info(string source, string message) => Log ("INFO", source, message);
+        public void Warn(string source, string message) => Log ("WARN", source, message);
+        public void Error(string source, string message) => Log ("ERROR", source, message);
 
-        private void RotateIfNeeded ()
+        private void RotateIfNeeded()
         {
             DateTime today = DateTime.UtcNow.Date;
             if (_writer != null && _currentFileDate == today) return;
@@ -55,7 +55,7 @@ namespace BinanceBotWpf.Services
             CleanupOldLogs ();
         }
 
-        private void CleanupOldLogs ()
+        private void CleanupOldLogs()
         {
             try
             {
@@ -71,7 +71,7 @@ namespace BinanceBotWpf.Services
             catch { }
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             if (_disposed) return;
             _disposed = true;

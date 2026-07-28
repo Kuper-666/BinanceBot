@@ -1,6 +1,6 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {
@@ -52,7 +52,7 @@ namespace BinanceBotWpf.Services
             var prediction = _mlManager != null
                 ? _mlManager.PredictRisk (fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv)
                 : (IsProfitable: true, Probability: 1.0f, RiskLevel: "Низкий риск");
-            int aiRiskLevel = prediction.RiskLevel == "Низкий риск" ? 1 : (prediction.RiskLevel == "Средний риск" ? 2 : 3);
+            int aiRiskLevel = prediction.RiskLevel == "Низкий риск" ? 1 : ( prediction.RiskLevel == "Средний риск" ? 2 : 3 );
 
             // 2. Волатильность市场的
             decimal volatility = bbWidth > 0 ? bbWidth : 0.05m;
@@ -79,7 +79,7 @@ namespace BinanceBotWpf.Services
 
             // R/R Ratio от ИИ: высокая уверенность → можно ставить больше
             result.RiskRewardRatio = Math.Clamp (
-                2.0m + (prob - 0.5m) * 4m, // 2.0 при 0.5, до 4.0 при 1.0
+                2.0m + ( prob - 0.5m ) * 4m, // 2.0 при 0.5, до 4.0 при 1.0
                 1.5m,
                 4.0m
             );
@@ -184,7 +184,7 @@ namespace BinanceBotWpf.Services
             // Диапазон сетки
             if (balance < 200)
             {
-                grid.RangePercent = volatility <= 0.03m ? 0.015m : (volatility <= 0.06m ? 0.025m : 0.035m);
+                grid.RangePercent = volatility <= 0.03m ? 0.015m : ( volatility <= 0.06m ? 0.025m : 0.035m );
             }
             else if (volatility <= 0.03m)
                 grid.RangePercent = 0.05m;
@@ -196,12 +196,12 @@ namespace BinanceBotWpf.Services
                 grid.RangePercent = 0.15m;
 
             // Количество уровней: динамически от баланса
-            int maxLevelsByFunds = Math.Max (1, (int)(investmentUsdc / (minNotional * 2)));
-            int minLevelsForGrid = balance < 100 ? 2 : (balance < 500 ? 5 : (balance < 1000 ? 10 : 15));
+            int maxLevelsByFunds = Math.Max (1, (int)( investmentUsdc / ( minNotional * 2 ) ));
+            int minLevelsForGrid = balance < 100 ? 2 : ( balance < 500 ? 5 : ( balance < 1000 ? 10 : 15 ) );
             grid.Levels = Math.Clamp (Math.Max (maxLevelsByFunds, minLevelsForGrid), 2, 20);
 
             // Если инвестиций не хватает — подтягиваем
-            decimal perLevel = investmentUsdc / (grid.Levels * 2);
+            decimal perLevel = investmentUsdc / ( grid.Levels * 2 );
             if (perLevel < minNotional)
             {
                 investmentUsdc = minNotional * 2 * grid.Levels;

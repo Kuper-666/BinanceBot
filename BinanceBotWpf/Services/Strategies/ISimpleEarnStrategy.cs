@@ -7,6 +7,6 @@ namespace BinanceBotWpf.Services.Strategies
         decimal MinBalanceForLock { get; set; }
         decimal LockPercent { get; set; }
         decimal ReservePercent { get; set; }
-        Task OptimizeEarnAsync ();
+        Task OptimizeEarnAsync();
     }
 }

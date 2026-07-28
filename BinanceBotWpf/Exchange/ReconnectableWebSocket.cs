@@ -16,13 +16,13 @@ namespace BinanceBotWpf.Exchange
         private ClientWebSocket _ws;
         private bool _disposed;
 
-        public ReconnectableWebSocket (string url, Action<string> logger)
+        public ReconnectableWebSocket(string url, Action<string> logger)
         {
             _url = url;
             _logger = logger;
         }
 
-        public async Task StartAsync (Func<ClientWebSocket, CancellationToken, Task> messageLoop)
+        public async Task StartAsync(Func<ClientWebSocket, CancellationToken, Task> messageLoop)
         {
             if (_disposed)
             {
@@ -56,7 +56,7 @@ namespace BinanceBotWpf.Exchange
                         string msg = ex.Message;
                         bool isNormalDisconnect = msg.Contains ("remote party closed") ||
                                                   msg.Contains ("Graceful") ||
-                                                  (ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely);
+                                                  ( ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely );
                         _logger?.Invoke (isNormalDisconnect
                             ? $"WebSocket: нормальное закрытие соединения"
                             : $"WebSocket ошибка: {msg}");
@@ -66,7 +66,7 @@ namespace BinanceBotWpf.Exchange
                         try
                         {
                             if (_ws != null &&
-                                (_ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived))
+                                ( _ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived ))
                             {
                                 using CancellationTokenSource closeCts = new CancellationTokenSource (TimeSpan.FromSeconds (5));
                                 await _ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "", closeCts.Token);
@@ -107,7 +107,7 @@ namespace BinanceBotWpf.Exchange
             await Task.CompletedTask;
         }
 
-        public async Task StopAsync ()
+        public async Task StopAsync()
         {
             if (_cts != null)
             {
@@ -115,7 +115,7 @@ namespace BinanceBotWpf.Exchange
             }
 
             if (_ws != null &&
-                (_ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived))
+                ( _ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived ))
             {
                 try
                 {
@@ -128,7 +128,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             if (_disposed)
             {
@@ -149,7 +149,7 @@ namespace BinanceBotWpf.Exchange
             try
             {
                 if (_ws != null &&
-                    (_ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived))
+                    ( _ws.State == WebSocketState.Open || _ws.State == WebSocketState.CloseReceived ))
                 {
                     _ = _ws.CloseAsync (WebSocketCloseStatus.NormalClosure, "", CancellationToken.None);
                 }
@@ -169,7 +169,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public static async Task<string> ReadFullMessageAsync (ClientWebSocket ws, CancellationToken cancellationToken)
+        public static async Task<string> ReadFullMessageAsync(ClientWebSocket ws, CancellationToken cancellationToken)
         {
             byte[] buffer = new byte[4096];
             WebSocketReceiveResult result = await ws.ReceiveAsync (new ArraySegment<byte> (buffer), cancellationToken);

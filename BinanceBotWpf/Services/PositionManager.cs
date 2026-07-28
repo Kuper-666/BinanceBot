@@ -20,15 +20,15 @@ namespace BinanceBotWpf.Services
         private readonly ConcurrentDictionary<string, OpenPosition> _positions = new ();
         private readonly SemaphoreSlim _fileSemaphore = new (1, 1);
         public bool IsBreakevenSet { get; set; } = false;
- 
+
         public IReadOnlyDictionary<string, OpenPosition> Positions => _positions;
- 
+
         public PositionManager(string positionsFilePath, Action<string> logger)
         {
             _positionsFilePath = positionsFilePath;
             _logger = logger;
         }
- 
+
         /// <summary>Загружает позиции из файла, проверяет балансы на споте и в Earn.</summary>
         public async Task LoadAsync(IBinanceClient client, Func<string, Task<decimal>> getPrice, Func<decimal, decimal> getStopLossPercent, Func<decimal, decimal> getTakeProfitPercent)
         {
@@ -38,7 +38,7 @@ namespace BinanceBotWpf.Services
                 string json = await File.ReadAllTextAsync (_positionsFilePath);
                 var saved = JsonSerializer.Deserialize<Dictionary<string, OpenPosition>> (json);
                 if (saved == null) return;
- 
+
                 var toRemove = new List<string> ();
                 foreach (var kv in saved)
                 {
@@ -50,14 +50,14 @@ namespace BinanceBotWpf.Services
                     if (earnPos != null)
                         earnBalance = decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                     decimal totalBalance = spotBalance + earnBalance;
- 
+
                     if (totalBalance < kv.Value.Quantity - 0.000001m)
                     {
                         _logger?.Invoke ($"⚠️ Позиция {kv.Key} удалена: недостаточно монет (баланс {totalBalance}, требуется {kv.Value.Quantity}).");
                         toRemove.Add (kv.Key);
                         continue;
                     }
- 
+
                     decimal currentPrice = await getPrice (kv.Key);
                     if (currentPrice > 0)
                     {
@@ -75,7 +75,7 @@ namespace BinanceBotWpf.Services
             }
             catch (Exception ex) { _logger?.Invoke ($"Ошибка загрузки позиций: {ex.Message}"); }
         }
- 
+
         public async Task SaveAsync()
         {
             await _fileSemaphore.WaitAsync ();
@@ -92,7 +92,7 @@ namespace BinanceBotWpf.Services
                 _fileSemaphore.Release ();
             }
         }
- 
+
         public bool TryGet(string symbol, out OpenPosition pos) => _positions.TryGetValue (symbol, out pos);
         public async Task AddOrUpdateAsync(string symbol, OpenPosition pos)
         {

@@ -1,5 +1,5 @@
-using System;
 using BinanceBotWpf.Exchange;
+using System;
 
 namespace BinanceBotWpf.Services
 {
@@ -8,7 +8,7 @@ namespace BinanceBotWpf.Services
     /// </summary>
     public class BinanceFuturesClient : FuturesRestClient
     {
-        public BinanceFuturesClient (string apiKey, string apiSecret)
+        public BinanceFuturesClient(string apiKey, string apiSecret)
             : base (apiKey, apiSecret)
         {
         }

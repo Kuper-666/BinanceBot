@@ -1,8 +1,8 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services.Strategies
 {
@@ -46,30 +46,30 @@ namespace BinanceBotWpf.Services.Strategies
 
         private MlModelManager _mlManager;
 
-        public void SetMlManager (MlModelManager mlManager)
+        public void SetMlManager(MlModelManager mlManager)
         {
             _mlManager = mlManager;
         }
 
-        public void SetAdaptiveAgent (AdaptiveAgent agent, bool enabled = true)
+        public void SetAdaptiveAgent(AdaptiveAgent agent, bool enabled = true)
         {
             _adaptiveAgent = agent;
             _adaptiveEnabled = enabled;
         }
 
-        public void SetSignalValidator (SignalValidator validator, bool enabled = true)
+        public void SetSignalValidator(SignalValidator validator, bool enabled = true)
         {
             _signalValidator = validator;
             _signalValidatorEnabled = enabled;
         }
 
-        public void SetNewsSentinel (NewsSentinel sentinel, bool enabled = true)
+        public void SetNewsSentinel(NewsSentinel sentinel, bool enabled = true)
         {
             _newsSentinel = sentinel;
             _newsSentinelEnabled = enabled;
         }
 
-        public void SetVolumeFilter (bool requireConfirmation, decimal minRatio)
+        public void SetVolumeFilter(bool requireConfirmation, decimal minRatio)
         {
             _requireVolumeConfirmation = requireConfirmation;
             _minVolumeRatio = minRatio;
@@ -79,7 +79,7 @@ namespace BinanceBotWpf.Services.Strategies
         /// Проверка новостного фона перед открытием позиции.
         /// Возвращает true, если торговля разрешена.
         /// </summary>
-        public bool CheckNewsBeforePosition (string symbol = null)
+        public bool CheckNewsBeforePosition(string symbol = null)
         {
             if (!_newsSentinelEnabled || _newsSentinel == null) return true;
 
@@ -102,7 +102,7 @@ namespace BinanceBotWpf.Services.Strategies
         /// Анализ пары и генерация сигнала с интеграцией 3 эшелонов ИИ
         /// </summary>
         public Task<(TradeAction Action, string Reason, Dictionary<string, decimal> Indicators)>
-            AnalyzeAsync (string symbol, List<BinanceKline> klines)
+            AnalyzeAsync(string symbol, List<BinanceKline> klines)
         {
             var result = (Action: TradeAction.Hold, Reason: "Нет сигнала", Indicators: new Dictionary<string, decimal> ());
 
@@ -134,7 +134,7 @@ namespace BinanceBotWpf.Services.Strategies
                     regime = adaptive.Regime;
 
                     result.Indicators["adaptiveFactor"] = adaptiveFactor;
-                    result.Indicators["adaptiveRegime"] = regime == "High Volatility" ? 2 : (regime == "Low Volatility" ? 0 : 1);
+                    result.Indicators["adaptiveRegime"] = regime == "High Volatility" ? 2 : ( regime == "Low Volatility" ? 0 : 1 );
                 }
 
                 // Адаптивные периоды LSMA/SMA
@@ -156,7 +156,7 @@ namespace BinanceBotWpf.Services.Strategies
                 var bb = TechnicalAnalysis.BollingerBands (closes, 20, 2);
                 decimal bbUpper = bb.Upper.LastOrDefault () ?? currentPrice;
                 decimal bbLower = bb.Lower.LastOrDefault () ?? currentPrice;
-                decimal bbWidth = (bbUpper - bbLower) / (currentPrice + 0.0001m);
+                decimal bbWidth = ( bbUpper - bbLower ) / ( currentPrice + 0.0001m );
 
                 // LSMA расчёт
                 var lsmaValues = TechnicalAnalysis.LSMA (closes, Math.Max (5, (int)Math.Round (20 * adaptiveLsmaMultiplier)));
@@ -189,7 +189,7 @@ namespace BinanceBotWpf.Services.Strategies
                     var riskPrediction = _mlManager.PredictRisk (fastSma, slowSma, rsi, volumeRatio, atr, macdHist, bbWidth, obv);
                     result.Indicators["aiProbability"] = (decimal)riskPrediction.Probability;
 
-                    decimal riskVal = riskPrediction.RiskLevel == "Низкий риск" ? 1 : (riskPrediction.RiskLevel == "Средний риск" ? 2 : 3);
+                    decimal riskVal = riskPrediction.RiskLevel == "Низкий риск" ? 1 : ( riskPrediction.RiskLevel == "Средний риск" ? 2 : 3 );
                     result.Indicators["aiRiskLevel"] = riskVal;
                 }
 
@@ -254,14 +254,14 @@ namespace BinanceBotWpf.Services.Strategies
                     bool bbOversold = currentPrice <= bbLower;
                     bool macdBullish = macdHist > 0 && macdHist > prevMacdHist;
                     bool rsiOversold = rsi < 30;
-                    int confirmCount = (bbOversold ? 1 : 0) + (macdBullish ? 1 : 0) + (rsiOversold ? 1 : 0);
+                    int confirmCount = ( bbOversold ? 1 : 0 ) + ( macdBullish ? 1 : 0 ) + ( rsiOversold ? 1 : 0 );
 
                     bool volumeOk = !_requireVolumeConfirmation || volumeRatio >= _minVolumeRatio;
 
                     if (confirmCount >= 2 && volumeOk)
                     {
                         result.Action = TradeAction.Buy;
-                        result.Reason = $"SMA Покупка + {confirmCount}/3 ({(bbOversold ? "BB " : "")}{(macdBullish ? "MACD " : "")}{(rsiOversold ? "RSI" : "")})";
+                        result.Reason = $"SMA Покупка + {confirmCount}/3 ({( bbOversold ? "BB " : "" )}{( macdBullish ? "MACD " : "" )}{( rsiOversold ? "RSI" : "" )})";
                     }
                     else
                     {
@@ -274,14 +274,14 @@ namespace BinanceBotWpf.Services.Strategies
                     bool bbOverbought = currentPrice >= bbUpper;
                     bool macdBearish = macdHist < 0 && macdHist < prevMacdHist;
                     bool rsiOverbought = rsi > 70;
-                    int confirmCount = (bbOverbought ? 1 : 0) + (macdBearish ? 1 : 0) + (rsiOverbought ? 1 : 0);
+                    int confirmCount = ( bbOverbought ? 1 : 0 ) + ( macdBearish ? 1 : 0 ) + ( rsiOverbought ? 1 : 0 );
 
                     bool volumeOk = !_requireVolumeConfirmation || volumeRatio >= _minVolumeRatio;
 
                     if (confirmCount >= 2 && volumeOk)
                     {
                         result.Action = TradeAction.Sell;
-                        result.Reason = $"SMA Продажа + {confirmCount}/3 ({(bbOverbought ? "BB " : "")}{(macdBearish ? "MACD " : "")}{(rsiOverbought ? "RSI" : "")})";
+                        result.Reason = $"SMA Продажа + {confirmCount}/3 ({( bbOverbought ? "BB " : "" )}{( macdBearish ? "MACD " : "" )}{( rsiOverbought ? "RSI" : "" )})";
                     }
                     else
                     {

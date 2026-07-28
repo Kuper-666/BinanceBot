@@ -1,22 +1,22 @@
+using BinanceBotWpf.Models;
+using BinanceBotWpf.Services;
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Series;
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
-using System.Runtime.CompilerServices;
+using System.Globalization;
+using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
-using System.Windows.Input;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.IO;
-using System.Globalization;
+using System.Windows.Input;
 using System.Windows.Media;
-using BinanceBotWpf.Services;
-using BinanceBotWpf.Models;
-using System.Collections.Generic;
-using OxyPlot;
-using OxyPlot.Series;
-using OxyPlot.Axes;
 
 namespace BinanceBotWpf.ViewModels
 {
@@ -351,7 +351,7 @@ namespace BinanceBotWpf.ViewModels
         /// Загружает пары для отображения в таблице до старта торговли.
         /// Вызывается после SetLogger(), чтобы ошибки были видны в логах.
         /// </summary>
-        public async Task LoadPairsOnStartupAsync ()
+        public async Task LoadPairsOnStartupAsync()
         {
             try
             {
@@ -789,7 +789,7 @@ namespace BinanceBotWpf.ViewModels
             catch (Exception ex) { AddLog ($"Ошибка экспорта: {ex.Message}"); }
         }
 
-        public string ExportTradesCsv ()
+        public string ExportTradesCsv()
         {
             try
             {
@@ -856,7 +856,7 @@ namespace BinanceBotWpf.ViewModels
             });
         }
 
-        public List<Dictionary<string, object>> GetBalanceHistory ()
+        public List<Dictionary<string, object>> GetBalanceHistory()
         {
             var result = new List<Dictionary<string, object>> ();
             Application.Current.Dispatcher.Invoke (() =>
@@ -876,7 +876,7 @@ namespace BinanceBotWpf.ViewModels
             return result;
         }
 
-        public void RestoreBalanceHistory (List<Dictionary<string, object>> points)
+        public void RestoreBalanceHistory(List<Dictionary<string, object>> points)
         {
             if (points == null || points.Count == 0) return;
             Application.Current.Dispatcher.Invoke (() =>
@@ -974,7 +974,7 @@ namespace BinanceBotWpf.ViewModels
                 string rsiTag = strongBuy ? "RSI:BUY" : strongSell ? "RSI:SELL" : "";
                 string macdTag = macdConfirmsBuy ? "MACD+" : macdConfirmsSell ? "MACD-" : "";
                 string strengthTag = "";
-                if (signal == TradeAction.Buy && (strongBuy || strongSell) && !strongSell)
+                if (signal == TradeAction.Buy && ( strongBuy || strongSell ) && !strongSell)
                     strengthTag = "STRONG ";
                 else if (signal == TradeAction.Sell && strongSell)
                     strengthTag = "STRONG ";
@@ -1122,7 +1122,7 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        public void ClearTradeHistory ()
+        public void ClearTradeHistory()
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
@@ -1151,7 +1151,7 @@ namespace BinanceBotWpf.ViewModels
                 if (!_perSymbolStats.ContainsKey (trade.Symbol))
                     _perSymbolStats[trade.Symbol] = (0, 0, 0);
                 var sym = _perSymbolStats[trade.Symbol];
-                _perSymbolStats[trade.Symbol] = (sym.Total + 1, sym.Wins + (trade.PnL > 0 ? 1 : 0), sym.PnL + trade.PnL);
+                _perSymbolStats[trade.Symbol] = (sym.Total + 1, sym.Wins + ( trade.PnL > 0 ? 1 : 0 ), sym.PnL + trade.PnL);
 
                 if (trade.PnL > 0)
                 {
@@ -1467,7 +1467,7 @@ namespace BinanceBotWpf.ViewModels
         }
 
         // Telegram 2FA methods
-        public void SetAuthenticator (TelegramAuthenticator authenticator, bool skipAuth = false)
+        public void SetAuthenticator(TelegramAuthenticator authenticator, bool skipAuth = false)
         {
             _authenticator = authenticator;
             _authSkipped = skipAuth;
@@ -1510,7 +1510,7 @@ namespace BinanceBotWpf.ViewModels
             };
         }
 
-        private void SubmitAuthCode ()
+        private void SubmitAuthCode()
         {
             if (_authenticator == null) return;
             var result = _authenticator.ValidateCode (AuthCodeInput);
@@ -1533,7 +1533,7 @@ namespace BinanceBotWpf.ViewModels
             }
         }
 
-        private async Task ResendAuthCode ()
+        private async Task ResendAuthCode()
         {
             if (_authenticator == null) return;
             AuthStatusMessage = "Отправка нового кода...";
@@ -1542,7 +1542,7 @@ namespace BinanceBotWpf.ViewModels
             AuthCodeInput = "";
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             try { _bgCts?.Cancel (); } catch (ObjectDisposedException) { }
             try { _bgCts?.Dispose (); } catch (ObjectDisposedException) { }

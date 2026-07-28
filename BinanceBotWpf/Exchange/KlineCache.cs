@@ -12,17 +12,17 @@ namespace BinanceBotWpf.Exchange
         private readonly ConcurrentDictionary<string, object> _locks = new ();
         private readonly Action<string> _logger;
 
-        public KlineCache (Action<string> logger)
+        public KlineCache(Action<string> logger)
         {
             _logger = logger;
         }
 
-        private object GetLock (string key)
+        private object GetLock(string key)
         {
             return _locks.GetOrAdd (key, _ => new object ());
         }
 
-        public System.Threading.Tasks.Task<List<BinanceKline>> GetKlinesAsync (string symbol, string interval, int limit)
+        public System.Threading.Tasks.Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit)
         {
             string key = $"{symbol}_{interval}";
             lock (GetLock (key))
@@ -38,7 +38,7 @@ namespace BinanceBotWpf.Exchange
             return System.Threading.Tasks.Task.FromResult (new List<BinanceKline> ());
         }
 
-        public void OnKlineUpdate (KlineUpdate update)
+        public void OnKlineUpdate(KlineUpdate update)
         {
             string key = $"{update.Symbol}_{update.Interval}";
             lock (GetLock (key))
@@ -77,7 +77,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public void SeedFromRest (string symbol, string interval, List<BinanceKline> historical)
+        public void SeedFromRest(string symbol, string interval, List<BinanceKline> historical)
         {
             string key = $"{symbol}_{interval}";
             if (historical == null || historical.Count == 0)
@@ -108,12 +108,12 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public bool HasRealTimeData (string symbol, string interval)
+        public bool HasRealTimeData(string symbol, string interval)
         {
             string key = $"{symbol}_{interval}";
             if (_lastUpdateTime.TryGetValue (key, out DateTime lastUpdate))
             {
-                return (DateTime.UtcNow - lastUpdate).TotalSeconds < 60;
+                return ( DateTime.UtcNow - lastUpdate ).TotalSeconds < 60;
             }
 
             return false;

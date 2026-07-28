@@ -14,14 +14,14 @@ namespace BinanceBotWpf.Services.Strategies
         private readonly int _maxNewsAgeHours = 6;
         private readonly int _highImpactThreshold = 3;
 
-        public NewsSentinel (Action<string> logger, string customDbPath = null)
+        public NewsSentinel(Action<string> logger, string customDbPath = null)
         {
             _logger = logger;
             _dbPath = customDbPath ?? Path.Combine (AppDomain.CurrentDomain.BaseDirectory, "Data", "news.db");
             EnsureDatabase ();
         }
 
-        private void EnsureDatabase ()
+        private void EnsureDatabase()
         {
             try
             {
@@ -71,7 +71,7 @@ namespace BinanceBotWpf.Services.Strategies
         /// Проверяет наличие высокорисковых новостей для конкретной пары.
         /// При проверке конкретной пары считает только новости, упоминающие именно её (не generic `*`).
         /// </summary>
-        public bool IsHighImpactNewsActive (string symbol = null)
+        public bool IsHighImpactNewsActive(string symbol = null)
         {
             try
             {
@@ -107,7 +107,7 @@ namespace BinanceBotWpf.Services.Strategies
                 cmd.Parameters.AddWithValue ("@threshold", _highImpactThreshold);
                 cmd.Parameters.AddWithValue ("@cutoff", cutoff);
 
-                long count = (long)(cmd.ExecuteScalar () ?? 0);
+                long count = (long)( cmd.ExecuteScalar () ?? 0 );
                 if (count > 0)
                 {
                     _logger?.Invoke ($"⚠️ NewsSentinel: обнаружено {count} негативных новостей за {_maxNewsAgeHours}ч");
@@ -121,7 +121,7 @@ namespace BinanceBotWpf.Services.Strategies
             }
         }
 
-        public List<NewsItem> GetRecentNews (int hours = 6)
+        public List<NewsItem> GetRecentNews(int hours = 6)
         {
             var result = new List<NewsItem> ();
             try
@@ -154,7 +154,7 @@ namespace BinanceBotWpf.Services.Strategies
             return result;
         }
 
-        public int InsertNews (string title, string source, string sentiment, int impact, string symbols)
+        public int InsertNews(string title, string source, string sentiment, int impact, string symbols)
         {
             if (_diskFull) return 0;
             try
@@ -187,7 +187,7 @@ namespace BinanceBotWpf.Services.Strategies
         /// <summary>
         /// Batch insert: single connection + transaction. Returns count of actually inserted rows.
         /// </summary>
-        public int InsertNewsBatch (IEnumerable<(string title, string source, string sentiment, int impact, string symbols)> items)
+        public int InsertNewsBatch(IEnumerable<(string title, string source, string sentiment, int impact, string symbols)> items)
         {
             if (_diskFull) return 0;
             int inserted = 0;
@@ -238,7 +238,7 @@ namespace BinanceBotWpf.Services.Strategies
         /// <summary>
         /// Returns all distinct titles from the last N hours. Used to seed the dedup cache.
         /// </summary>
-        public HashSet<string> GetRecentTitles (int hours = 24)
+        public HashSet<string> GetRecentTitles(int hours = 24)
         {
             var titles = new HashSet<string> ();
             try
@@ -259,7 +259,7 @@ namespace BinanceBotWpf.Services.Strategies
             return titles;
         }
 
-        public int CleanupOldNews (int maxAgeHours = 48)
+        public int CleanupOldNews(int maxAgeHours = 48)
         {
             try
             {
@@ -274,7 +274,7 @@ namespace BinanceBotWpf.Services.Strategies
             catch { return 0; }
         }
 
-        public NewsSentinelStats GetStats ()
+        public NewsSentinelStats GetStats()
         {
             var stats = new NewsSentinelStats ();
             try

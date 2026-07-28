@@ -1,10 +1,10 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {
@@ -58,7 +58,7 @@ namespace BinanceBotWpf.Services
         public decimal TotalProfit => _totalProfit;
         public int TotalCycles => _totalCycles;
 
-        public GridBotPro (IBinanceClient client, Action<string> logger)
+        public GridBotPro(IBinanceClient client, Action<string> logger)
         {
             _client = client;
             _logger = logger;
@@ -67,7 +67,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Запуск сетки с автоматическим расчётом параметров
         /// </summary>
-        public async Task StartAsync (string symbol, decimal currentPrice, decimal balanceUsdc,
+        public async Task StartAsync(string symbol, decimal currentPrice, decimal balanceUsdc,
             decimal rangePercent = 0.175m, int gridLevels = 12, decimal investmentPercent = 0.85m)
         {
             if (_isRunning)
@@ -102,17 +102,17 @@ namespace BinanceBotWpf.Services
 
             for (int i = 0; i < gridLevels; i++)
             {
-                buyLevels[i] = AlignToTick (currentPrice * (1 - _stepPercent * (i + 1)));
-                sellLevels[i] = AlignToTick (currentPrice * (1 + _stepPercent * (i + 1)));
+                buyLevels[i] = AlignToTick (currentPrice * ( 1 - _stepPercent * ( i + 1 ) ));
+                sellLevels[i] = AlignToTick (currentPrice * ( 1 + _stepPercent * ( i + 1 ) ));
             }
 
             _logger?.Invoke ($"   Buy:  {string.Join (" | ", buyLevels.Select (x => x.ToString ("F6")))}");
             _logger?.Invoke ($"   Sell: {string.Join (" | ", sellLevels.Select (x => x.ToString ("F6")))}");
 
-            decimal perLevelUsdc = _totalInvestment / (gridLevels * 2);
+            decimal perLevelUsdc = _totalInvestment / ( gridLevels * 2 );
             if (perLevelUsdc < _minNotional)
             {
-                int maxLevels = (int)Math.Floor (_totalInvestment / (_minNotional * 2));
+                int maxLevels = (int)Math.Floor (_totalInvestment / ( _minNotional * 2 ));
                 if (maxLevels < 2)
                 {
                     _logger?.Invoke ($"❌ Недостаточно средств для сетки. Нужно минимум {_minNotional * 4:F2} USDC");
@@ -125,12 +125,12 @@ namespace BinanceBotWpf.Services
                 sellLevels = new decimal[gridLevels];
                 _stepPercent = rangePercent / gridLevels;
                 _profitPerGrid = _stepPercent * 0.97m;
-                perLevelUsdc = _totalInvestment / (gridLevels * 2);
+                perLevelUsdc = _totalInvestment / ( gridLevels * 2 );
 
                 for (int i = 0; i < gridLevels; i++)
                 {
-                    buyLevels[i] = AlignToTick (currentPrice * (1 - _stepPercent * (i + 1)));
-                    sellLevels[i] = AlignToTick (currentPrice * (1 + _stepPercent * (i + 1)));
+                    buyLevels[i] = AlignToTick (currentPrice * ( 1 - _stepPercent * ( i + 1 ) ));
+                    sellLevels[i] = AlignToTick (currentPrice * ( 1 + _stepPercent * ( i + 1 ) ));
                 }
                 _logger?.Invoke ($"🔧 Автоподстройка: {gridLevels} уровней, {perLevelUsdc:F2} USDC/уровень");
             }
@@ -182,7 +182,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Мониторинг исполнения ордеров + выставление встречных + трекинг профита
         /// </summary>
-        private async Task MonitorLoop (CancellationToken token)
+        private async Task MonitorLoop(CancellationToken token)
         {
             while (!token.IsCancellationRequested && _isRunning)
             {
@@ -226,7 +226,7 @@ namespace BinanceBotWpf.Services
                                 _filledBuyPrices[orderId] = fillPrice;
                             }
 
-                            decimal targetSell = AlignToTick (fillPrice * (1 + _stepPercent));
+                            decimal targetSell = AlignToTick (fillPrice * ( 1 + _stepPercent ));
                             decimal sellQty = AlignToStep (qty);
                             if (sellQty > 0 && sellQty * targetSell >= _minNotional)
                             {
@@ -264,7 +264,7 @@ namespace BinanceBotWpf.Services
 
                             if (buyPrice > 0)
                             {
-                                decimal profit = (fillPrice - buyPrice) * qty;
+                                decimal profit = ( fillPrice - buyPrice ) * qty;
                                 _totalProfit += profit;
                                 _totalCycles++;
                                 lock (_lock)
@@ -280,7 +280,7 @@ namespace BinanceBotWpf.Services
                                     ExitPrice = fillPrice,
                                     Quantity = qty,
                                     PnL = profit,
-                                    PnLPercent = (fillPrice / buyPrice - 1) * 100,
+                                    PnLPercent = ( fillPrice / buyPrice - 1 ) * 100,
                                     OpenTime = DateTime.UtcNow,
                                     CloseTime = DateTime.UtcNow,
                                     Reason = "СеткаПро цикл",
@@ -288,7 +288,7 @@ namespace BinanceBotWpf.Services
                                 });
                             }
 
-                            decimal targetBuy = AlignToTick (fillPrice * (1 - _stepPercent));
+                            decimal targetBuy = AlignToTick (fillPrice * ( 1 - _stepPercent ));
                             decimal buyQty = AlignToStep (qty);
                             if (buyQty > 0 && buyQty * targetBuy >= _minNotional)
                             {
@@ -327,15 +327,15 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task CancelStaleOrders (CancellationToken token)
+        private async Task CancelStaleOrders(CancellationToken token)
         {
             if (token.IsCancellationRequested) return;
 
             decimal currentPrice = await _client.GetPriceAsync (_symbol);
             if (currentPrice <= 0) return;
 
-            decimal upperBound = _centerPrice * (1 + _rangePercent * 1.1m);
-            decimal lowerBound = _centerPrice * (1 - _rangePercent * 1.1m);
+            decimal upperBound = _centerPrice * ( 1 + _rangePercent * 1.1m );
+            decimal lowerBound = _centerPrice * ( 1 - _rangePercent * 1.1m );
 
             List<decimal> staleBuys = new List<decimal> ();
             List<decimal> staleSells = new List<decimal> ();
@@ -378,10 +378,10 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private decimal AlignToTick (decimal price) => Math.Round (price / _tickSize) * _tickSize;
-        private decimal AlignToStep (decimal qty) => Math.Floor (qty / _stepSize) * _stepSize;
+        private decimal AlignToTick(decimal price) => Math.Round (price / _tickSize) * _tickSize;
+        private decimal AlignToStep(decimal qty) => Math.Floor (qty / _stepSize) * _stepSize;
 
-        public async Task StopAsync ()
+        public async Task StopAsync()
         {
             if (!_isRunning) return;
 
@@ -408,7 +408,7 @@ namespace BinanceBotWpf.Services
             await Task.CompletedTask;
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             _isRunning = false;
             try

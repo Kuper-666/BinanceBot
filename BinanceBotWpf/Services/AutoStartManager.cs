@@ -24,7 +24,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public static void Enable ()
+        public static void Enable()
         {
             try
             {
@@ -38,7 +38,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public static void Disable ()
+        public static void Disable()
         {
             try
             {
@@ -52,7 +52,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private static string GetShortcutTarget ()
+        private static string GetShortcutTarget()
         {
             string exePath = System.Diagnostics.Process.GetCurrentProcess ().MainModule?.FileName;
             if (!string.IsNullOrEmpty (exePath) && exePath.EndsWith (".dll", StringComparison.OrdinalIgnoreCase))

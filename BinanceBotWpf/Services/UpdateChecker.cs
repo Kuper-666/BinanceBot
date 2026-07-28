@@ -15,7 +15,7 @@ namespace BinanceBotWpf.Services
         private readonly HttpClient _httpClient;
         private readonly Action<string> _logger;
         private readonly Func<string, Task> _notifyTelegram; // для отправки уведомлений в Telegram
-        
+
         private const string GitHubApiUrl = "https://api.github.com/repos";
 
         /// <summary>Событие для UI: новая версия доступна</summary>
@@ -26,12 +26,12 @@ namespace BinanceBotWpf.Services
             _httpClient = httpClient;
             _logger = logger;
             _notifyTelegram = notifyTelegram;
-            
+
             // Настройки для GitHub API — добавляем только если ещё не установлены
-            if (!_httpClient.DefaultRequestHeaders.Contains("Accept"))
-                _httpClient.DefaultRequestHeaders.Add("Accept", "application/vnd.github.v3+json");
-            if (!_httpClient.DefaultRequestHeaders.Contains("User-Agent"))
-                _httpClient.DefaultRequestHeaders.Add("User-Agent", "BinanceBotWpf");
+            if (!_httpClient.DefaultRequestHeaders.Contains ("Accept"))
+                _httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
+            if (!_httpClient.DefaultRequestHeaders.Contains ("User-Agent"))
+                _httpClient.DefaultRequestHeaders.Add ("User-Agent", "BinanceBotWpf");
         }
 
         /// <summary>
@@ -41,7 +41,7 @@ namespace BinanceBotWpf.Services
         /// </summary>
         public async Task CheckForUpdatesAsync(string currentVersion = null)
         {
-            if (string.IsNullOrEmpty(currentVersion))
+            if (string.IsNullOrEmpty (currentVersion))
                 currentVersion = AppConstants.AppVersion;
 
             try
@@ -75,8 +75,8 @@ namespace BinanceBotWpf.Services
                     {
                         string assetUrl = assets[i].GetProperty ("browser_download_url").GetString ();
                         if (!string.IsNullOrEmpty (assetUrl) &&
-                            (assetUrl.EndsWith (".zip", StringComparison.OrdinalIgnoreCase) ||
-                             assetUrl.EndsWith (".exe", StringComparison.OrdinalIgnoreCase)))
+                            ( assetUrl.EndsWith (".zip", StringComparison.OrdinalIgnoreCase) ||
+                             assetUrl.EndsWith (".exe", StringComparison.OrdinalIgnoreCase) ))
                         {
                             downloadUrl = assetUrl;
                             break;

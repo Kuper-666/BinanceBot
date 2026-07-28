@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using System;
 using System.Diagnostics;
 using System.IO;
@@ -8,7 +9,6 @@ using System.Reflection;
 using System.Security.Cryptography;
 using System.Threading.Tasks;
 using System.Windows;
-using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Services
 {
@@ -31,7 +31,7 @@ namespace BinanceBotWpf.Services
                 _httpClient.DefaultRequestHeaders.Add ("Accept", "application/vnd.github.v3+json");
         }
 
-        public async Task<bool> CheckAndUpdateAsync (bool silent = false, bool hasOpenPositions = false)
+        public async Task<bool> CheckAndUpdateAsync(bool silent = false, bool hasOpenPositions = false)
         {
             // Не проверяем чаще раза в час
             if (DateTime.UtcNow - _lastUpdateCheckDate < MinCheckInterval)
@@ -153,7 +153,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task<bool> DownloadAndInstall (string downloadUrl, string newVersion, JObject release = null)
+        private async Task<bool> DownloadAndInstall(string downloadUrl, string newVersion, JObject release = null)
         {
             try
             {
@@ -261,12 +261,12 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task<bool> DownloadByUrlAsync (string downloadUrl, string version)
+        public async Task<bool> DownloadByUrlAsync(string downloadUrl, string version)
         {
             return await DownloadAndInstall (downloadUrl, version);
         }
 
-        private string CreateUpdateScript (string sourceDir, string targetDir, string backupDir, string currentExe)
+        private string CreateUpdateScript(string sourceDir, string targetDir, string backupDir, string currentExe)
         {
             string batPath = Path.Combine (Path.GetTempPath (), "UpdateBot_" + Guid.NewGuid () + ".bat");
             string batContent = $@"
@@ -296,7 +296,7 @@ del ""{batPath}"" > nul 2>&1
             return batPath;
         }
 
-        private static string ComputeSha256 (string filePath)
+        private static string ComputeSha256(string filePath)
         {
             using var sha256 = SHA256.Create ();
             using var stream = File.OpenRead (filePath);

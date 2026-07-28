@@ -36,13 +36,13 @@ namespace BinanceBotWpf.Services
         public event Action<string> OnAuthFailed;
         public event Action OnAuthExpired;
 
-        public TelegramAuthenticator (TelegramNotifier telegram, Action<string> logger)
+        public TelegramAuthenticator(TelegramNotifier telegram, Action<string> logger)
         {
             _telegram = telegram;
             _logger = logger;
         }
 
-        public async Task GenerateAndSendCodeAsync ()
+        public async Task GenerateAndSendCodeAsync()
         {
             if (IsAuthenticated) return;
 
@@ -63,7 +63,7 @@ namespace BinanceBotWpf.Services
             OnAuthRequired?.Invoke ();
         }
 
-        public AuthResult ValidateCode (string input)
+        public AuthResult ValidateCode(string input)
         {
             if (IsAuthenticated) return AuthResult.Success;
             if (_codeHash == null) return AuthResult.Expired;
@@ -105,7 +105,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public void Reset ()
+        public void Reset()
         {
             lock (_lock)
             {
@@ -115,7 +115,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private string GenerateSecureCode ()
+        private string GenerateSecureCode()
         {
             byte[] bytes = new byte[4];
             RandomNumberGenerator.Fill (bytes);
@@ -124,32 +124,32 @@ namespace BinanceBotWpf.Services
             return number.ToString ("D6");
         }
 
-        private static string HashCode (string code)
+        private static string HashCode(string code)
         {
             byte[] bytes = Encoding.UTF8.GetBytes (code);
             byte[] hash = SHA256.HashData (bytes);
             return Convert.ToHexString (hash);
         }
 
-        private void ClearCode ()
+        private void ClearCode()
         {
             _codeHash = null;
             _attemptCount = 0;
         }
 
-        private void StartExpiryTimer ()
+        private void StartExpiryTimer()
         {
             StopExpiryTimer ();
             _expiryTimer = new Timer (OnCodeExpired, null, CodeLifetime, Timeout.InfiniteTimeSpan);
         }
 
-        private void StopExpiryTimer ()
+        private void StopExpiryTimer()
         {
             _expiryTimer?.Dispose ();
             _expiryTimer = null;
         }
 
-        private void OnCodeExpired (object state)
+        private void OnCodeExpired(object state)
         {
             if (IsAuthenticated) return;
             lock (_lock)

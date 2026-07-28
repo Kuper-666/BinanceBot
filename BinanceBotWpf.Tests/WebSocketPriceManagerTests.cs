@@ -1,5 +1,5 @@
-using System;
 using BinanceBotWpf.Services;
+using System;
 using Xunit;
 
 namespace BinanceBotWpf.Tests
@@ -7,14 +7,14 @@ namespace BinanceBotWpf.Tests
     public class WebSocketPriceManagerTests
     {
         [Fact]
-        public void IsPriceFresh_NoData_ReturnsFalse ()
+        public void IsPriceFresh_NoData_ReturnsFalse()
         {
             var wpm = new WebSocketPriceManager (msg => { });
             Assert.False (wpm.IsPriceFresh ("DOGEUSDC"));
         }
 
         [Fact]
-        public void IsPriceFresh_JustUpdated_ReturnsTrue ()
+        public void IsPriceFresh_JustUpdated_ReturnsTrue()
         {
             var wpm = new WebSocketPriceManager (msg => { });
             wpm.UpdatePrice ("DOGEUSDC", 0.10m);
@@ -22,14 +22,14 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void GetPriceAgeSeconds_NoData_ReturnsMinusOne ()
+        public void GetPriceAgeSeconds_NoData_ReturnsMinusOne()
         {
             var wpm = new WebSocketPriceManager (msg => { });
             Assert.Equal (-1, wpm.GetPriceAgeSeconds ("DOGEUSDC"));
         }
 
         [Fact]
-        public void GetPriceAgeSeconds_JustUpdated_ReturnsSmall ()
+        public void GetPriceAgeSeconds_JustUpdated_ReturnsSmall()
         {
             var wpm = new WebSocketPriceManager (msg => { });
             wpm.UpdatePrice ("DOGEUSDC", 0.10m);
@@ -38,7 +38,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void UpdatePrice_StoresCorrectly ()
+        public void UpdatePrice_StoresCorrectly()
         {
             var wpm = new WebSocketPriceManager (msg => { });
             wpm.UpdatePrice ("DOGEUSDC", 0.1234m);
@@ -47,7 +47,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void GetStaleSymbols_WithFreshData_ReturnsEmpty ()
+        public void GetStaleSymbols_WithFreshData_ReturnsEmpty()
         {
             var wpm = new WebSocketPriceManager (msg => { });
             wpm.MaxPriceAgeSeconds = 30;
@@ -58,7 +58,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void GetCurrentPrice_UnknownSymbol_ReturnsZero ()
+        public void GetCurrentPrice_UnknownSymbol_ReturnsZero()
         {
             var wpm = new WebSocketPriceManager (msg => { });
             Assert.Equal (0m, wpm.GetCurrentPrice ("NONEXISTENT"));

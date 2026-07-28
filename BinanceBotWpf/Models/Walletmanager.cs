@@ -1,10 +1,10 @@
+using BinanceBotWpf.Exchange;
+using BinanceBotWpf.Services;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Threading.Tasks;
-using BinanceBotWpf.Exchange;
-using BinanceBotWpf.Services;
-using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Models
 {
@@ -29,7 +29,7 @@ namespace BinanceBotWpf.Models
             _balances = new Dictionary<string, AssetBalance> ();
         }
 
-        public void SetFuturesClient (IBinanceFuturesClient futuresClient)
+        public void SetFuturesClient(IBinanceFuturesClient futuresClient)
         {
             _futuresClient = futuresClient;
         }

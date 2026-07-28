@@ -1,7 +1,7 @@
-using System;
-using System.Collections.Generic;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.Services.Strategies;
+using System;
+using System.Collections.Generic;
 using Xunit;
 
 namespace BinanceBotWpf.Tests

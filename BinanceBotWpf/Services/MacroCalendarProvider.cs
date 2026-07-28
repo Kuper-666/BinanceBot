@@ -30,11 +30,11 @@ namespace BinanceBotWpf.Services
         /// Проверяет, есть ли значимые макро-события в ближайшее время.
         /// Возвращает true если стоит воздержаться от торговли.
         /// </summary>
-        public async Task<bool> IsHighImpactEventNearAsync (int minutesAhead = 60)
+        public async Task<bool> IsHighImpactEventNearAsync(int minutesAhead = 60)
         {
-            if ((DateTime.UtcNow - _lastFetchTime) < _fetchInterval)
+            if (( DateTime.UtcNow - _lastFetchTime ) < _fetchInterval)
             {
-                return _events.Any (e => e.Impact == "High" && Math.Abs ((e.Time - DateTime.UtcNow).TotalMinutes) < minutesAhead);
+                return _events.Any (e => e.Impact == "High" && Math.Abs (( e.Time - DateTime.UtcNow ).TotalMinutes) < minutesAhead);
             }
 
             try
@@ -47,10 +47,10 @@ namespace BinanceBotWpf.Services
                 _logger?.Invoke ($"⚠️ Ошибка загрузки макро-календаря: {ex.Message}");
             }
 
-            return _events.Any (e => e.Impact == "High" && Math.Abs ((e.Time - DateTime.UtcNow).TotalMinutes) < minutesAhead);
+            return _events.Any (e => e.Impact == "High" && Math.Abs (( e.Time - DateTime.UtcNow ).TotalMinutes) < minutesAhead);
         }
 
-        private async Task FetchEventsAsync ()
+        private async Task FetchEventsAsync()
         {
             // Базовый список макро-событий (в реальности парсим с Investing.com илиsimilar)
             // Здесь заглушка для демонстрации архитектуры
@@ -66,7 +66,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Возвращает ближайшие события с высоким влиянием
         /// </summary>
-        public List<MacroEvent> GetHighImpactEvents ()
+        public List<MacroEvent> GetHighImpactEvents()
         {
             return _events.Where (e => e.Impact == "High" && e.Time > DateTime.UtcNow).ToList ();
         }

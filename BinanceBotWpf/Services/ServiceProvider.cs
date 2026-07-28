@@ -9,17 +9,17 @@ namespace BinanceBotWpf.Services
         private readonly ConcurrentDictionary<Type, object> _services = new ();
         private readonly ConcurrentDictionary<Type, Func<object>> _factories = new ();
 
-        public void Register<T> (T service) where T : class
+        public void Register<T>(T service) where T : class
         {
             _services[typeof (T)] = service;
         }
 
-        public void RegisterFactory<T> (Func<T> factory) where T : class
+        public void RegisterFactory<T>(Func<T> factory) where T : class
         {
             _factories[typeof (T)] = () => factory ();
         }
 
-        public T Get<T> () where T : class
+        public T Get<T>() where T : class
         {
             if (_services.TryGetValue (typeof (T), out var service))
                 return (T)service;
@@ -34,7 +34,7 @@ namespace BinanceBotWpf.Services
             throw new InvalidOperationException ($"Service {typeof (T).Name} not registered.");
         }
 
-        public bool TryGet<T> (out T? service) where T : class
+        public bool TryGet<T>(out T? service) where T : class
         {
             if (_services.TryGetValue (typeof (T), out var obj))
             {

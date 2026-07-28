@@ -28,7 +28,7 @@ namespace BinanceBotWpf.Services
         /// </summary>
         public int MaxPriceAgeSeconds { get; set; } = 30;
 
-        public WebSocketPriceManager (Action<string> logger, bool useFuturesEndpoint = false)
+        public WebSocketPriceManager(Action<string> logger, bool useFuturesEndpoint = false)
         {
             _logger = logger;
             _wsBaseUrl = useFuturesEndpoint
@@ -132,7 +132,7 @@ namespace BinanceBotWpf.Services
                     string msg = ex.Message;
                     bool isNormalDisconnect = msg.Contains ("remote party closed") ||
                                               msg.Contains ("Graceful") ||
-                                              (ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely);
+                                              ( ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely );
                     _logger?.Invoke (isNormalDisconnect
                         ? $"ℹ️ WebSocket: {symbol} отключён (нормальное закрытие)"
                         : $"❌ WebSocket ошибка {symbol}: {msg}");
@@ -165,7 +165,7 @@ namespace BinanceBotWpf.Services
         {
             if (!_lastMessageTime.TryGetValue (symbol.ToUpperInvariant (), out var lastTime))
                 return false;
-            return (DateTime.UtcNow - lastTime).TotalSeconds <= MaxPriceAgeSeconds;
+            return ( DateTime.UtcNow - lastTime ).TotalSeconds <= MaxPriceAgeSeconds;
         }
 
         /// <summary>
@@ -175,7 +175,7 @@ namespace BinanceBotWpf.Services
         {
             if (!_lastMessageTime.TryGetValue (symbol.ToUpperInvariant (), out var lastTime))
                 return -1;
-            return (DateTime.UtcNow - lastTime).TotalSeconds;
+            return ( DateTime.UtcNow - lastTime ).TotalSeconds;
         }
 
         /// <summary>
@@ -187,7 +187,7 @@ namespace BinanceBotWpf.Services
             var stale = new List<string> ();
             foreach (var kvp in _lastMessageTime)
             {
-                if ((now - kvp.Value).TotalSeconds > MaxPriceAgeSeconds)
+                if (( now - kvp.Value ).TotalSeconds > MaxPriceAgeSeconds)
                     stale.Add (kvp.Key);
             }
             return stale.ToArray ();
@@ -208,7 +208,7 @@ namespace BinanceBotWpf.Services
         /// Запускает периодический REST-опрос цен для всех подписанных символов.
         /// Используется как fallback когда WS не получает данные.
         /// </summary>
-        public void StartPeriodicRestFetch (Func<string, Task<decimal>> priceFetcher, int intervalMs = 5000)
+        public void StartPeriodicRestFetch(Func<string, Task<decimal>> priceFetcher, int intervalMs = 5000)
         {
             StopPeriodicRestFetch ();
             _restPriceFetcher = priceFetcher;
@@ -240,7 +240,7 @@ namespace BinanceBotWpf.Services
             });
         }
 
-        public void StopPeriodicRestFetch ()
+        public void StopPeriodicRestFetch()
         {
             try { _restPollCts?.Cancel (); } catch { }
             try { _restPollCts?.Dispose (); } catch { }
@@ -253,7 +253,7 @@ namespace BinanceBotWpf.Services
         /// Закрывает зависший сокет, чтобы ConnectAndListen запустил переподключение.
         /// Возвращает количество переподключённых символов.
         /// </summary>
-        public int ForceReconnectStaleSymbols ()
+        public int ForceReconnectStaleSymbols()
         {
             string[] staleSymbols = GetStaleSymbols ();
             int reconnected = 0;

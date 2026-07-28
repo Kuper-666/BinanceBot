@@ -54,7 +54,7 @@ namespace BinanceBotWpf.Models
                         decimal diff = closes[i] - sma20;
                         sumSq += diff * diff;
                     }
-                    decimal stdDev = (decimal)Math.Sqrt ((double)(sumSq / bbPeriod));
+                    decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / bbPeriod ));
                     decimal upperBand = sma20 + 2 * stdDev;
                     decimal lowerBand = sma20 - 2 * stdDev;
 
@@ -110,7 +110,7 @@ namespace BinanceBotWpf.Models
             }
             if (avgLoss == 0) return 100m;
             decimal rs = avgGain / avgLoss;
-            return 100m - 100m / (1m + rs);
+            return 100m - 100m / ( 1m + rs );
         }
     }
 }

@@ -1,11 +1,11 @@
+using BinanceBotWpf.Exchange;
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using BinanceBotWpf.Exchange;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {
@@ -98,7 +98,7 @@ namespace BinanceBotWpf.Services
             {
                 decimal atr = 0;
                 try { atr = await _client.GetATRAsync (symbol, 14); } catch { }
-                stepPercent = atr > 0 ? (atr / centerPrice) : (rangeMultiplier / gridLevels);
+                stepPercent = atr > 0 ? ( atr / centerPrice ) : ( rangeMultiplier / gridLevels );
             }
             else
             {
@@ -111,16 +111,16 @@ namespace BinanceBotWpf.Services
 
             for (int i = 0; i < gridLevels; i++)
             {
-                _buyLevels[i] = centerPrice * (1 - stepPercent * (i + 1));
-                _sellLevels[i] = centerPrice * (1 + stepPercent * (i + 1));
+                _buyLevels[i] = centerPrice * ( 1 - stepPercent * ( i + 1 ) );
+                _sellLevels[i] = centerPrice * ( 1 + stepPercent * ( i + 1 ) );
             }
 
             _logger?.Invoke ($"🔲 GridBot: {_symbol} | Центр={centerPrice:F4} | Шаг={stepPercent * 100:F2}% | {gridLevels} уровней в каждую сторону");
-            _logger?.Invoke ($"   Buy уровни: {string.Join(", ", _buyLevels.Select (x => x.ToString ("F4")))}");
-            _logger?.Invoke ($"   Sell уровни: {string.Join(", ", _sellLevels.Select (x => x.ToString ("F4")))}");
+            _logger?.Invoke ($"   Buy уровни: {string.Join (", ", _buyLevels.Select (x => x.ToString ("F4")))}");
+            _logger?.Invoke ($"   Sell уровни: {string.Join (", ", _sellLevels.Select (x => x.ToString ("F4")))}");
 
             // Выставляем лимитные ордера на каждый уровень
-            decimal perLevelUsdc = totalInvestmentUsdc / (gridLevels * 2);
+            decimal perLevelUsdc = totalInvestmentUsdc / ( gridLevels * 2 );
             decimal stepSize = await _client.GetStepSizeAsync (symbol);
             decimal tickSize = await _client.GetTickSizeAsync (symbol);
             decimal minNotional = await _client.GetMinNotionalAsync (symbol);
@@ -130,7 +130,7 @@ namespace BinanceBotWpf.Services
             while (perLevelUsdc < minNotional && gridLevels > 1)
             {
                 gridLevels--;
-                perLevelUsdc = totalInvestmentUsdc / (gridLevels * 2);
+                perLevelUsdc = totalInvestmentUsdc / ( gridLevels * 2 );
             }
 
             // Если даже 1 уровень не покрывает минимум — увеличиваем инвестиции
@@ -148,8 +148,8 @@ namespace BinanceBotWpf.Services
                 _sellLevels = new decimal[gridLevels];
                 for (int i = 0; i < gridLevels; i++)
                 {
-                    _buyLevels[i] = _centerPrice * (1 - stepPercent * (i + 1));
-                    _sellLevels[i] = _centerPrice * (1 + stepPercent * (i + 1));
+                    _buyLevels[i] = _centerPrice * ( 1 - stepPercent * ( i + 1 ) );
+                    _sellLevels[i] = _centerPrice * ( 1 + stepPercent * ( i + 1 ) );
                 }
             }
 
@@ -304,7 +304,7 @@ namespace BinanceBotWpf.Services
                     await Task.Delay (5000, token);
 
                     // Периодическое рецентрирование сетки (каждые 5 минут)
-                    if ((DateTime.UtcNow - _lastRecenterCheck).TotalMinutes >= 5)
+                    if (( DateTime.UtcNow - _lastRecenterCheck ).TotalMinutes >= 5)
                     {
                         _lastRecenterCheck = DateTime.UtcNow;
                         decimal currentPrice = await _client.GetPriceAsync (_symbol);
@@ -350,7 +350,7 @@ namespace BinanceBotWpf.Services
                                 }
                             }
 
-                            decimal targetSellPrice = pos.EntryPrice * (1 + Math.Abs (_buyLevels[0] - _sellLevels[0]) / _centerPrice);
+                            decimal targetSellPrice = pos.EntryPrice * ( 1 + Math.Abs (_buyLevels[0] - _sellLevels[0]) / _centerPrice );
                             decimal stepSize = await _client.GetStepSizeAsync (_symbol);
                             decimal sellQty = Math.Floor (pos.Quantity / stepSize) * stepSize;
 
@@ -384,13 +384,13 @@ namespace BinanceBotWpf.Services
 
                             if (_lastBuyPrice > 0 && sellPrice > 0 && sellQty > 0)
                             {
-                                decimal profit = (sellPrice - _lastBuyPrice) * sellQty;
-                                decimal profitPct = (sellPrice / _lastBuyPrice - 1) * 100;
+                                decimal profit = ( sellPrice - _lastBuyPrice ) * sellQty;
+                                decimal profitPct = ( sellPrice / _lastBuyPrice - 1 ) * 100;
                                 _realizedPnl += profit;
                                 lock (_lock)
                                 {
                                     _activeOrderIds.Remove (sellPrice);
-                                    if (!_filledOrders.Any (o => ( decimal )o["price"] == sellPrice && ( string )o["side"] == "SELL"))
+                                    if (!_filledOrders.Any (o => (decimal)o["price"] == sellPrice && (string)o["side"] == "SELL"))
                                     {
                                         _filledOrders.Add (new Dictionary<string, object>
                                         {

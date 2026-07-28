@@ -16,13 +16,13 @@ namespace BinanceBotWpf.Services
 
         public bool IsRunning { get; private set; }
 
-        public WebhookServer (int port, Action<string> logger)
+        public WebhookServer(int port, Action<string> logger)
         {
             _port = port;
             _logger = logger;
         }
 
-        public void Start (Func<string, string, Task<string>> handler)
+        public void Start(Func<string, string, Task<string>> handler)
         {
             if (IsRunning) return;
             _handler = handler;
@@ -44,7 +44,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public void Stop ()
+        public void Stop()
         {
             if (!IsRunning) return;
             IsRunning = false;
@@ -54,7 +54,7 @@ namespace BinanceBotWpf.Services
             _logger?.Invoke ($"📡 WebhookServer: остановлен");
         }
 
-        private async Task ListenLoop (CancellationToken token)
+        private async Task ListenLoop(CancellationToken token)
         {
             while (!token.IsCancellationRequested && IsRunning)
             {
@@ -73,7 +73,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task HandleContext (HttpListenerContext context)
+        private async Task HandleContext(HttpListenerContext context)
         {
             var request = context.Request;
             var response = context.Response;
@@ -139,7 +139,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             Stop ();
             _cts?.Dispose ();

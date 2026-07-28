@@ -82,8 +82,8 @@ namespace BinanceBotWpf.Risk
             // 0. Kill-switch: полная остановка при дневной/недельной просадке
             if (IsKillSwitchActive)
             {
-                string dailyPct = BalanceUSDC != 0 ? (_dailyPnL / BalanceUSDC).ToString ("P0") : "N/A";
-                string weeklyPct = BalanceUSDC != 0 ? (_weeklyPnL / BalanceUSDC).ToString ("P0") : "N/A";
+                string dailyPct = BalanceUSDC != 0 ? ( _dailyPnL / BalanceUSDC ).ToString ("P0") : "N/A";
+                string weeklyPct = BalanceUSDC != 0 ? ( _weeklyPnL / BalanceUSDC ).ToString ("P0") : "N/A";
                 return (false, $"🚨 KILL-SWITCH: дневной убыток {Math.Abs (_dailyPnL):F2} USDC ({dailyPct}) или недельный {_weeklyPnL:F2} USDC ({weeklyPct})");
             }
 
@@ -130,21 +130,21 @@ namespace BinanceBotWpf.Risk
             }
         }
 
-        public bool IsDailyLossKillSwitchTriggered ()
+        public bool IsDailyLossKillSwitchTriggered()
         {
             ResetDailyIfNeeded ();
             decimal maxDailyLoss = BalanceUSDC * MaxDailyLossPercent;
             return _dailyPnL < 0 && Math.Abs (_dailyPnL) >= maxDailyLoss;
         }
 
-        private bool IsWeeklyLossTriggered ()
+        private bool IsWeeklyLossTriggered()
         {
             ResetWeeklyIfNeeded ();
             decimal maxWeeklyLoss = BalanceUSDC * MaxWeeklyLossPercent;
             return _weeklyPnL < 0 && Math.Abs (_weeklyPnL) >= maxWeeklyLoss;
         }
 
-        private void ResetDailyIfNeeded ()
+        private void ResetDailyIfNeeded()
         {
             DateTime today = DateTime.UtcNow.Date;
             if (_dailyPnLReset < today)
@@ -154,7 +154,7 @@ namespace BinanceBotWpf.Risk
             }
         }
 
-        private void ResetWeeklyIfNeeded ()
+        private void ResetWeeklyIfNeeded()
         {
             DateTime now = DateTime.UtcNow;
             // Неделя начинается в понедельник

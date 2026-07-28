@@ -1,3 +1,4 @@
+using BinanceBotWpf.Services.Strategies;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -5,7 +6,6 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
-using BinanceBotWpf.Services.Strategies;
 
 namespace BinanceBotWpf.Services
 {
@@ -15,8 +15,8 @@ namespace BinanceBotWpf.Services
         private readonly NewsSentinel _sentinel;
         private readonly Action<string> _logger;
         private Timer _timer;
-        private readonly TimeSpan _interval = TimeSpan.FromMinutes(10);
-        private readonly HashSet<string> _seenTitles = new();
+        private readonly TimeSpan _interval = TimeSpan.FromMinutes (10);
+        private readonly HashSet<string> _seenTitles = new ();
         private bool _cacheSeeded;
 
         private static readonly string[] NegativeKeywords = new[]
@@ -44,26 +44,26 @@ namespace BinanceBotWpf.Services
 
         public void Start()
         {
-            _timer = new Timer(async _ => await FetchAsync(), null, TimeSpan.FromSeconds(30), _interval);
-            _logger?.Invoke("📰 NewsFetcher: запущен (интервал 10 мин)");
+            _timer = new Timer (async _ => await FetchAsync (), null, TimeSpan.FromSeconds (30), _interval);
+            _logger?.Invoke ("📰 NewsFetcher: запущен (интервал 10 мин)");
         }
 
         public void Stop()
         {
-            _timer?.Dispose();
+            _timer?.Dispose ();
             _timer = null;
-            _logger?.Invoke("📰 NewsFetcher: остановлен");
+            _logger?.Invoke ("📰 NewsFetcher: остановлен");
         }
 
         private async Task FetchAsync()
         {
             try
             {
-                await FetchGoogleNewsRssAsync();
+                await FetchGoogleNewsRssAsync ();
             }
             catch (Exception ex)
             {
-                _logger?.Invoke($"⚠️ NewsFetcher ошибка: {ex.Message}");
+                _logger?.Invoke ($"⚠️ NewsFetcher ошибка: {ex.Message}");
             }
         }
 
@@ -71,7 +71,7 @@ namespace BinanceBotWpf.Services
         {
             if (!_cacheSeeded)
             {
-                _seenTitles.UnionWith(_sentinel.GetRecentTitles(24));
+                _seenTitles.UnionWith (_sentinel.GetRecentTitles (24));
                 _cacheSeeded = true;
             }
 
@@ -81,30 +81,30 @@ namespace BinanceBotWpf.Services
                 "https://news.google.com/rss/search?q=bitcoin+OR+ethereum+OR+binance+when:1d&hl=en"
             };
 
-            var candidates = new List<(string title, string source, string sentiment, int impact, string symbols)>();
+            var candidates = new List<(string title, string source, string sentiment, int impact, string symbols)> ();
             int skipped = 0;
 
             foreach (string feedUrl in feeds)
             {
                 try
                 {
-                    string xml = await _httpClient.GetStringAsync(feedUrl);
-                    var doc = XDocument.Parse(xml);
-                    var items = doc.Descendants("item");
+                    string xml = await _httpClient.GetStringAsync (feedUrl);
+                    var doc = XDocument.Parse (xml);
+                    var items = doc.Descendants ("item");
 
                     foreach (var item in items)
                     {
-                        string title = item.Element("title")?.Value ?? "";
-                        string source = item.Element("source")?.Value ?? "Google News";
+                        string title = item.Element ("title")?.Value ?? "";
+                        string source = item.Element ("source")?.Value ?? "Google News";
 
-                        if (string.IsNullOrWhiteSpace(title)) continue;
-                        if (!_seenTitles.Add(title)) { skipped++; continue; }
+                        if (string.IsNullOrWhiteSpace (title)) continue;
+                        if (!_seenTitles.Add (title)) { skipped++; continue; }
 
-                        string sentiment = ClassifySentiment(title);
-                        int impact = CalculateImpact(title);
-                        string symbols = ExtractSymbols(title);
+                        string sentiment = ClassifySentiment (title);
+                        int impact = CalculateImpact (title);
+                        string symbols = ExtractSymbols (title);
 
-                        candidates.Add((title, source, sentiment, impact, symbols));
+                        candidates.Add ((title, source, sentiment, impact, symbols));
                     }
                 }
                 catch
@@ -115,17 +115,17 @@ namespace BinanceBotWpf.Services
 
             if (candidates.Count > 0)
             {
-                int inserted = _sentinel.InsertNewsBatch(candidates);
-                _sentinel.CleanupOldNews(48);
-                _logger?.Invoke($"📰 NewsFetcher: +{inserted} новых, {skipped} пропущено (кеш)");
+                int inserted = _sentinel.InsertNewsBatch (candidates);
+                _sentinel.CleanupOldNews (48);
+                _logger?.Invoke ($"📰 NewsFetcher: +{inserted} новых, {skipped} пропущено (кеш)");
             }
         }
 
         private string ClassifySentiment(string title)
         {
-            string lower = title.ToLowerInvariant();
-            int negativeScore = NegativeKeywords.Count(k => lower.Contains(k));
-            int positiveScore = PositiveKeywords.Count(k => lower.Contains(k));
+            string lower = title.ToLowerInvariant ();
+            int negativeScore = NegativeKeywords.Count (k => lower.Contains (k));
+            int positiveScore = PositiveKeywords.Count (k => lower.Contains (k));
 
             if (negativeScore > positiveScore) return "negative";
             if (positiveScore > negativeScore) return "positive";
@@ -134,29 +134,29 @@ namespace BinanceBotWpf.Services
 
         private int CalculateImpact(string title)
         {
-            string lower = title.ToLowerInvariant();
+            string lower = title.ToLowerInvariant ();
             int score = 0;
 
-            if (lower.Contains("hack") || lower.Contains("exploit") || lower.Contains("vulnerability")) score += 5;
-            if (lower.Contains("ban") || lower.Contains("regulation") || lower.Contains("sec")) score += 4;
-            if (lower.Contains("etf") || lower.Contains("listing") || lower.Contains("launchpool")) score += 3;
-            if (lower.Contains("crash") || lower.Contains("dump") || lower.Contains("surge") || lower.Contains("rally")) score += 3;
-            if (lower.Contains("partnership") || lower.Contains("adoption")) score += 2;
+            if (lower.Contains ("hack") || lower.Contains ("exploit") || lower.Contains ("vulnerability")) score += 5;
+            if (lower.Contains ("ban") || lower.Contains ("regulation") || lower.Contains ("sec")) score += 4;
+            if (lower.Contains ("etf") || lower.Contains ("listing") || lower.Contains ("launchpool")) score += 3;
+            if (lower.Contains ("crash") || lower.Contains ("dump") || lower.Contains ("surge") || lower.Contains ("rally")) score += 3;
+            if (lower.Contains ("partnership") || lower.Contains ("adoption")) score += 2;
 
-            return Math.Min(score, 10);
+            return Math.Min (score, 10);
         }
 
         private string ExtractSymbols(string title)
         {
             string[] knownSymbols = { "BTC", "ETH", "BNB", "SOL", "XRP", "DOGE", "ADA", "AVAX", "DOT", "MATIC", "LINK", "UNI", "ATOM", "LTC", "FIL", "APT", "ARB", "OP", "SUI", "PEPE", "WIF", "FET", "TAO", "RENDER", "INJ" };
-            string upper = title.ToUpperInvariant();
-            string found = string.Join(",", knownSymbols.Where(s => upper.Contains(s)));
-            return string.IsNullOrEmpty(found) ? "*" : found;
+            string upper = title.ToUpperInvariant ();
+            string found = string.Join (",", knownSymbols.Where (s => upper.Contains (s)));
+            return string.IsNullOrEmpty (found) ? "*" : found;
         }
 
         public void Dispose()
         {
-            Stop();
+            Stop ();
         }
     }
 }

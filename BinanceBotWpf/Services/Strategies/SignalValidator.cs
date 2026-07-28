@@ -30,7 +30,7 @@ namespace BinanceBotWpf.Services.Strategies
 
         private readonly decimal _minConfidence;
 
-        public SignalValidator (Action<string> logger, decimal volumeThreshold = 8.0m, decimal atrThreshold = 0.15m, int rsiLow = 20, int rsiHigh = 80, decimal minConfidence = 0.55m)
+        public SignalValidator(Action<string> logger, decimal volumeThreshold = 8.0m, decimal atrThreshold = 0.15m, int rsiLow = 20, int rsiHigh = 80, decimal minConfidence = 0.55m)
         {
             _logger = logger;
             _volumeThreshold = volumeThreshold;
@@ -41,7 +41,7 @@ namespace BinanceBotWpf.Services.Strategies
             LoadOnnxModel ();
         }
 
-        private void LoadOnnxModel ()
+        private void LoadOnnxModel()
         {
             string baseDir = AppDomain.CurrentDomain.BaseDirectory;
             string foundPath = null;
@@ -72,7 +72,7 @@ namespace BinanceBotWpf.Services.Strategies
             }
         }
 
-        public ValidationResult Validate (SignalValidationInput input)
+        public ValidationResult Validate(SignalValidationInput input)
         {
             if (_modelLoaded && _onnxModel != null)
             {
@@ -81,7 +81,7 @@ namespace BinanceBotWpf.Services.Strategies
             return ValidateHeuristic (input);
         }
 
-        private ValidationResult ValidateWithOnnx (SignalValidationInput input)
+        private ValidationResult ValidateWithOnnx(SignalValidationInput input)
         {
             try
             {
@@ -102,7 +102,7 @@ namespace BinanceBotWpf.Services.Strategies
             }
         }
 
-        private ValidationResult ValidateHeuristic (SignalValidationInput input)
+        private ValidationResult ValidateHeuristic(SignalValidationInput input)
         {
             float confidence = 0.5f;
             bool riskFlag = false;
@@ -147,8 +147,8 @@ namespace BinanceBotWpf.Services.Strategies
             totalFactors++;
             if (Math.Abs (input.MacdHistogram) > 0.001f)
             {
-                bool macdAligns = (input.SignalDirection == 1 && input.MacdHistogram > 0) ||
-                                  (input.SignalDirection == -1 && input.MacdHistogram < 0);
+                bool macdAligns = ( input.SignalDirection == 1 && input.MacdHistogram > 0 ) ||
+                                  ( input.SignalDirection == -1 && input.MacdHistogram < 0 );
                 if (macdAligns)
                 {
                     positiveFactors++;
@@ -170,8 +170,8 @@ namespace BinanceBotWpf.Services.Strategies
             totalFactors++;
             if (input.Price > 0 && input.SmaFast > 0 && input.SmaSlow > 0)
             {
-                bool trendAligns = (input.SignalDirection == 1 && input.Price > input.SmaFast && input.SmaFast > input.SmaSlow) ||
-                                   (input.SignalDirection == -1 && input.Price < input.SmaFast && input.SmaFast < input.SmaSlow);
+                bool trendAligns = ( input.SignalDirection == 1 && input.Price > input.SmaFast && input.SmaFast > input.SmaSlow ) ||
+                                   ( input.SignalDirection == -1 && input.Price < input.SmaFast && input.SmaFast < input.SmaSlow );
                 if (trendAligns)
                 {
                     positiveFactors++;

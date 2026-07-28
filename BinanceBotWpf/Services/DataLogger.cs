@@ -1,7 +1,7 @@
-﻿using System;
+﻿using BinanceBotWpf.Models;
+using System;
 using System.IO;
 using System.Threading;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {

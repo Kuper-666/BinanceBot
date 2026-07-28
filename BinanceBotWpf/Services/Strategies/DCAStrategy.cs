@@ -1,7 +1,7 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services.Strategies
 {
@@ -38,7 +38,7 @@ namespace BinanceBotWpf.Services.Strategies
             if (klines == null || klines.Count < LookbackDays + 5) return false;
 
             // Проверяем интервал (раз в N дней)
-            if ((DateTime.UtcNow - _lastCheckTime).TotalDays < 1) return false;
+            if (( DateTime.UtcNow - _lastCheckTime ).TotalDays < 1) return false;
 
             var closes = klines.Select (k => k.Close).ToList ();
             var highs = klines.Select (k => k.High).ToList ();
@@ -46,7 +46,7 @@ namespace BinanceBotWpf.Services.Strategies
 
             decimal currentPrice = closes.Last ();
             decimal maxPrice = closes.TakeLast (LookbackDays).Max ();
-            decimal drawdownFromMax = (maxPrice - currentPrice) / maxPrice;
+            decimal drawdownFromMax = ( maxPrice - currentPrice ) / maxPrice;
 
             // Защита: если упали > 30% — не покупаем (ловля падающего ножа)
             if (drawdownFromMax > MaxDrawdownPercent)

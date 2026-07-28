@@ -1,12 +1,12 @@
+using BinanceBotWpf.Models;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services.Strategies
 {
     public interface ISignalFilter
     {
-        Task<bool> ShouldBuyAsync (
+        Task<bool> ShouldBuyAsync(
             string symbol, decimal price, decimal rsi,
             decimal fastSma, decimal slowSma, decimal volume,
             decimal avgVolume, decimal macdHistogram,

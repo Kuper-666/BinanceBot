@@ -1,12 +1,12 @@
+using BinanceBotWpf.Exchange;
+using BinanceBotWpf.Services;
+using Moq;
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using BinanceBotWpf.Exchange;
-using BinanceBotWpf.Services;
-using Moq;
-using Newtonsoft.Json.Linq;
 using Xunit;
 
 namespace BinanceBotWpf.Tests
@@ -15,18 +15,18 @@ namespace BinanceBotWpf.Tests
     {
         private readonly string _tempFile;
 
-        public GridBotOrderTests ()
+        public GridBotOrderTests()
         {
-            _tempFile = Path.Combine (Path.GetTempPath (), $"gridbot_test_{Guid.NewGuid():N}.json");
+            _tempFile = Path.Combine (Path.GetTempPath (), $"gridbot_test_{Guid.NewGuid ():N}.json");
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             try { if (File.Exists (_tempFile)) File.Delete (_tempFile); } catch { }
         }
 
         [Fact]
-        public async Task PlaceLimitOrder_Fails_ShouldNotAddToActiveOrders ()
+        public async Task PlaceLimitOrder_Fails_ShouldNotAddToActiveOrders()
         {
             var mockClient = new Mock<IBinanceFuturesClient> ();
             mockClient.Setup (c => c.GetStepSizeAsync (It.IsAny<string> ()))
@@ -50,7 +50,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async Task PlaceLimitOrder_Succeeds_ShouldAddToActiveOrders ()
+        public async Task PlaceLimitOrder_Succeeds_ShouldAddToActiveOrders()
         {
             var mockClient = new Mock<IBinanceFuturesClient> ();
             mockClient.Setup (c => c.GetStepSizeAsync (It.IsAny<string> ()))
@@ -73,7 +73,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async Task PlaceLimitOrder_AllFail_NoneShouldBeActive ()
+        public async Task PlaceLimitOrder_AllFail_NoneShouldBeActive()
         {
             var mockClient = new Mock<IBinanceFuturesClient> ();
             mockClient.Setup (c => c.GetStepSizeAsync (It.IsAny<string> ()))
@@ -96,7 +96,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async Task MixedResults_SomeFail_SomeSucceed ()
+        public async Task MixedResults_SomeFail_SomeSucceed()
         {
             int callCount = 0;
             var mockClient = new Mock<IBinanceFuturesClient> ();
@@ -126,7 +126,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async Task PlaceLimitOrder_ReceivesOrderId_StoredCorrectly ()
+        public async Task PlaceLimitOrder_ReceivesOrderId_StoredCorrectly()
         {
             var mockClient = new Mock<IBinanceFuturesClient> ();
             mockClient.Setup (c => c.GetStepSizeAsync (It.IsAny<string> ()))

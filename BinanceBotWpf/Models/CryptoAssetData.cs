@@ -46,14 +46,14 @@ namespace BinanceBotWpf.Models
                 // LunarCrush Sentiment: диапазон 0..1, нормализуем в -1..+1
                 if (Sentiment.HasValue && Sentiment.Value > 0)
                 {
-                    score += (double)((Sentiment.Value - 0.5m) * 2) * 0.5;
+                    score += (double)( ( Sentiment.Value - 0.5m ) * 2 ) * 0.5;
                     totalWeight += 0.5;
                 }
 
                 // PriceChange7d: нормализуем в -1..+1 (±20% = край)
                 if (PriceChange7d.HasValue)
                 {
-                    double normalized = Math.Max(-1, Math.Min(1, (double)PriceChange7d.Value / 20.0));
+                    double normalized = Math.Max (-1, Math.Min (1, (double)PriceChange7d.Value / 20.0));
                     score += normalized * 0.3;
                     totalWeight += 0.3;
                 }
@@ -61,13 +61,13 @@ namespace BinanceBotWpf.Models
                 // GalaxyScore: нормализуем в 0..1 (макс ~80)
                 if (GalaxyScore.HasValue && GalaxyScore.Value > 0)
                 {
-                    double normalized = Math.Min(1, (double)GalaxyScore.Value / 80.0);
-                    score += (normalized * 2 - 1) * 0.2; // -1..+1
+                    double normalized = Math.Min (1, (double)GalaxyScore.Value / 80.0);
+                    score += ( normalized * 2 - 1 ) * 0.2; // -1..+1
                     totalWeight += 0.2;
                 }
 
                 if (totalWeight == 0) return 0;
-                return (decimal)(score / totalWeight);
+                return (decimal)( score / totalWeight );
             }
         }
 

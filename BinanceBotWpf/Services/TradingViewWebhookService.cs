@@ -1,3 +1,5 @@
+using BinanceBotWpf.Models;
+using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
@@ -5,8 +7,6 @@ using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
-using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
 {
@@ -22,7 +22,7 @@ namespace BinanceBotWpf.Services
 
         private static readonly HashSet<string> AllowedActions = new (StringComparer.OrdinalIgnoreCase) { "buy", "sell", "close", "long", "short" };
 
-        public TradingViewWebhookService (
+        public TradingViewWebhookService(
             MainWindowViewModel ui,
             BinanceClient client,
             TradingSettings settings,
@@ -40,7 +40,7 @@ namespace BinanceBotWpf.Services
             _getCurrentPrice = getCurrentPrice;
         }
 
-        public async Task<string> HandleWebhookAsync (string source, string body)
+        public async Task<string> HandleWebhookAsync(string source, string body)
         {
             try
             {
@@ -117,7 +117,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task<string> HandleBuyAsync (string symbol, decimal price, string message, string timeframe)
+        private async Task<string> HandleBuyAsync(string symbol, decimal price, string message, string timeframe)
         {
             decimal balance = 0;
             try { balance = decimal.Parse (_getBalance (), CultureInfo.InvariantCulture); }
@@ -165,7 +165,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task<string> HandleSellAsync (string symbol, string message, string timeframe)
+        private async Task<string> HandleSellAsync(string symbol, string message, string timeframe)
         {
             string tf = string.IsNullOrEmpty (timeframe) ? "TV" : timeframe;
             string msg = string.IsNullOrEmpty (message) ? "" : $" ({message})";

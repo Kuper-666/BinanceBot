@@ -7,7 +7,7 @@ namespace BinanceBotWpf.Tests
     {
         private readonly AiRiskEngine _engine;
 
-        public AiRiskEngineTests ()
+        public AiRiskEngineTests()
         {
             // AiRiskEngine needs MlModelManager and BinanceClient, but we can test
             // the grid parameter logic by checking the public API behavior
@@ -15,7 +15,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_BelowMinBalance_ReturnsMinimalRisk ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_BelowMinBalance_ReturnsMinimalRisk()
         {
             // Balance below MinTradableBalance (5 USDC) should block trading
             var result = await _engine.CalculateRiskAsync (
@@ -35,7 +35,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_GridDisabled_Below500USDC ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_GridDisabled_Below500USDC()
         {
             // GridBot requires min ~20 USDC (2 levels * 2 sides * 5 minNotional)
             var result = await _engine.CalculateRiskAsync (
@@ -55,7 +55,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_NormalBalance_GridEnabled ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_NormalBalance_GridEnabled()
         {
             // Normal balance should have grid enabled with proper levels
             var result = await _engine.CalculateRiskAsync (
@@ -76,7 +76,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_StepPercent_InRange ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_StepPercent_InRange()
         {
             // stepPercent = rangePercent / levels should be in 0.5%-1.5%
             var result = await _engine.CalculateRiskAsync (
@@ -100,7 +100,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_StopLoss_AlwaysPositive ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_StopLoss_AlwaysPositive()
         {
             var result = await _engine.CalculateRiskAsync (
                 symbol: "BTCUSDC",
@@ -121,7 +121,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_ZeroBalance_ReturnsMinimalRisk ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_ZeroBalance_ReturnsMinimalRisk()
         {
             var result = await _engine.CalculateRiskAsync (
                 symbol: "BTCUSDC",
@@ -139,7 +139,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_ExtremeRSI_StillReturnsValid ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_ExtremeRSI_StillReturnsValid()
         {
             var result = await _engine.CalculateRiskAsync (
                 symbol: "ETHUSDC",
@@ -158,7 +158,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_VeryLowBalance_GridDisabled ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_VeryLowBalance_GridDisabled()
         {
             var result = await _engine.CalculateRiskAsync (
                 symbol: "DOGEUSDC",
@@ -177,7 +177,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public async System.Threading.Tasks.Task CalculateRiskAsync_NegativeMACD_StillReturnsValid ()
+        public async System.Threading.Tasks.Task CalculateRiskAsync_NegativeMACD_StillReturnsValid()
         {
             var result = await _engine.CalculateRiskAsync (
                 symbol: "SOLUSDC",

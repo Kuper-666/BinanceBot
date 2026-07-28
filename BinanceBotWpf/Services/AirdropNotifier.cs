@@ -1,10 +1,10 @@
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Xml.Linq;
-using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Services
 {
@@ -111,7 +111,7 @@ namespace BinanceBotWpf.Services
         private string FormatTelegramMessage(string title, string pubDate, string link) =>
             $"🎁 <b>Новый аирдроп на Binance!</b>\n\n📢 {title}\n📅 Анонсирован: {pubDate}\n\n🔗 Подробности: {link}";
 
-        public void Dispose ()
+        public void Dispose()
         {
             _timer?.Dispose ();
         }

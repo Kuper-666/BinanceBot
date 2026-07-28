@@ -39,9 +39,9 @@ namespace BinanceBotWpf.Services
         /// </summary>
         public async Task<bool> IsEventNearAsync(int minutesAhead = 30)
         {
-            if ((DateTime.UtcNow - _lastFetchTime) < _fetchInterval)
+            if (( DateTime.UtcNow - _lastFetchTime ) < _fetchInterval)
             {
-                return _upcomingEvents.Any (e => Math.Abs ((e - DateTime.UtcNow).TotalMinutes) < minutesAhead);
+                return _upcomingEvents.Any (e => Math.Abs (( e - DateTime.UtcNow ).TotalMinutes) < minutesAhead);
             }
 
             try
@@ -55,10 +55,10 @@ namespace BinanceBotWpf.Services
                 _logger?.Invoke ($"⚠️ Ошибка загрузки новостей: {ex.Message}");
             }
 
-            return _upcomingEvents.Any (e => Math.Abs ((e - DateTime.UtcNow).TotalMinutes) < minutesAhead);
+            return _upcomingEvents.Any (e => Math.Abs (( e - DateTime.UtcNow ).TotalMinutes) < minutesAhead);
         }
 
-        private async Task FetchBinanceAnnouncementsAsync ()
+        private async Task FetchBinanceAnnouncementsAsync()
         {
             try
             {
@@ -72,7 +72,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private async Task FetchGoogleNewsAsync ()
+        private async Task FetchGoogleNewsAsync()
         {
             try
             {
@@ -97,7 +97,7 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Возвращает ближайшие события
         /// </summary>
-        public List<DateTime> GetUpcomingEvents ()
+        public List<DateTime> GetUpcomingEvents()
         {
             return _upcomingEvents.Where (e => e > DateTime.UtcNow).ToList ();
         }

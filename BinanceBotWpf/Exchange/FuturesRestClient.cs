@@ -1,3 +1,6 @@
+using BinanceBotWpf.Models;
+using Newtonsoft.Json.Linq;
+using Polly;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -10,10 +13,6 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
-using Polly;
-
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Exchange
 {
@@ -41,12 +40,12 @@ namespace BinanceBotWpf.Exchange
         public event Action<string> OnLogGenerated;
         private void Log(string msg) => OnLogGenerated?.Invoke (msg);
 
-        private Uri MakeUri (string path)
+        private Uri MakeUri(string path)
         {
             return new Uri (_httpClient.BaseAddress, path);
         }
 
-        private static string NormalizeSymbol (string symbol)
+        private static string NormalizeSymbol(string symbol)
         {
             return symbol?.Trim ().ToUpperInvariant () ?? string.Empty;
         }
@@ -60,18 +59,18 @@ namespace BinanceBotWpf.Exchange
             {
                 ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) =>
                 {
-                    #if DEBUG
+#if DEBUG
                     if (sslPolicyErrors != System.Net.Security.SslPolicyErrors.None)
                     {
-                        Log($"SSL Warning (DEBUG): {sslPolicyErrors}");
+                        Log ($"SSL Warning (DEBUG): {sslPolicyErrors}");
                     }
                     return true;
-                    #else
+#else
                     if (sslPolicyErrors == System.Net.Security.SslPolicyErrors.None)
                         return true;
                     Log($"SSL Error: {sslPolicyErrors}");
                     return false;
-                    #endif
+#endif
                 },
                 AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
             };
@@ -87,11 +86,11 @@ namespace BinanceBotWpf.Exchange
             {
                 ServerCertificateCustomValidationCallback = (sender, cert, chain, sslPolicyErrors) =>
                 {
-                    #if DEBUG
+#if DEBUG
                     return true;
-                    #else
+#else
                     return sslPolicyErrors == System.Net.Security.SslPolicyErrors.None;
-                    #endif
+#endif
                 },
                 AutomaticDecompression = System.Net.DecompressionMethods.GZip | System.Net.DecompressionMethods.Deflate
             };
@@ -124,7 +123,7 @@ namespace BinanceBotWpf.Exchange
             catch { _serverTimeOffset = 0; }
         }
 
-        private async Task EnsureTimeSyncedAsync ()
+        private async Task EnsureTimeSyncedAsync()
         {
             if (( DateTime.UtcNow - _lastSyncTime ).TotalMinutes < 5) return;
             await _syncLock.WaitAsync ();
@@ -137,7 +136,7 @@ namespace BinanceBotWpf.Exchange
             finally { _syncLock.Release (); }
         }
 
-        private async Task ResyncAndRetryAsync ()
+        private async Task ResyncAndRetryAsync()
         {
             Log ("Пересинхронизация времени из-за -1021 ошибки...");
             await _syncLock.WaitAsync ();
@@ -212,7 +211,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        private HttpRequestMessage CloneRequest (HttpRequestMessage original, string body)
+        private HttpRequestMessage CloneRequest(HttpRequestMessage original, string body)
         {
             var clone = new HttpRequestMessage (original.Method, original.RequestUri);
             if (body != null)
@@ -451,13 +450,13 @@ namespace BinanceBotWpf.Exchange
 
         private async Task<JObject> GetExchangeInfoAsync()
         {
-            if (_exchangeInfoCache != null && (DateTime.UtcNow - _exchangeInfoCacheTime).TotalHours < 24)
+            if (_exchangeInfoCache != null && ( DateTime.UtcNow - _exchangeInfoCacheTime ).TotalHours < 24)
                 return _exchangeInfoCache;
 
             await _exchangeInfoLock.WaitAsync ();
             try
             {
-                if (_exchangeInfoCache != null && (DateTime.UtcNow - _exchangeInfoCacheTime).TotalHours < 24)
+                if (_exchangeInfoCache != null && ( DateTime.UtcNow - _exchangeInfoCacheTime ).TotalHours < 24)
                     return _exchangeInfoCache;
 
                 var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ("/fapi/v1/exchangeInfo"));
@@ -467,7 +466,7 @@ namespace BinanceBotWpf.Exchange
                     string body = await response.Content.ReadAsStringAsync ();
                     _exchangeInfoCache = JObject.Parse (body);
                     _exchangeInfoCacheTime = DateTime.UtcNow;
-                    var symbols = _exchangeInfoCache ["symbols"];
+                    var symbols = _exchangeInfoCache["symbols"];
                     Log ($"📊 Futures exchangeInfo: {symbols?.Count () ?? 0} символов загружено");
                     return _exchangeInfoCache;
                 }
@@ -480,22 +479,22 @@ namespace BinanceBotWpf.Exchange
 
         public async Task<decimal> GetStepSizeAsync(string symbol)
         {
-            if (_stepSizeCache.TryGetValue(symbol, out var cached))
+            if (_stepSizeCache.TryGetValue (symbol, out var cached))
                 return cached;
 
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
             if (symInfo == null)
             {
-                var symbolNames = exchangeInfo?["symbols"]?.Select (s => s ["symbol"]?.ToString ())?.Where (s => s != null)?.Take (10)?.ToList ();
+                var symbolNames = exchangeInfo?["symbols"]?.Select (s => s["symbol"]?.ToString ())?.Where (s => s != null)?.Take (10)?.ToList ();
                 Log ($"⚠️ GetStepSizeAsync: символ {symbol} не найден в exchangeInfo (всего {exchangeInfo?["symbols"]?.Count () ?? 0}, первые: {string.Join (", ", symbolNames ?? new List<string> ())}), используется fallback stepSize=1");
                 _stepSizeCache[symbol] = 1m;
                 return 1m;
             }
-            var lotSize = symInfo?["filters"]?.FirstOrDefault(f => f["filterType"]?.ToString() == "LOT_SIZE");
+            var lotSize = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "LOT_SIZE");
             if (lotSize != null && lotSize["stepSize"] != null)
             {
-                decimal step = decimal.Parse(lotSize["stepSize"].ToString(), CultureInfo.InvariantCulture);
+                decimal step = decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture);
                 _stepSizeCache[symbol] = step;
                 return step;
             }
@@ -507,20 +506,20 @@ namespace BinanceBotWpf.Exchange
         public async Task<(decimal stepSize, decimal minQty)> GetLotSizeAsync(string symbol)
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
             if (symInfo == null)
             {
                 Log ($"⚠️ GetLotSizeAsync: символ {symbol} не найден в exchangeInfo, используется fallback stepSize=1");
                 return (1m, 0m);
             }
-            var lotSize = symInfo?["filters"]?.FirstOrDefault(f => f["filterType"]?.ToString() == "LOT_SIZE");
+            var lotSize = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "LOT_SIZE");
             if (lotSize != null)
             {
                 decimal step = lotSize["stepSize"] != null
-                    ? decimal.Parse(lotSize["stepSize"].ToString(), CultureInfo.InvariantCulture) : 1m;
+                    ? decimal.Parse (lotSize["stepSize"].ToString (), CultureInfo.InvariantCulture) : 1m;
                 decimal minQ = lotSize["minQty"] != null
-                    ? decimal.Parse(lotSize["minQty"].ToString(), CultureInfo.InvariantCulture) : 0m;
-                if (!_stepSizeCache.ContainsKey(symbol)) _stepSizeCache[symbol] = step;
+                    ? decimal.Parse (lotSize["minQty"].ToString (), CultureInfo.InvariantCulture) : 0m;
+                if (!_stepSizeCache.ContainsKey (symbol)) _stepSizeCache[symbol] = step;
                 return (step, minQ);
             }
             Log ($"⚠️ GetLotSizeAsync: LOT_SIZE фильтр не найден для {symbol}, используется fallback stepSize=1");
@@ -530,11 +529,11 @@ namespace BinanceBotWpf.Exchange
         public async Task<decimal> GetTickSizeAsync(string symbol)
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
-            var priceFilter = symInfo?["filters"]?.FirstOrDefault(f => f["filterType"]?.ToString() == "PRICE_FILTER");
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
+            var priceFilter = symInfo?["filters"]?.FirstOrDefault (f => f["filterType"]?.ToString () == "PRICE_FILTER");
             if (priceFilter != null && priceFilter["tickSize"] != null)
             {
-                return decimal.Parse(priceFilter["tickSize"].ToString(), CultureInfo.InvariantCulture);
+                return decimal.Parse (priceFilter["tickSize"].ToString (), CultureInfo.InvariantCulture);
             }
             return 0.0001m;
         }
@@ -542,93 +541,93 @@ namespace BinanceBotWpf.Exchange
         public async Task<decimal> GetMinNotionalAsync(string symbol)
         {
             var exchangeInfo = await GetExchangeInfoAsync ();
-            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault(s => s["symbol"]?.ToString().Trim() == symbol);
-            var notionalFilter = symInfo?["filters"]?.FirstOrDefault(
-                f => f["filterType"]?.ToString() == "NOTIONAL" || f["filterType"]?.ToString() == "MIN_NOTIONAL");
+            var symInfo = exchangeInfo?["symbols"]?.FirstOrDefault (s => s["symbol"]?.ToString ().Trim () == symbol);
+            var notionalFilter = symInfo?["filters"]?.FirstOrDefault (
+                f => f["filterType"]?.ToString () == "NOTIONAL" || f["filterType"]?.ToString () == "MIN_NOTIONAL");
             decimal minNotional = 5m;
             if (notionalFilter != null)
             {
                 if (notionalFilter["minNotional"] != null)
-                    minNotional = decimal.Parse(notionalFilter["minNotional"].ToString(), CultureInfo.InvariantCulture);
+                    minNotional = decimal.Parse (notionalFilter["minNotional"].ToString (), CultureInfo.InvariantCulture);
                 else if (notionalFilter["notional"] != null)
-                    minNotional = decimal.Parse(notionalFilter["notional"].ToString(), CultureInfo.InvariantCulture);
+                    minNotional = decimal.Parse (notionalFilter["notional"].ToString (), CultureInfo.InvariantCulture);
             }
             return minNotional;
         }
 
         public async Task<JObject> PlaceLimitOrder(string symbol, string side, decimal quantity, decimal price)
         {
-            string sym = NormalizeSymbol(symbol);
+            string sym = NormalizeSymbol (symbol);
             try
             {
-                (decimal stepSize, decimal minQty) = await GetLotSizeAsync(sym);
+                (decimal stepSize, decimal minQty) = await GetLotSizeAsync (sym);
                 if (stepSize > 0)
-                    quantity = Math.Floor(quantity / stepSize) * stepSize;
+                    quantity = Math.Floor (quantity / stepSize) * stepSize;
                 if (quantity < minQty)
                     quantity = minQty;
                 if (quantity <= 0)
                 {
-                    Log($"PlaceLimitOrder SKIP {sym}: quantity=0 (stepSize={stepSize}, minQty={minQty})");
+                    Log ($"PlaceLimitOrder SKIP {sym}: quantity=0 (stepSize={stepSize}, minQty={minQty})");
                     return null;
                 }
-                long timestamp = GetTimestamp();
+                long timestamp = GetTimestamp ();
                 string positionSide = side == "BUY" ? "LONG" : "SHORT";
-                string query = $"symbol={sym}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString(CultureInfo.InvariantCulture)}&price={price.ToString(CultureInfo.InvariantCulture)}&positionSide={positionSide}&timestamp={timestamp}";
-                string signature = CreateSignature(query);
-                var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
-                var request = new HttpRequestMessage(HttpMethod.Post, "/fapi/v1/order") { Content = content };
-                var response = await SendWithRetryAsync(request);
-                string body = await response.Content.ReadAsStringAsync();
+                string query = $"symbol={sym}&side={side}&type=LIMIT&timeInForce=GTC&quantity={quantity.ToString (CultureInfo.InvariantCulture)}&price={price.ToString (CultureInfo.InvariantCulture)}&positionSide={positionSide}&timestamp={timestamp}";
+                string signature = CreateSignature (query);
+                var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                var request = new HttpRequestMessage (HttpMethod.Post, "/fapi/v1/order") { Content = content };
+                var response = await SendWithRetryAsync (request);
+                string body = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
-                    return JObject.Parse(body);
-                Log($"PlaceLimitOrder Futures ERROR for {symbol}: {body}");
+                    return JObject.Parse (body);
+                Log ($"PlaceLimitOrder Futures ERROR for {symbol}: {body}");
                 return null;
             }
             catch (Exception ex)
             {
-                Log($"PlaceLimitOrder Futures EXCEPTION: {ex.Message}");
+                Log ($"PlaceLimitOrder Futures EXCEPTION: {ex.Message}");
                 return null;
             }
         }
 
         public async Task<bool> CancelOrder(string symbol, long orderId)
         {
-            string sym = NormalizeSymbol(symbol);
+            string sym = NormalizeSymbol (symbol);
             try
             {
-                long timestamp = GetTimestamp();
+                long timestamp = GetTimestamp ();
                 string query = $"symbol={sym}&orderId={orderId}&timestamp={timestamp}";
-                string signature = CreateSignature(query);
-                var request = new HttpRequestMessage(HttpMethod.Delete, MakeUri($"/fapi/v1/order?{query}&signature={signature}"));
-                var response = await SendWithRetryAsync(request);
+                string signature = CreateSignature (query);
+                var request = new HttpRequestMessage (HttpMethod.Delete, MakeUri ($"/fapi/v1/order?{query}&signature={signature}"));
+                var response = await SendWithRetryAsync (request);
                 return response.IsSuccessStatusCode;
             }
             catch (Exception ex)
             {
-                Log($"CancelOrder Futures exception: {ex.Message}");
+                Log ($"CancelOrder Futures exception: {ex.Message}");
                 return false;
             }
         }
 
         public async Task<List<JObject>> GetAllOrdersAsync(string symbol, int limit = 50)
         {
-            string sym = NormalizeSymbol(symbol);
+            string sym = NormalizeSymbol (symbol);
             try
             {
-                long timestamp = GetTimestamp();
+                long timestamp = GetTimestamp ();
                 string query = $"symbol={sym}&timestamp={timestamp}&limit={limit}";
-                string signature = CreateSignature(query);
-                var request = new HttpRequestMessage(HttpMethod.Get, MakeUri($"/fapi/v1/allOrders?{query}&signature={signature}"));
-                var response = await SendWithRetryAsync(request);
-                string body = await response.Content.ReadAsStringAsync();
+                string signature = CreateSignature (query);
+                var request = new HttpRequestMessage (HttpMethod.Get, MakeUri ($"/fapi/v1/allOrders?{query}&signature={signature}"));
+                var response = await SendWithRetryAsync (request);
+                string body = await response.Content.ReadAsStringAsync ();
                 if (response.IsSuccessStatusCode)
-                    return JArray.Parse(body).ToObject<List<JObject>>();
-                Log($"GetAllOrders Futures error for {symbol}: {body}");
+                    return JArray.Parse (body).ToObject<List<JObject>> ();
+                Log ($"GetAllOrders Futures error for {symbol}: {body}");
                 return null;
             }
             catch (Exception ex)
             {
-                Log($"GetAllOrders Futures exception: {ex.Message}");
+                Log ($"GetAllOrders Futures exception: {ex.Message}");
                 return null;
             }
         }
@@ -637,21 +636,21 @@ namespace BinanceBotWpf.Exchange
         {
             try
             {
-                var klines = await GetKlinesAsync(symbol, interval, period + 1);
+                var klines = await GetKlinesAsync (symbol, interval, period + 1);
                 if (klines == null || klines.Count < period) return 0;
                 decimal atr = 0;
                 for (int i = 1; i <= period; i++)
                 {
-                    decimal tr = Math.Max(klines[i].High - klines[i].Low,
-                        Math.Max(Math.Abs(klines[i].High - klines[i - 1].Close),
-                                 Math.Abs(klines[i].Low - klines[i - 1].Close)));
+                    decimal tr = Math.Max (klines[i].High - klines[i].Low,
+                        Math.Max (Math.Abs (klines[i].High - klines[i - 1].Close),
+                                 Math.Abs (klines[i].Low - klines[i - 1].Close)));
                     atr += tr;
                 }
                 return atr / period;
             }
             catch (Exception ex)
             {
-                Log($"GetATRAsync Futures error: {ex.Message}");
+                Log ($"GetATRAsync Futures error: {ex.Message}");
                 return 0;
             }
         }
@@ -662,31 +661,31 @@ namespace BinanceBotWpf.Exchange
             {
                 try
                 {
-                    long timestamp = GetTimestamp();
+                    long timestamp = GetTimestamp ();
                     string type = "MAIN_UMFUTURE";
-                    string query = $"type={type}&asset={asset}&amount={amount.ToString(CultureInfo.InvariantCulture)}&timestamp={timestamp}";
-                    string signature = CreateSignature(query);
-                    var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
-                    var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_sapiClient.BaseAddress, $"/sapi/v1/asset/transfer")) { Content = content };
-                    var response = await _sapiClient.SendAsync(request);
-                    string body = await response.Content.ReadAsStringAsync();
+                    string query = $"type={type}&asset={asset}&amount={amount.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+                    string signature = CreateSignature (query);
+                    var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                    var request = new HttpRequestMessage (HttpMethod.Post, new Uri (_sapiClient.BaseAddress, $"/sapi/v1/asset/transfer")) { Content = content };
+                    var response = await _sapiClient.SendAsync (request);
+                    string body = await response.Content.ReadAsStringAsync ();
                     if (response.IsSuccessStatusCode)
                     {
-                        Log($"✅ Перевод {amount} {asset} из спота в фьючерсы: {body}");
-                        return JObject.Parse(body);
+                        Log ($"✅ Перевод {amount} {asset} из спота в фьючерсы: {body}");
+                        return JObject.Parse (body);
                     }
-                    if (attempt < 3) { await Task.Delay(1000 * attempt); continue; }
-                    Log($"⚠️ Ошибка перевода на фьючерсы: {body}");
+                    if (attempt < 3) { await Task.Delay (1000 * attempt); continue; }
+                    Log ($"⚠️ Ошибка перевода на фьючерсы: {body}");
                     return null;
                 }
                 catch (Exception ex) when (attempt < 3)
                 {
-                    Log($"⚠️ TransferToFutures попытка {attempt} ошибка: {ex.Message}");
-                    await Task.Delay(1000 * attempt);
+                    Log ($"⚠️ TransferToFutures попытка {attempt} ошибка: {ex.Message}");
+                    await Task.Delay (1000 * attempt);
                 }
                 catch (Exception ex)
                 {
-                    Log($"❌ TransferToFutures ошибка: {ex.Message}");
+                    Log ($"❌ TransferToFutures ошибка: {ex.Message}");
                     return null;
                 }
             }
@@ -699,31 +698,31 @@ namespace BinanceBotWpf.Exchange
             {
                 try
                 {
-                    long timestamp = GetTimestamp();
+                    long timestamp = GetTimestamp ();
                     string type = "UMFUTURE_MAIN";
-                    string query = $"type={type}&asset={asset}&amount={amount.ToString(CultureInfo.InvariantCulture)}&timestamp={timestamp}";
-                    string signature = CreateSignature(query);
-                    var content = new StringContent($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
-                    var request = new HttpRequestMessage(HttpMethod.Post, new Uri(_sapiClient.BaseAddress, $"/sapi/v1/asset/transfer")) { Content = content };
-                    var response = await _sapiClient.SendAsync(request);
-                    string body = await response.Content.ReadAsStringAsync();
+                    string query = $"type={type}&asset={asset}&amount={amount.ToString (CultureInfo.InvariantCulture)}&timestamp={timestamp}";
+                    string signature = CreateSignature (query);
+                    var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
+                    var request = new HttpRequestMessage (HttpMethod.Post, new Uri (_sapiClient.BaseAddress, $"/sapi/v1/asset/transfer")) { Content = content };
+                    var response = await _sapiClient.SendAsync (request);
+                    string body = await response.Content.ReadAsStringAsync ();
                     if (response.IsSuccessStatusCode)
                     {
-                        Log($"✅ Перевод {amount} {asset} из фьючерсов на спот: {body}");
-                        return JObject.Parse(body);
+                        Log ($"✅ Перевод {amount} {asset} из фьючерсов на спот: {body}");
+                        return JObject.Parse (body);
                     }
-                    if (attempt < 3) { await Task.Delay(1000 * attempt); continue; }
-                    Log($"⚠️ Ошибка перевода с фьючерсов: {body}");
+                    if (attempt < 3) { await Task.Delay (1000 * attempt); continue; }
+                    Log ($"⚠️ Ошибка перевода с фьючерсов: {body}");
                     return null;
                 }
                 catch (Exception ex) when (attempt < 3)
                 {
-                    Log($"⚠️ TransferFromFutures попытка {attempt} ошибка: {ex.Message}");
-                    await Task.Delay(1000 * attempt);
+                    Log ($"⚠️ TransferFromFutures попытка {attempt} ошибка: {ex.Message}");
+                    await Task.Delay (1000 * attempt);
                 }
                 catch (Exception ex)
                 {
-                    Log($"❌ TransferFromFutures ошибка: {ex.Message}");
+                    Log ($"❌ TransferFromFutures ошибка: {ex.Message}");
                     return null;
                 }
             }
@@ -732,12 +731,12 @@ namespace BinanceBotWpf.Exchange
 
         public void Dispose()
         {
-            _httpClient.Dispose();
-            _sapiClient?.Dispose();
-            _rateLimiter?.Dispose();
-            _throttleLock?.Dispose();
-            _syncLock?.Dispose();
-            _exchangeInfoLock?.Dispose();
+            _httpClient.Dispose ();
+            _sapiClient?.Dispose ();
+            _rateLimiter?.Dispose ();
+            _throttleLock?.Dispose ();
+            _syncLock?.Dispose ();
+            _exchangeInfoLock?.Dispose ();
         }
     }
 }

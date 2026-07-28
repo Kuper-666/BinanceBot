@@ -90,7 +90,7 @@ namespace BinanceBotWpf.Services
 
                 var predEngine = _mlContext.Model.CreatePredictionEngine<ModelInput, ModelOutput> (_mlModel);
                 var result = predEngine.Predict (input);
-                
+
                 string riskLevel = "Высокий риск";
                 if (result.Probability >= 0.75f) riskLevel = "Низкий риск";
                 else if (result.Probability >= 0.60f) riskLevel = "Средний риск";

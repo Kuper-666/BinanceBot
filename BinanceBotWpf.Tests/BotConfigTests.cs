@@ -1,7 +1,7 @@
-using System;
-using System.IO;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
+using System;
+using System.IO;
 using Xunit;
 
 namespace BinanceBotWpf.Tests

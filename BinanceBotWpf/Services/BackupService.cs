@@ -35,8 +35,8 @@ namespace BinanceBotWpf.Services
         /// </summary>
         public async Task CheckAndBackupAsync()
         {
-            if ((DateTime.UtcNow - _lastBackupTime).TotalHours < 24) return;
-            if (Interlocked.CompareExchange(ref _backupInProgress, 1, 0) != 0) return;
+            if (( DateTime.UtcNow - _lastBackupTime ).TotalHours < 24) return;
+            if (Interlocked.CompareExchange (ref _backupInProgress, 1, 0) != 0) return;
 
             try
             {

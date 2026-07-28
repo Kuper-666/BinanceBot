@@ -1,7 +1,7 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services
 {
@@ -15,6 +15,6 @@ namespace BinanceBotWpf.Services
         TimeSpan MaxHoldTime { get; set; }
         decimal PartialCloseQtyPercent { get; set; }
 
-        Task<List<string>> CheckAndProtectAsync (Func<string, decimal> getPrice, Func<string, Task<decimal>> restPriceFetcher = null);
+        Task<List<string>> CheckAndProtectAsync(Func<string, decimal> getPrice, Func<string, Task<decimal>> restPriceFetcher = null);
     }
 }

@@ -31,7 +31,7 @@ namespace BinanceBotWpf
                     bool wasAtBottom = LogsRichTextBox.VerticalOffset >= LogsRichTextBox.ExtentHeight - LogsRichTextBox.ViewportHeight - 40;
 
                     var run = new Run (text);
-                    var paragraph = new Paragraph (run) { Margin = new Thickness(0) };
+                    var paragraph = new Paragraph (run) { Margin = new Thickness (0) };
                     LogsRichTextBox.Document.Blocks.Add (paragraph);
 
                     while (LogsRichTextBox.Document.Blocks.Count > 1000)

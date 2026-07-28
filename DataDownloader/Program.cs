@@ -1,10 +1,10 @@
+using CsvHelper;
+using Microsoft.ML;
+using Microsoft.ML.Data;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using Microsoft.ML;
-using Microsoft.ML.Data;
-using CsvHelper;
 
 namespace ModelTrainer
 {
@@ -28,7 +28,7 @@ namespace ModelTrainer
         public float Probability { get; set; }
     }
 
-    class Program
+    static class Program
     {
         static void Main(string[] args)
         {

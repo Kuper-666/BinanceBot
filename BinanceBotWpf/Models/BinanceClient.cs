@@ -1,5 +1,5 @@
-using System;
 using BinanceBotWpf.Exchange;
+using System;
 
 namespace BinanceBotWpf.Models
 {
@@ -8,7 +8,7 @@ namespace BinanceBotWpf.Models
     /// </summary>
     public class BinanceClient : SpotRestClient
     {
-        public BinanceClient (string apiKey, string apiSecret, bool useTestnet = false)
+        public BinanceClient(string apiKey, string apiSecret, bool useTestnet = false)
             : base (apiKey, apiSecret, useTestnet)
         {
         }

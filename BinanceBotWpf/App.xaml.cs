@@ -1,16 +1,16 @@
 #nullable enable
-using System;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Media.Imaging;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Risk;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.Services.Strategies;
 using BinanceBotWpf.ViewModels;
 using Microsoft.Extensions.DependencyInjection;
+using System;
+using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using System.Windows;
+using System.Windows.Media.Imaging;
 
 namespace BinanceBotWpf
 {
@@ -21,7 +21,7 @@ namespace BinanceBotWpf
         private static IServiceProvider? _serviceProvider;
         private static FileLogger? _fileLogger;
 
-        protected override async void OnStartup (StartupEventArgs e)
+        protected override async void OnStartup(StartupEventArgs e)
         {
             base.OnStartup (e);
 
@@ -78,7 +78,7 @@ namespace BinanceBotWpf
             }
         }
 
-        private async Task StartBotAsync ()
+        private async Task StartBotAsync()
         {
             BotConfig? config;
             try
@@ -151,7 +151,7 @@ namespace BinanceBotWpf
             string serverInfo;
             try
             {
-                serverInfo = await ((BinanceClient)binanceClient).GetServerInfo ();
+                serverInfo = await ( (BinanceClient)binanceClient ).GetServerInfo ();
             }
             catch
             {
@@ -198,7 +198,7 @@ namespace BinanceBotWpf
             mainWindow.Title = $"Торговый помощник v{AppConstants.AppVersion}";
             mainWindow.Show ();
 
-            viewModel.AddLog ($"🚀 Бот запущен: {(isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ")}");
+            viewModel.AddLog ($"🚀 Бот запущен: {( isTestnet ? "ТЕСТОВАЯ СЕТЬ" : "РЕАЛЬНАЯ СЕТЬ" )}");
             viewModel.AddLog ($"📡 Сервер: {serverInfo}");
             if (!telegramConfigured)
             {
@@ -219,7 +219,7 @@ namespace BinanceBotWpf
             });
         }
 
-        private static void HandleCommandLineArgs (string[] args)
+        private static void HandleCommandLineArgs(string[] args)
         {
             for (int i = 0; i < args.Length; i++)
             {
@@ -227,7 +227,7 @@ namespace BinanceBotWpf
                 {
                     case "--autostart":
                     case "/autostart":
-                        bool enable = i + 1 >= args.Length || (args[i + 1] != "off" && args[i + 1] != "0" && args[i + 1] != "disable");
+                        bool enable = i + 1 >= args.Length || ( args[i + 1] != "off" && args[i + 1] != "0" && args[i + 1] != "disable" );
                         if (enable)
                             AutoStartManager.Enable ();
                         else
@@ -237,7 +237,7 @@ namespace BinanceBotWpf
             }
         }
 
-        private static void CleanupOldLogs ()
+        private static void CleanupOldLogs()
         {
             try
             {
@@ -257,7 +257,7 @@ namespace BinanceBotWpf
             catch { }
         }
 
-        private static void ConfigureServices (ServiceCollection services,
+        private static void ConfigureServices(ServiceCollection services,
             BotConfig config,
             string apiKey, string apiSecret, bool isTestnet,
             decimal minUsdcBalance, string telegramBotToken, string telegramChatId)
@@ -320,13 +320,13 @@ namespace BinanceBotWpf
             services.AddSingleton<IPriceAlertManager> (sp =>
             {
                 // Lazy price provider: resolves TradingService on first call
-                Func<string, decimal> priceProvider = null;
+                Func<string, decimal>? priceProvider = null;
                 var mgr = new PriceAlertManager (
-                    (Func<string, decimal>)(sym =>
+                    (Func<string, decimal>)( sym =>
                     {
-                        priceProvider ??= ((TradingService)sp.GetRequiredService<TradingService> ()).GetCurrentPriceForSymbol;
+                        priceProvider ??= ( (TradingService)sp.GetRequiredService<TradingService> () ).GetCurrentPriceForSymbol;
                         return priceProvider (sym);
-                    }),
+                    } ),
                     null,
                     fileLogger);
                 return mgr;
@@ -388,7 +388,7 @@ namespace BinanceBotWpf
                 isTestnet));
         }
 
-        protected override void OnExit (ExitEventArgs e)
+        protected override void OnExit(ExitEventArgs e)
         {
             _fileLogger?.Info ("App", "Завершение приложения");
 
@@ -427,7 +427,7 @@ namespace BinanceBotWpf
             base.OnExit (e);
         }
 
-        private static void WriteCrashLog (string message)
+        private static void WriteCrashLog(string message)
         {
             try
             {

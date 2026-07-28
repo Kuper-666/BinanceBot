@@ -1,5 +1,5 @@
-using System;
 using BinanceBotWpf.Services;
+using System;
 using Xunit;
 
 namespace BinanceBotWpf.Tests
@@ -22,7 +22,7 @@ namespace BinanceBotWpf.Tests
     public class ServiceProviderTests
     {
         [Fact]
-        public void Register_ThenGet_ReturnsSameInstance ()
+        public void Register_ThenGet_ReturnsSameInstance()
         {
             var sp = new ServiceRegistry ();
             var svc = new TestServiceA ();
@@ -33,14 +33,14 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Get_Unregistered_ThrowsInvalidOperation ()
+        public void Get_Unregistered_ThrowsInvalidOperation()
         {
             var sp = new ServiceRegistry ();
             Assert.Throws<InvalidOperationException> (() => sp.Get<ITestService> ());
         }
 
         [Fact]
-        public void TryGet_Unregistered_ReturnsFalse ()
+        public void TryGet_Unregistered_ReturnsFalse()
         {
             var sp = new ServiceRegistry ();
             bool found = sp.TryGet<ITestService> (out var svc);
@@ -50,7 +50,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void TryGet_Registered_ReturnsTrue ()
+        public void TryGet_Registered_ReturnsTrue()
         {
             var sp = new ServiceRegistry ();
             var svc = new TestServiceA ();
@@ -63,7 +63,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void RegisterFactory_CreatesInstanceOnFirstGet ()
+        public void RegisterFactory_CreatesInstanceOnFirstGet()
         {
             var sp = new ServiceRegistry ();
             int callCount = 0;
@@ -84,7 +84,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Register_OverwritesPrevious ()
+        public void Register_OverwritesPrevious()
         {
             var sp = new ServiceRegistry ();
             var svc1 = new TestServiceA ();

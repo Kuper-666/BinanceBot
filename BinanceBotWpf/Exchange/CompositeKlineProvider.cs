@@ -10,14 +10,14 @@ namespace BinanceBotWpf.Exchange
         private readonly KlineCache _cache;
         private readonly Action<string> _logger;
 
-        public CompositeKlineProvider (IBinanceRestClient restClient, KlineCache cache, Action<string> logger)
+        public CompositeKlineProvider(IBinanceRestClient restClient, KlineCache cache, Action<string> logger)
         {
             _restClient = restClient;
             _cache = cache;
             _logger = logger;
         }
 
-        public async Task<List<BinanceKline>> GetKlinesAsync (string symbol, string interval, int limit)
+        public async Task<List<BinanceKline>> GetKlinesAsync(string symbol, string interval, int limit)
         {
             if (_cache.HasRealTimeData (symbol, interval))
             {
@@ -30,7 +30,7 @@ namespace BinanceBotWpf.Exchange
             return klines;
         }
 
-        public bool HasRealTimeData (string symbol, string interval)
+        public bool HasRealTimeData(string symbol, string interval)
         {
             return _cache.HasRealTimeData (symbol, interval);
         }

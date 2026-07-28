@@ -12,7 +12,7 @@ namespace BinanceBotWpf
         /// Автоматически берётся из VersionPrefix в .csproj.
         /// </summary>
         public static string AppVersion =>
-            Assembly.GetExecutingAssembly().GetName().Version?.ToString(3) ?? "0.0.0";
+            Assembly.GetExecutingAssembly ().GetName ().Version?.ToString (3) ?? "0.0.0";
 
         /// <summary>
         /// GitHub владелец репозитория для проверки обновлений.
@@ -27,7 +27,7 @@ namespace BinanceBotWpf
         /// <summary>
         /// URL для скачивания последней версии.
         /// </summary>
-        public static string GetLatestReleaseUrl() => 
+        public static string GetLatestReleaseUrl() =>
             $"https://github.com/{GitHubOwner}/{GitHubRepo}/releases/latest";
     }
 }

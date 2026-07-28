@@ -1,3 +1,4 @@
+using Newtonsoft.Json.Linq;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -6,7 +7,6 @@ using System.Net.WebSockets;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 
 namespace BinanceBotWpf.Exchange
 {
@@ -17,12 +17,12 @@ namespace BinanceBotWpf.Exchange
         private readonly ConcurrentDictionary<string, Action<OrderBookSnapshot>> _orderBookCallbacks = new ();
         private ReconnectableWebSocket _ws;
 
-        public MarketDataStream (Action<string> logger)
+        public MarketDataStream(Action<string> logger)
         {
             _logger = logger;
         }
 
-        public Task StartAsync (string[] symbols, string[] intervals)
+        public Task StartAsync(string[] symbols, string[] intervals)
         {
             List<string> streams = new List<string> ();
             foreach (string symbol in symbols)
@@ -49,31 +49,31 @@ namespace BinanceBotWpf.Exchange
             return _ws.StartAsync (MessageLoopAsync);
         }
 
-        public void SubscribeKline (string symbol, string interval, Action<KlineUpdate> callback)
+        public void SubscribeKline(string symbol, string interval, Action<KlineUpdate> callback)
         {
             string key = $"{symbol}_{interval}";
             _klineCallbacks[key] = callback;
         }
 
-        public void UnsubscribeKline (string symbol, string interval)
+        public void UnsubscribeKline(string symbol, string interval)
         {
             string key = $"{symbol}_{interval}";
             _klineCallbacks.TryRemove (key, out _);
         }
 
-        public void SubscribeOrderBook (string symbol, int depthLevels, Action<OrderBookSnapshot> callback)
+        public void SubscribeOrderBook(string symbol, int depthLevels, Action<OrderBookSnapshot> callback)
         {
             string key = $"{symbol}_{depthLevels}";
             _orderBookCallbacks[key] = callback;
         }
 
-        public void UnsubscribeOrderBook (string symbol, int depthLevels)
+        public void UnsubscribeOrderBook(string symbol, int depthLevels)
         {
             string key = $"{symbol}_{depthLevels}";
             _orderBookCallbacks.TryRemove (key, out _);
         }
 
-        private async Task MessageLoopAsync (ClientWebSocket ws, CancellationToken cancellationToken)
+        private async Task MessageLoopAsync(ClientWebSocket ws, CancellationToken cancellationToken)
         {
             while (ws.State == WebSocketState.Open && !cancellationToken.IsCancellationRequested)
             {
@@ -114,7 +114,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        private void HandleKlineMessage (string streamName, JObject data)
+        private void HandleKlineMessage(string streamName, JObject data)
         {
             string symbol = data["s"]?.ToString ();
             JObject kline = data["k"] as JObject;
@@ -136,20 +136,20 @@ namespace BinanceBotWpf.Exchange
                 {
                     Symbol = symbol,
                     Interval = interval,
-                    OpenTime = DateTimeOffset.FromUnixTimeMilliseconds (data["E"]?.Value<long>() ?? 0).LocalDateTime,
+                    OpenTime = DateTimeOffset.FromUnixTimeMilliseconds (data["E"]?.Value<long> () ?? 0).LocalDateTime,
                     Open = decimal.Parse (kline["o"]?.ToString () ?? "0"),
                     High = decimal.Parse (kline["h"]?.ToString () ?? "0"),
                     Low = decimal.Parse (kline["l"]?.ToString () ?? "0"),
                     Close = decimal.Parse (kline["c"]?.ToString () ?? "0"),
                     Volume = decimal.Parse (kline["v"]?.ToString () ?? "0"),
-                    IsFinal = kline["x"]?.Value<bool>() ?? false
+                    IsFinal = kline["x"]?.Value<bool> () ?? false
                 };
 
                 callback.Invoke (update);
             }
         }
 
-        private void HandleDepthMessage (string streamName, JObject data)
+        private void HandleDepthMessage(string streamName, JObject data)
         {
             string[] parts = streamName.Split ('@');
             if (parts.Length < 2)
@@ -181,7 +181,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        private List<OrderBookLevel> ParsePriceArray (JArray array)
+        private List<OrderBookLevel> ParsePriceArray(JArray array)
         {
             List<OrderBookLevel> levels = new List<OrderBookLevel> ();
             if (array == null)
@@ -205,7 +205,7 @@ namespace BinanceBotWpf.Exchange
             return levels;
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             _ws?.Dispose ();
         }

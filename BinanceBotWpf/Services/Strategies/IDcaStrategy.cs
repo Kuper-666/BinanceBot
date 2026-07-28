@@ -1,5 +1,5 @@
-using System.Collections.Generic;
 using BinanceBotWpf.Models;
+using System.Collections.Generic;
 
 namespace BinanceBotWpf.Services.Strategies
 {
@@ -10,7 +10,7 @@ namespace BinanceBotWpf.Services.Strategies
         decimal AtrMultiplier { get; set; }
         decimal BuyPercent { get; set; }
 
-        bool ShouldBuy (string symbol, List<BinanceKline> klines, decimal balance);
-        decimal CalculateBuyAmount (decimal balance);
+        bool ShouldBuy(string symbol, List<BinanceKline> klines, decimal balance);
+        decimal CalculateBuyAmount(decimal balance);
     }
 }

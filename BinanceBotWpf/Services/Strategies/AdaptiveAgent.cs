@@ -1,7 +1,7 @@
+using BinanceBotWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using BinanceBotWpf.Models;
 
 namespace BinanceBotWpf.Services.Strategies
 {
@@ -16,14 +16,14 @@ namespace BinanceBotWpf.Services.Strategies
 
         public decimal AdaptiveFactor => _lastAdaptiveFactor;
 
-        public AdaptiveAgent (Action<string> logger, decimal slMultiplier = 0.4m, decimal periodMultiplier = 0.3m)
+        public AdaptiveAgent(Action<string> logger, decimal slMultiplier = 0.4m, decimal periodMultiplier = 0.3m)
         {
             _logger = logger;
             _slMultiplier = slMultiplier;
             _periodMultiplier = periodMultiplier;
         }
 
-        public AdaptiveResult Calculate (List<BinanceKline> klines)
+        public AdaptiveResult Calculate(List<BinanceKline> klines)
         {
             var result = new AdaptiveResult ();
             if (klines == null || klines.Count < 100)
@@ -73,7 +73,7 @@ namespace BinanceBotWpf.Services.Strategies
             decimal volumeFactor = MapRange (volumeChange, 0.5m, 2.0m, 0.8m, 1.3m);
             decimal volatilityFactor = MapRange (priceVolatility, 0.005m, 0.05m, 0.8m, 1.4m);
 
-            decimal factor = (atrFactor * 0.36m + volumeFactor * 0.27m + volatilityFactor * 0.27m + trendStrength * 0.10m);
+            decimal factor = ( atrFactor * 0.36m + volumeFactor * 0.27m + volatilityFactor * 0.27m + trendStrength * 0.10m );
             factor = Math.Clamp (factor, 0.5m, 1.5m);
 
             result.Factor = factor;
@@ -81,8 +81,8 @@ namespace BinanceBotWpf.Services.Strategies
             result.VolumeFactor = volumeFactor;
             result.VolatilityFactor = volatilityFactor;
             result.TrendStrengthFactor = trendStrength;
-            result.LsmaWindowMultiplier = 1.0m + (factor - 1.0m) * _periodMultiplier;
-            result.SlMultiplier = 1.0m + (factor - 1.0m) * _slMultiplier;
+            result.LsmaWindowMultiplier = 1.0m + ( factor - 1.0m ) * _periodMultiplier;
+            result.SlMultiplier = 1.0m + ( factor - 1.0m ) * _slMultiplier;
 
             if (factor > 1.2m)
                 result.Regime = "High Volatility";
@@ -99,39 +99,39 @@ namespace BinanceBotWpf.Services.Strategies
             return result;
         }
 
-        private decimal CalculateCurrentATR (List<decimal> highs, List<decimal> lows, List<decimal> closes, int period)
+        private decimal CalculateCurrentATR(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period)
         {
             var atrList = TechnicalAnalysis.ATR (highs, lows, closes, period);
             return atrList.LastOrDefault () ?? 0;
         }
 
-        private decimal CalculateAverageATR (List<decimal> highs, List<decimal> lows, List<decimal> closes, int period, int lookback)
+        private decimal CalculateAverageATR(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period, int lookback)
         {
             var atrList = TechnicalAnalysis.ATR (highs, lows, closes, period);
             var valid = atrList.Where (v => v.HasValue).TakeLast (lookback / 2).Select (v => v.Value).ToList ();
             return valid.Count > 0 ? valid.Average () : 0;
         }
 
-        private decimal CalculatePriceVolatility (List<decimal> closes, int lookback)
+        private decimal CalculatePriceVolatility(List<decimal> closes, int lookback)
         {
             int start = Math.Max (0, closes.Count - lookback);
             var slice = closes.Skip (start).ToList ();
             if (slice.Count < 2) return 0;
 
             decimal mean = slice.Average ();
-            decimal sumSq = slice.Select (v => (v - mean) * (v - mean)).Sum ();
-            decimal stdDev = (decimal)Math.Sqrt ((double)(sumSq / slice.Count));
+            decimal sumSq = slice.Select (v => ( v - mean ) * ( v - mean )).Sum ();
+            decimal stdDev = (decimal)Math.Sqrt ((double)( sumSq / slice.Count ));
             return mean > 0 ? stdDev / mean : 0;
         }
 
-        private static decimal MapRange (decimal value, decimal fromLow, decimal fromHigh, decimal toLow, decimal toHigh)
+        private static decimal MapRange(decimal value, decimal fromLow, decimal fromHigh, decimal toLow, decimal toHigh)
         {
             value = Math.Clamp (value, fromLow, fromHigh);
-            decimal t = (value - fromLow) / (fromHigh - fromLow);
-            return toLow + t * (toHigh - toLow);
+            decimal t = ( value - fromLow ) / ( fromHigh - fromLow );
+            return toLow + t * ( toHigh - toLow );
         }
 
-        private decimal CalculateADX (List<decimal> highs, List<decimal> lows, List<decimal> closes, int period)
+        private decimal CalculateADX(List<decimal> highs, List<decimal> lows, List<decimal> closes, int period)
         {
             if (highs.Count < period + 1 || lows.Count < period + 1 || closes.Count < period + 1)
             {
@@ -177,8 +177,8 @@ namespace BinanceBotWpf.Services.Strategies
                 smoothPlusDm = smoothPlusDm - smoothPlusDm / period + plusDmList[i];
                 smoothMinusDm = smoothMinusDm - smoothMinusDm / period + minusDmList[i];
 
-                decimal plusDi = smoothTr > 0 ? (smoothPlusDm / smoothTr) * 100m : 0m;
-                decimal minusDi = smoothTr > 0 ? (smoothMinusDm / smoothTr) * 100m : 0m;
+                decimal plusDi = smoothTr > 0 ? ( smoothPlusDm / smoothTr ) * 100m : 0m;
+                decimal minusDi = smoothTr > 0 ? ( smoothMinusDm / smoothTr ) * 100m : 0m;
                 decimal diSum = plusDi + minusDi;
                 decimal dx = diSum > 0 ? Math.Abs (plusDi - minusDi) / diSum * 100m : 0m;
                 dxList.Add (dx);

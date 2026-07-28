@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading.Tasks;
-using System.Globalization;
 
 namespace BinanceBotWpf.Models
 {
@@ -13,7 +13,7 @@ namespace BinanceBotWpf.Models
         public event Action<string> OnLogGenerated;
         private static readonly HashSet<string> BlacklistedAssets = new () { "RDNT", "NTRN", "LDBNB", "LDAIGENSYN", "BETH", "WBETH", "FDUSD" };
 
-        public BalanceRebalancer (decimal targetUsdcBalance = 5.50m)
+        public BalanceRebalancer(decimal targetUsdcBalance = 5.50m)
         {
             _targetUsdcBalance = Math.Max (targetUsdcBalance, 5.10m);
         }

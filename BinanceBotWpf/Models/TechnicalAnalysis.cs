@@ -198,9 +198,9 @@ namespace BinanceBotWpf.Models
                 }
                 decimal denominator = period * sumX2 - sumX * sumX;
                 if (denominator == 0) { result[i] = sumY / period; continue; }
-                decimal slope = (period * sumXY - sumX * sumY) / denominator;
-                decimal intercept = (sumY - slope * sumX) / period;
-                result[i] = intercept + slope * (period - 1);
+                decimal slope = ( period * sumXY - sumX * sumY ) / denominator;
+                decimal intercept = ( sumY - slope * sumX ) / period;
+                result[i] = intercept + slope * ( period - 1 );
             }
             return result;
         }

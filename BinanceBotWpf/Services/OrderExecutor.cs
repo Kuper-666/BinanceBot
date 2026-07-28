@@ -1,11 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Threading;
-using System.Threading.Tasks;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Risk;
 using BinanceBotWpf.ViewModels;
 using Newtonsoft.Json.Linq;
+using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace BinanceBotWpf.Services
 {
@@ -31,7 +31,7 @@ namespace BinanceBotWpf.Services
         public int BuyCooldownMinutes { get; set; } = 15;
         public int MaxTradesPerHour { get; set; } = 3;
 
-        public OrderExecutor (
+        public OrderExecutor(
             BinanceClient client,
             IAiRiskEngine aiRiskEngine,
             IPositionManager positionManager,
@@ -47,17 +47,17 @@ namespace BinanceBotWpf.Services
             _sendNotification = sendNotification;
         }
 
-        public void SetViewModel (MainWindowViewModel ui)
+        public void SetViewModel(MainWindowViewModel ui)
         {
             _ui = ui;
         }
 
-        public void SetPriceProvider (Func<string, decimal> getPrice)
+        public void SetPriceProvider(Func<string, decimal> getPrice)
         {
             _getPrice = getPrice;
         }
 
-        public Dictionary<string, DateTime> GetLastBuyTimes ()
+        public Dictionary<string, DateTime> GetLastBuyTimes()
         {
             lock (_cooldownLock)
             {
@@ -65,7 +65,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public List<DateTime> GetRecentTradeTimes ()
+        public List<DateTime> GetRecentTradeTimes()
         {
             lock (_cooldownLock)
             {
@@ -73,7 +73,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public void RestoreCooldowns (Dictionary<string, DateTime> lastBuyTimes, List<DateTime> recentTradeTimes)
+        public void RestoreCooldowns(Dictionary<string, DateTime> lastBuyTimes, List<DateTime> recentTradeTimes)
         {
             lock (_cooldownLock)
             {
@@ -93,13 +93,13 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private decimal GetCurrentPrice (string symbol)
+        private decimal GetCurrentPrice(string symbol)
         {
             if (_getPrice != null) return _getPrice (symbol);
             return 0m;
         }
 
-        public async Task ExecuteBuyAsync (string symbol, Dictionary<string, decimal> indicators, decimal currentBalance)
+        public async Task ExecuteBuyAsync(string symbol, Dictionary<string, decimal> indicators, decimal currentBalance)
         {
             if (!indicators.ContainsKey ("price")) return;
 
@@ -172,7 +172,7 @@ namespace BinanceBotWpf.Services
                 var cooldown = TimeSpan.FromMinutes (BuyCooldownMinutes);
                 if (_lastBuyTime.TryGetValue (symbol, out DateTime lastTime) && DateTime.UtcNow - lastTime < cooldown)
                 {
-                    cooldownMessage = $"{symbol}: BUY проигнорирован — кулдаун ({(cooldown - (DateTime.UtcNow - lastTime)).TotalSeconds:F0} сек)";
+                    cooldownMessage = $"{symbol}: BUY проигнорирован — кулдаун ({( cooldown - ( DateTime.UtcNow - lastTime ) ).TotalSeconds:F0} сек)";
                 }
 
                 _recentTradeTimes.RemoveAll (t => DateTime.UtcNow - t > TimeSpan.FromHours (1));
@@ -194,8 +194,8 @@ namespace BinanceBotWpf.Services
             }
 
             decimal adaptiveSlMult = indicators.ContainsKey ("adaptiveSlMultiplier") ? indicators["adaptiveSlMultiplier"] : 1.0m;
-            decimal slPrice = price * (1 - aiRisk.StopLossPercent * adaptiveSlMult);
-            decimal tpPrice = price * (1 + aiRisk.TakeProfitPercent * adaptiveSlMult);
+            decimal slPrice = price * ( 1 - aiRisk.StopLossPercent * adaptiveSlMult );
+            decimal tpPrice = price * ( 1 + aiRisk.TakeProfitPercent * adaptiveSlMult );
             decimal slPct = aiRisk.StopLossPercent * adaptiveSlMult;
 
             _ui?.AddLog ($"{symbol}: Риск={riskAmount:F2} ({riskPerTrade:P2}), SL={slPrice:F4} (-{slPct:P2}), TP={tpPrice:F4} (+{aiRisk.TakeProfitPercent:P2}), R/R 1:{riskRewardRatio:F1}");
@@ -261,7 +261,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task ExecuteSellAsync (string symbol)
+        public async Task ExecuteSellAsync(string symbol)
         {
             if (!_positionManager.TryGet (symbol, out OpenPosition pos)) return;
 
@@ -379,8 +379,8 @@ namespace BinanceBotWpf.Services
 
             if (sellOrder != null)
             {
-                decimal pnl = (limitPrice - pos.EntryPrice) * qtyToSell;
-                decimal pnlPct = (limitPrice / pos.EntryPrice - 1) * 100;
+                decimal pnl = ( limitPrice - pos.EntryPrice ) * qtyToSell;
+                decimal pnlPct = ( limitPrice / pos.EntryPrice - 1 ) * 100;
 
                 _ui?.AddLog ($"Закрыта {symbol}: PnL {pnl:F2} ({pnlPct:F2}%)");
 
@@ -412,7 +412,7 @@ namespace BinanceBotWpf.Services
                     $"💵 Вход: {pos.EntryPrice:F4} → Выход: {limitPrice:F4}\n" +
                     $"📦 Количество: {qtyToSell}\n" +
                     $"📈 PnL: {pnlSign}{pnl:F2} USDC ({pnlPctSign}{pnlPct:F2}%)\n" +
-                    $"⏱ Длительность: {(DateTime.UtcNow - pos.OpenTime):hh\\:mm}");
+                    $"⏱ Длительность: {( DateTime.UtcNow - pos.OpenTime ):hh\\:mm}");
             }
             else
             {

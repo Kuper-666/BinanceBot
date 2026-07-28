@@ -1,8 +1,8 @@
+using BinanceBotWpf.Services;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using BinanceBotWpf.Services;
 
 namespace BinanceBotWpf.Models
 {
@@ -15,7 +15,7 @@ namespace BinanceBotWpf.Models
 
         public event Action<string> OnLogGenerated;
 
-        public EarnManager ()
+        public EarnManager()
         {
         }
 

@@ -1,11 +1,11 @@
+using BinanceBotWpf.Models;
+using BinanceBotWpf.Services.Strategies;
+using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
-using BinanceBotWpf.Services.Strategies;
-using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
 {
@@ -29,7 +29,7 @@ namespace BinanceBotWpf.Services
         private volatile bool _isRunning;
         private CancellationTokenSource _shutdownCts;
 
-        public BackgroundLoopManager (
+        public BackgroundLoopManager(
             BinanceClient client,
             IWalletManager wallet,
             ISimpleEarnStrategy earnStrategy,
@@ -41,7 +41,7 @@ namespace BinanceBotWpf.Services
             _fearGreedProvider = fearGreedProvider;
         }
 
-        public void Configure (MainWindowViewModel ui, bool isRunning, CancellationTokenSource shutdownCts,
+        public void Configure(MainWindowViewModel ui, bool isRunning, CancellationTokenSource shutdownCts,
             TradingSettings tradingSettings, UpdateChecker updateChecker, TelegramNotifier telegram, PairManager pairManager)
         {
             _ui = ui;
@@ -56,13 +56,13 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Reconfigure running state after start/stop.
         /// </summary>
-        public void UpdateRunningState (bool isRunning, CancellationTokenSource shutdownCts)
+        public void UpdateRunningState(bool isRunning, CancellationTokenSource shutdownCts)
         {
             _isRunning = isRunning;
             _shutdownCts = shutdownCts;
         }
 
-        public async Task AutoOptimizeLoop ()
+        public async Task AutoOptimizeLoop()
         {
             int lastTradeCount = 0;
             while (_isRunning)
@@ -109,7 +109,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task PeriodicUpdateCheckLoop ()
+        public async Task PeriodicUpdateCheckLoop()
         {
             await Task.Delay (TimeSpan.FromMinutes (5), _shutdownCts?.Token ?? CancellationToken.None);
 
@@ -130,7 +130,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task DailyReportLoop ()
+        public async Task DailyReportLoop()
         {
             while (_isRunning)
             {
@@ -156,7 +156,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task WhaleLoop ()
+        public async Task WhaleLoop()
         {
             HashSet<string> stablecoinPairs = new HashSet<string> (StringComparer.OrdinalIgnoreCase)
             {
@@ -196,7 +196,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task EarnOptimizeLoop ()
+        public async Task EarnOptimizeLoop()
         {
             while (_isRunning)
             {
@@ -210,7 +210,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task FearGreedLoop ()
+        public async Task FearGreedLoop()
         {
             while (_isRunning)
             {
@@ -232,7 +232,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public void DisposeWhaleMonitor ()
+        public void DisposeWhaleMonitor()
         {
             try { _whaleMonitor?.Dispose (); }
             catch { }
@@ -242,7 +242,7 @@ namespace BinanceBotWpf.Services
         /// Периодический мониторинг здоровья: память, GC, логирование.
         /// Запускается каждые 30 минут.
         /// </summary>
-        public async Task HealthMonitorLoop ()
+        public async Task HealthMonitorLoop()
         {
             while (_isRunning)
             {
@@ -252,7 +252,7 @@ namespace BinanceBotWpf.Services
                     if (!_isRunning) break;
 
                     long memBytes = GC.GetTotalMemory (forceFullCollection: false);
-                    double memMB = memBytes / (1024.0 * 1024.0);
+                    double memMB = memBytes / ( 1024.0 * 1024.0 );
                     int gen0 = GC.CollectionCount (0);
                     int gen1 = GC.CollectionCount (1);
                     int gen2 = GC.CollectionCount (2);
@@ -265,7 +265,7 @@ namespace BinanceBotWpf.Services
                         _ui?.AddLog ($"⚠️ Высокое потребление памяти ({memMB:F0} MB). Запускаю GC...");
                         GC.Collect (2, GCCollectionMode.Forced, blocking: true);
                         long afterGC = GC.GetTotalMemory (forceFullCollection: false);
-                        _ui?.AddLog ($"✅ GC завершён. Память: {afterGC / (1024.0 * 1024.0):F1} MB");
+                        _ui?.AddLog ($"✅ GC завершён. Память: {afterGC / ( 1024.0 * 1024.0 ):F1} MB");
                     }
                 }
                 catch (OperationCanceledException) { break; }

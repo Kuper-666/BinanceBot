@@ -7,7 +7,7 @@ namespace BinanceBotWpf.Services
     public interface IMacroCalendarProvider
     {
         bool HasRealApi { get; }
-        Task<bool> IsHighImpactEventNearAsync (int minutesAhead = 60);
-        List<MacroEvent> GetHighImpactEvents ();
+        Task<bool> IsHighImpactEventNearAsync(int minutesAhead = 60);
+        List<MacroEvent> GetHighImpactEvents();
     }
 }

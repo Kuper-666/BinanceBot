@@ -1,9 +1,9 @@
+using BinanceBotWpf.Models;
+using BinanceBotWpf.ViewModels;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using BinanceBotWpf.Models;
-using BinanceBotWpf.ViewModels;
 
 namespace BinanceBotWpf.Services
 {
@@ -25,23 +25,23 @@ namespace BinanceBotWpf.Services
         private static readonly string[] _tierMid = new[] { "ETH", "BNB", "LINK", "NEAR", "SUI" };
         private static readonly string[] _tierHigh = new[] { "BTC", "PEPE" };
 
-        public PairManager (BinanceClient client, IWalletManager wallet)
+        public PairManager(BinanceClient client, IWalletManager wallet)
         {
             _client = client;
             _wallet = wallet;
         }
 
-        public void SetViewModel (MainWindowViewModel ui)
+        public void SetViewModel(MainWindowViewModel ui)
         {
             _ui = ui;
         }
 
-        public void SetWebSocketManager (WebSocketPriceManager webSocketManager)
+        public void SetWebSocketManager(WebSocketPriceManager webSocketManager)
         {
             _webSocketManager = webSocketManager;
         }
 
-        public List<string> GetActivePairs ()
+        public List<string> GetActivePairs()
         {
             lock (_pairsLock)
             {
@@ -49,7 +49,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public static string[] GetWhitelistForBalance (decimal balance)
+        public static string[] GetWhitelistForBalance(decimal balance)
         {
             List<string> result = new List<string> ();
             result.AddRange (_tierLow);
@@ -58,14 +58,14 @@ namespace BinanceBotWpf.Services
             return result.ToArray ();
         }
 
-        public static int GetMaxPositionsForBalance (decimal balance)
+        public static int GetMaxPositionsForBalance(decimal balance)
         {
             if (balance >= 1000) return 10;
             if (balance >= 100) return 5;
             return 2;
         }
 
-        public async Task UpdatePairsAsync ()
+        public async Task UpdatePairsAsync()
         {
             try
             {

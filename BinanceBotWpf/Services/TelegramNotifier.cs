@@ -187,7 +187,7 @@ namespace BinanceBotWpf.Services
                                 _ => text
                             };
                             if (!string.IsNullOrEmpty (command) && _commandHandler != null)
-                        await _commandHandler.Invoke (command, chatId);
+                                await _commandHandler.Invoke (command, chatId);
                         }
                     }
                 }

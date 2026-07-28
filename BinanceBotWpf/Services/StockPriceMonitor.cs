@@ -103,7 +103,7 @@ namespace BinanceBotWpf.Services
             return results;
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             _httpClient.Dispose ();
         }

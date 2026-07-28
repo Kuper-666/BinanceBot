@@ -1,9 +1,9 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
 using BinanceBotWpf.Services.Strategies;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using Xunit;
 
 namespace BinanceBotWpf.Tests
@@ -44,7 +44,7 @@ namespace BinanceBotWpf.Tests
         [Fact]
         public void LSMA_FollowsLinearTrend()
         {
-            var data = Enumerable.Range (0, 30).Select (i => (decimal)(i * 2)).ToList ();
+            var data = Enumerable.Range (0, 30).Select (i => (decimal)( i * 2 )).ToList ();
 
             var lsma = TechnicalAnalysis.LSMA (data, period: 10);
 
@@ -179,9 +179,9 @@ namespace BinanceBotWpf.Tests
             var agent = new AdaptiveAgent (msg => { });
             var klines = Enumerable.Range (0, 120).Select (i => new BinanceKline
             {
-                Close = 100 + (decimal)(Math.Sin (i * 0.1) * 10),
-                High = 110 + (decimal)(Math.Sin (i * 0.1) * 10),
-                Low = 90 + (decimal)(Math.Sin (i * 0.1) * 10),
+                Close = 100 + (decimal)( Math.Sin (i * 0.1) * 10 ),
+                High = 110 + (decimal)( Math.Sin (i * 0.1) * 10 ),
+                Low = 90 + (decimal)( Math.Sin (i * 0.1) * 10 ),
                 Volume = 1000 + i * 10
             }).ToList ();
 
@@ -200,9 +200,9 @@ namespace BinanceBotWpf.Tests
             var random = new Random (42);
             var klines = Enumerable.Range (0, 120).Select (i => new BinanceKline
             {
-                Close = 100 + (decimal)(random.NextDouble () * 40 - 20),
-                High = 120 + (decimal)(random.NextDouble () * 20),
-                Low = 80 - (decimal)(random.NextDouble () * 20),
+                Close = 100 + (decimal)( random.NextDouble () * 40 - 20 ),
+                High = 120 + (decimal)( random.NextDouble () * 20 ),
+                Low = 80 - (decimal)( random.NextDouble () * 20 ),
                 Volume = 1000 + random.Next (0, 5000)
             }).ToList ();
 
@@ -236,9 +236,9 @@ namespace BinanceBotWpf.Tests
             var agent = new AdaptiveAgent (msg => { });
             var klines = Enumerable.Range (0, 120).Select (i => new BinanceKline
             {
-                Close = 100 + (decimal)(Math.Sin (i * 0.1) * 15),
-                High = 115 + (decimal)(Math.Sin (i * 0.1) * 15),
-                Low = 85 + (decimal)(Math.Sin (i * 0.1) * 15),
+                Close = 100 + (decimal)( Math.Sin (i * 0.1) * 15 ),
+                High = 115 + (decimal)( Math.Sin (i * 0.1) * 15 ),
+                Low = 85 + (decimal)( Math.Sin (i * 0.1) * 15 ),
                 Volume = 1000 + i * 10
             }).ToList ();
 
@@ -424,7 +424,7 @@ namespace BinanceBotWpf.Tests
         private readonly NewsSentinel _sentinel;
         private readonly string _testDbPath;
 
-        public NewsSentinel_Tests ()
+        public NewsSentinel_Tests()
         {
             _testDbPath = System.IO.Path.Combine (
                 System.IO.Path.GetTempPath (),
@@ -432,7 +432,7 @@ namespace BinanceBotWpf.Tests
             _sentinel = new NewsSentinel (msg => { }, _testDbPath);
         }
 
-        public void Dispose ()
+        public void Dispose()
         {
             try { System.IO.File.Delete (_testDbPath); } catch { }
             try { System.IO.File.Delete (_testDbPath + "-wal"); } catch { }
@@ -701,7 +701,7 @@ namespace BinanceBotWpf.Tests
 
     public class AdaptiveAgentADX_Tests
     {
-        private List<BinanceKline> GenerateTrendingKlines (int count, decimal startPrice, decimal step, decimal volatility)
+        private List<BinanceKline> GenerateTrendingKlines(int count, decimal startPrice, decimal step, decimal volatility)
         {
             var random = new Random (42);
             var klines = new List<BinanceKline> ();
@@ -723,7 +723,7 @@ namespace BinanceBotWpf.Tests
             return klines;
         }
 
-        private List<BinanceKline> GenerateRangingKlines (int count, decimal basePrice, decimal range)
+        private List<BinanceKline> GenerateRangingKlines(int count, decimal basePrice, decimal range)
         {
             var random = new Random (99);
             var klines = new List<BinanceKline> ();
@@ -744,7 +744,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CalculateADX_ReturnsPopulatedInResult ()
+        public void CalculateADX_ReturnsPopulatedInResult()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
@@ -756,7 +756,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CalculateADX_TrendingData_HighADX ()
+        public void CalculateADX_TrendingData_HighADX()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 1.0m, 0.5m);
@@ -768,7 +768,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CalculateADX_RangingData_LowerADX ()
+        public void CalculateADX_RangingData_LowerADX()
         {
             var trendingAgent = new AdaptiveAgent (msg => { });
             var rangingAgent = new AdaptiveAgent (msg => { });
@@ -783,7 +783,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CalculateADX_InsufficientData_ReturnsDefault25 ()
+        public void CalculateADX_InsufficientData_ReturnsDefault25()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = Enumerable.Range (0, 10).Select (i => new BinanceKline
@@ -801,7 +801,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void TrendStrength_IsPopulated ()
+        public void TrendStrength_IsPopulated()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
@@ -813,7 +813,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void TrendStrengthFactor_MatchesTrendStrength ()
+        public void TrendStrengthFactor_MatchesTrendStrength()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
@@ -824,7 +824,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Factor_ClampedToRange ()
+        public void Factor_ClampedToRange()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 2.0m, 5m);
@@ -835,7 +835,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Factor_IsWeightedCombination ()
+        public void Factor_IsWeightedCombination()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
@@ -852,31 +852,31 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void LsmaWindowMultiplier_ScalesWithFactor ()
+        public void LsmaWindowMultiplier_ScalesWithFactor()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
 
             var result = agent.Calculate (klines);
 
-            decimal expectedLsma = 1.0m + (result.Factor - 1.0m) * 0.3m;
+            decimal expectedLsma = 1.0m + ( result.Factor - 1.0m ) * 0.3m;
             Assert.Equal (expectedLsma, result.LsmaWindowMultiplier);
         }
 
         [Fact]
-        public void SlMultiplier_ScalesWithFactor ()
+        public void SlMultiplier_ScalesWithFactor()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
 
             var result = agent.Calculate (klines);
 
-            decimal expectedSl = 1.0m + (result.Factor - 1.0m) * 0.4m;
+            decimal expectedSl = 1.0m + ( result.Factor - 1.0m ) * 0.4m;
             Assert.Equal (expectedSl, result.SlMultiplier);
         }
 
         [Fact]
-        public void FourFactors_AllNonNegative ()
+        public void FourFactors_AllNonNegative()
         {
             var agent = new AdaptiveAgent (msg => { });
             var klines = GenerateTrendingKlines (120, 100m, 0.5m, 2m);
@@ -892,12 +892,12 @@ namespace BinanceBotWpf.Tests
 
     public class TradingStrategySignals_Tests
     {
-        private TradingStrategy CreateStrategy ()
+        private TradingStrategy CreateStrategy()
         {
             return new TradingStrategy (msg => { });
         }
 
-        private List<BinanceKline> BuildKlines (List<decimal> closes)
+        private List<BinanceKline> BuildKlines(List<decimal> closes)
         {
             return closes.Select (c => new BinanceKline
             {
@@ -909,7 +909,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void RsiOversoldWithLsmaUp_BuySignal ()
+        public void RsiOversoldWithLsmaUp_BuySignal()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -928,7 +928,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void RsiOverboughtWithLsmaDown_SellSignal ()
+        public void RsiOverboughtWithLsmaDown_SellSignal()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -947,7 +947,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void MacdCrossUp_GeneratesBuy ()
+        public void MacdCrossUp_GeneratesBuy()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -976,7 +976,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void InsufficientData_ReturnsHold ()
+        public void InsufficientData_ReturnsHold()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> { 100, 101, 102 };
@@ -988,7 +988,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void Indicators_AlwaysPopulated ()
+        public void Indicators_AlwaysPopulated()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -1005,7 +1005,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CheckEntryConfirmation_BuyWithLowRsi ()
+        public void CheckEntryConfirmation_BuyWithLowRsi()
         {
             var strategy = CreateStrategy ();
             var entryKlines = Enumerable.Range (0, 30)
@@ -1017,7 +1017,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CheckEntryConfirmation_SellWithHighRsi ()
+        public void CheckEntryConfirmation_SellWithHighRsi()
         {
             var strategy = CreateStrategy ();
             var entryKlines = Enumerable.Range (0, 30)
@@ -1029,7 +1029,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CheckEntryConfirmation_BuyWithHighRsi_ReturnsFalse ()
+        public void CheckEntryConfirmation_BuyWithHighRsi_ReturnsFalse()
         {
             var strategy = CreateStrategy ();
             var entryKlines = Enumerable.Range (0, 30)
@@ -1041,7 +1041,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CheckEntryConfirmation_SellWithLowRsi_ReturnsFalse ()
+        public void CheckEntryConfirmation_SellWithLowRsi_ReturnsFalse()
         {
             var strategy = CreateStrategy ();
             var entryKlines = Enumerable.Range (0, 30)
@@ -1053,7 +1053,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void VolumeFilter_BlocksLowVolume_BuySignal ()
+        public void VolumeFilter_BlocksLowVolume_BuySignal()
         {
             var strategy = CreateStrategy ();
             strategy.SetVolumeFilter (true, 0.8m);
@@ -1083,7 +1083,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void SignalValidator_WithCustomMinConfidence_Respected ()
+        public void SignalValidator_WithCustomMinConfidence_Respected()
         {
             var validator = new SignalValidator (msg => { }, minConfidence: 0.7m);
             var input = new SignalValidationInput
@@ -1108,7 +1108,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void SignalValidator_LowMinConfidence_BlocksWeakSignals ()
+        public void SignalValidator_LowMinConfidence_BlocksWeakSignals()
         {
             var validator = new SignalValidator (msg => { }, minConfidence: 0.9m);
             var input = new SignalValidationInput

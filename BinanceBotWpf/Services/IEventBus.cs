@@ -4,18 +4,18 @@ namespace BinanceBotWpf.Services
 {
     public interface IEventBus
     {
-        void Publish<T> (T eventData);
-        IDisposable Subscribe<T> (Action<T> handler);
+        void Publish<T>(T eventData);
+        IDisposable Subscribe<T>(Action<T> handler);
     }
 
     public class EventBus : IEventBus
     {
-        public void Publish<T> (T eventData)
+        public void Publish<T>(T eventData)
         {
             OnEvent?.Invoke (eventData, typeof (T));
         }
 
-        public IDisposable Subscribe<T> (Action<T> handler)
+        public IDisposable Subscribe<T>(Action<T> handler)
         {
             Action<object, Type> wrapped = (data, type) =>
             {
@@ -31,8 +31,8 @@ namespace BinanceBotWpf.Services
         private class Subscription : IDisposable
         {
             private readonly Action _unsubscribe;
-            public Subscription (Action unsubscribe) => _unsubscribe = unsubscribe;
-            public void Dispose () => _unsubscribe ();
+            public Subscription(Action unsubscribe) => _unsubscribe = unsubscribe;
+            public void Dispose() => _unsubscribe ();
         }
     }
 }

@@ -24,13 +24,13 @@ namespace BinanceBotWpf.Services
         {
             volatility = Math.Clamp (volatility, 0.005m, 0.30m);
             decimal riskMultiplier = Math.Max (0.2m, 1 - ( volatility - 0.02m ) * 10);
-            
+
             // Учитываем ИИ уровень риска (1 = Low, 2 = Medium, 3 = High)
             if (aiRiskLevel == 1) riskMultiplier *= 1.2m; // Повышаем риск
             else if (aiRiskLevel == 3) riskMultiplier *= 0.5m; // Снижаем риск
 
             decimal adjustedRisk = Math.Clamp (baseRisk * riskMultiplier, 0.02m, 0.25m);
-            _logger?.Invoke ($"📊 Волатильность: {volatility:P2}, ИИ Риск: {(aiRiskLevel == 1 ? "Низкий" : (aiRiskLevel == 3 ? "Высокий" : "Средний"))}, скорректированный риск: {adjustedRisk:P2}");
+            _logger?.Invoke ($"📊 Волатильность: {volatility:P2}, ИИ Риск: {( aiRiskLevel == 1 ? "Низкий" : ( aiRiskLevel == 3 ? "Высокий" : "Средний" ) )}, скорректированный риск: {adjustedRisk:P2}");
             return Task.FromResult (totalBalance * adjustedRisk);
         }
 

@@ -102,7 +102,7 @@ namespace BinanceBotWpf.Services
                 var data = doc.RootElement.TryGetProperty ("data", out var d) ? d : doc.RootElement;
 
                 string symbol = data.TryGetProperty ("s", out var s) ? s.GetString () : "";
-                string side = data.TryGetProperty ("m", out var m) ? (m.GetBoolean () ? "SELL" : "BUY") : "";
+                string side = data.TryGetProperty ("m", out var m) ? ( m.GetBoolean () ? "SELL" : "BUY" ) : "";
                 decimal price = data.TryGetProperty ("p", out var p) ? decimal.Parse (p.GetString (),
                     System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture) : 0;
                 decimal qty = data.TryGetProperty ("q", out var q) ? decimal.Parse (q.GetString (),

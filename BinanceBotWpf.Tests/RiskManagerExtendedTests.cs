@@ -6,7 +6,7 @@ namespace BinanceBotWpf.Tests
     public class RiskManagerExtendedTests
     {
         [Fact]
-        public void CanOpenPosition_PerSymbolExposure_ExceedsLimit_ReturnsBlocked ()
+        public void CanOpenPosition_PerSymbolExposure_ExceedsLimit_ReturnsBlocked()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -24,7 +24,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CanOpenPosition_PerSymbolExposure_UnderLimit_ReturnsAllowed ()
+        public void CanOpenPosition_PerSymbolExposure_UnderLimit_ReturnsAllowed()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -41,7 +41,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void IsKillSwitchActive_DailyLossExceeded_ReturnsTrue ()
+        public void IsKillSwitchActive_DailyLossExceeded_ReturnsTrue()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -55,7 +55,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void IsKillSwitchActive_DailyLossUnderLimit_ReturnsFalse ()
+        public void IsKillSwitchActive_DailyLossUnderLimit_ReturnsFalse()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -68,7 +68,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void IsKillSwitchActive_WeeklyLossExceeded_ReturnsTrue ()
+        public void IsKillSwitchActive_WeeklyLossExceeded_ReturnsTrue()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -81,7 +81,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void CanOpenPosition_KillSwitchActive_ReturnsBlocked ()
+        public void CanOpenPosition_KillSwitchActive_ReturnsBlocked()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -96,7 +96,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void DailyPnL_AccumulatesCorrectly ()
+        public void DailyPnL_AccumulatesCorrectly()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;
@@ -109,7 +109,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void RecordTrade_AccumulatesBothDailyAndWeekly ()
+        public void RecordTrade_AccumulatesBothDailyAndWeekly()
         {
             var rm = new RiskManager ();
             rm.BalanceUSDC = 1000m;

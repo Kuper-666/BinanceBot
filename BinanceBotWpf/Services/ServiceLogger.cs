@@ -1,6 +1,6 @@
+using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Concurrent;
-using Microsoft.Extensions.Logging;
 
 namespace BinanceBotWpf.Services
 {
@@ -12,28 +12,28 @@ namespace BinanceBotWpf.Services
 
         public static ServiceLogger Instance { get; } = new ();
 
-        public void SetRootLogger (Action<string> logger)
+        public void SetRootLogger(Action<string> logger)
         {
             _rootLogger = logger;
         }
 
-        public void SetFileLogger (FileLogger fileLogger)
+        public void SetFileLogger(FileLogger fileLogger)
         {
             _fileLogger = fileLogger;
         }
 
-        public ILogger<T> CreateLogger<T> ()
+        public ILogger<T> CreateLogger<T>()
         {
             return new WrappedLogger<T> (_rootLogger, _fileLogger);
         }
 
-        public ILogger CreateLogger (string categoryName)
+        public ILogger CreateLogger(string categoryName)
         {
             return new WrappedLogger (categoryName, _rootLogger, _fileLogger);
         }
 
-        public void AddProvider (ILoggerProvider provider) { }
-        public void Dispose () { }
+        public void AddProvider(ILoggerProvider provider) { }
+        public void Dispose() { }
 
         private class WrappedLogger : ILogger
         {
@@ -41,17 +41,17 @@ namespace BinanceBotWpf.Services
             private readonly Action<string> _log;
             private readonly FileLogger _fileLogger;
 
-            public WrappedLogger (string category, Action<string> log, FileLogger fileLogger = null)
+            public WrappedLogger(string category, Action<string> log, FileLogger fileLogger = null)
             {
                 _category = category;
                 _log = log;
                 _fileLogger = fileLogger;
             }
 
-            public IDisposable BeginScope<TState> (TState state) => null;
-            public bool IsEnabled (LogLevel logLevel) => true;
+            public IDisposable BeginScope<TState>(TState state) => null;
+            public bool IsEnabled(LogLevel logLevel) => true;
 
-            public void Log<TState> (LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
+            public void Log<TState>(LogLevel logLevel, EventId eventId, TState state, Exception exception, Func<TState, Exception, string> formatter)
             {
                 string level = logLevel switch
                 {
@@ -89,7 +89,7 @@ namespace BinanceBotWpf.Services
 
         private class WrappedLogger<T> : WrappedLogger, ILogger<T>
         {
-            public WrappedLogger (Action<string> log, FileLogger fileLogger = null) : base (typeof (T).FullName, log, fileLogger) { }
+            public WrappedLogger(Action<string> log, FileLogger fileLogger = null) : base (typeof (T).FullName, log, fileLogger) { }
         }
     }
 }
