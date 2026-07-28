@@ -22,7 +22,7 @@ namespace BinanceBotWpf.Services
         {
             if (string.IsNullOrEmpty (encryptedText))
                 return encryptedText;
-            if (!encryptedText.StartsWith ("ENC:"))
+            if (!encryptedText.StartsWith ("ENC:", StringComparison.Ordinal))
                 return encryptedText; // не зашифровано
             try
             {

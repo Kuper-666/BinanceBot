@@ -85,7 +85,7 @@ namespace BinanceBotWpf.Services
                     return "{\"status\":\"error\",\"error\":\"unknown action\"}";
                 }
 
-                if (!symbol.EndsWith ("USDC") && !symbol.EndsWith ("USDT"))
+                if (!symbol.EndsWith ("USDC", StringComparison.Ordinal) && !symbol.EndsWith ("USDT", StringComparison.Ordinal))
                 {
                     _ui?.AddLog ($"⚠️ TradingView webhook: символ {symbol} не заканчивается на USDC/USDT");
                     return "{\"status\":\"error\",\"error\":\"invalid symbol\"}";

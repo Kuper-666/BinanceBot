@@ -947,7 +947,7 @@ namespace BinanceBotWpf.Exchange
                 var json = await response.Content.ReadAsStringAsync ();
                 var tickers = JArray.Parse (json);
                 var filtered = tickers
-                    .Where (t => t["symbol"].ToString ().EndsWith (quoteAsset))
+                    .Where (t => t["symbol"].ToString ().EndsWith (quoteAsset, StringComparison.Ordinal))
                     .Select (t => new
                     {
                         Symbol = t["symbol"].ToString (),

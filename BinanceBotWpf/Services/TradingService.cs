@@ -1347,7 +1347,6 @@ namespace BinanceBotWpf.Services
             return $"📊 Статистика торговли\n📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {winRate:F1}% ({wins}/{totalTrades})";
         }
 
-        /// <summary>
         public bool IsTelegramEnabled() => _telegram != null && _telegram.IsEnabled;
 
         public async Task<bool> TestTelegramAsync()

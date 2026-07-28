@@ -204,7 +204,7 @@ namespace BinanceBotWpf.Models
         }
 
         private static bool HasPlainTextValue(string value) =>
-            !string.IsNullOrEmpty (value) && !value.StartsWith ("ENC:") && value != "YOUR_API_KEY_HERE" && value != "YOUR_API_SECRET_HERE";
+            !string.IsNullOrEmpty (value) && !value.StartsWith ("ENC:", StringComparison.Ordinal) && value != "YOUR_API_KEY_HERE" && value != "YOUR_API_SECRET_HERE";
 
         private static BotConfig MigrateFromLegacyTxt(string legacyPath)
         {
@@ -213,7 +213,7 @@ namespace BinanceBotWpf.Models
 
             foreach (var line in lines)
             {
-                if (string.IsNullOrWhiteSpace (line) || line.StartsWith ("#") || !line.Contains ("=")) continue;
+                if (string.IsNullOrWhiteSpace (line) || line.StartsWith ('#') || !line.Contains ('=')) continue;
                 var parts = line.Split ('=', 2);
                 string key = parts[0].Trim ().ToLower ();
                 string value = parts[1].Trim ();

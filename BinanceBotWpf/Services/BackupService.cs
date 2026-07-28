@@ -128,7 +128,7 @@ namespace BinanceBotWpf.Services
             if (!Directory.Exists (_backupDir)) return new string[0];
 
             var dirs = Directory.GetDirectories (_backupDir);
-            Array.Sort (dirs, (a, b) => string.Compare (b, a)); // Новые первыми
+            Array.Sort (dirs, (a, b) => string.Compare (b, a, StringComparison.Ordinal)); // Новые первыми
             return dirs;
         }
 
@@ -139,7 +139,7 @@ namespace BinanceBotWpf.Services
                 var dirs = Directory.GetDirectories (_backupDir);
                 if (dirs.Length <= 7) return;
 
-                Array.Sort (dirs, (a, b) => string.Compare (a, b));
+                Array.Sort (dirs, (a, b) => string.Compare (a, b, StringComparison.Ordinal));
                 for (int i = 0; i < dirs.Length - 7; i++)
                 {
                     Directory.Delete (dirs[i], recursive: true);

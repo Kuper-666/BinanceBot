@@ -76,7 +76,7 @@ namespace BinanceBotWpf.Models
                     string asset = assetEntry.Key;
                     decimal totalAmount = assetEntry.Value.TotalAmount;
                     if (totalAmount <= 0) continue;
-                    if (asset == "USDC" || BlacklistedAssets.Contains (asset) || asset.StartsWith ("LD")) continue;
+                    if (asset == "USDC" || BlacklistedAssets.Contains (asset) || asset.StartsWith ("LD", StringComparison.Ordinal)) continue;
 
                     string pair = asset + "USDC";
                     if (openPositionSymbols != null && openPositionSymbols.Contains (pair))

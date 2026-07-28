@@ -55,8 +55,8 @@ namespace BinanceBotWpf.Services
                     .ToList ();
 
                 // Параллельно опрашиваем CoinGecko и LunarCrush
-                var cgTask = SafeAsync (() => _coingecko?.GetMarketDataAsync (baseAssets));
-                var lcTask = SafeAsync (() => _lunarcrush?.GetAssetsDataAsync (baseAssets));
+                var cgTask = SafeAsync (() => _coingecko?.GetMarketDataAsync (baseAssets) ?? Task.FromResult (new Dictionary<string, CryptoAssetData> ()));
+                var lcTask = SafeAsync (() => _lunarcrush?.GetAssetsDataAsync (baseAssets) ?? Task.FromResult (new Dictionary<string, CryptoAssetData> ()));
 
                 await Task.WhenAll (cgTask, lcTask);
 
@@ -157,7 +157,7 @@ namespace BinanceBotWpf.Services
             string s = symbol.ToUpperInvariant ();
             foreach (var quote in new[] { "USDC", "USDT", "BUSD", "FDUSD", "TUSD" })
             {
-                if (s.EndsWith (quote))
+                if (s.EndsWith (quote, StringComparison.Ordinal))
                     return s.Substring (0, s.Length - quote.Length);
             }
             return s;

@@ -4,6 +4,7 @@ using BinanceBotWpf.Services.Strategies;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Xunit;
 
 namespace BinanceBotWpf.Tests
@@ -909,7 +910,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void RsiOversoldWithLsmaUp_BuySignal()
+        public async Task RsiOversoldWithLsmaUp_BuySignal()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -921,14 +922,14 @@ namespace BinanceBotWpf.Tests
                 closes.Add (closes.Last () + 0.1m);
             var klines = BuildKlines (closes);
 
-            var result = strategy.AnalyzeAsync ("BTCUSDC", klines).Result;
+            var result = await strategy.AnalyzeAsync ("BTCUSDC", klines);
 
             Assert.True (result.Action == TradeAction.Buy || result.Reason.Contains ("RSI"),
                 $"Expected Buy from RSI oversold, got {result.Action}: {result.Reason}");
         }
 
         [Fact]
-        public void RsiOverboughtWithLsmaDown_SellSignal()
+        public async Task RsiOverboughtWithLsmaDown_SellSignal()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -940,14 +941,14 @@ namespace BinanceBotWpf.Tests
                 closes.Add (closes.Last () - 0.1m);
             var klines = BuildKlines (closes);
 
-            var result = strategy.AnalyzeAsync ("ETHUSDC", klines).Result;
+            var result = await strategy.AnalyzeAsync ("ETHUSDC", klines);
 
             Assert.True (result.Action == TradeAction.Sell || result.Reason.Contains ("RSI"),
                 $"Expected Sell from RSI overbought, got {result.Action}: {result.Reason}");
         }
 
         [Fact]
-        public void MacdCrossUp_GeneratesBuy()
+        public async Task MacdCrossUp_GeneratesBuy()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -969,26 +970,26 @@ namespace BinanceBotWpf.Tests
             }
             var klines = BuildKlines (closes);
 
-            var result = strategy.AnalyzeAsync ("SOLUSDC", klines).Result;
+            var result = await strategy.AnalyzeAsync ("SOLUSDC", klines);
 
             Assert.NotNull (result.Reason);
             Assert.NotNull (result.Indicators);
         }
 
         [Fact]
-        public void InsufficientData_ReturnsHold()
+        public async Task InsufficientData_ReturnsHold()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> { 100, 101, 102 };
             var klines = BuildKlines (closes);
 
-            var result = strategy.AnalyzeAsync ("BTCUSDC", klines).Result;
+            var result = await strategy.AnalyzeAsync ("BTCUSDC", klines);
 
             Assert.Equal (TradeAction.Hold, result.Action);
         }
 
         [Fact]
-        public void Indicators_AlwaysPopulated()
+        public async Task Indicators_AlwaysPopulated()
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
@@ -996,7 +997,7 @@ namespace BinanceBotWpf.Tests
                 closes.Add (100 + (decimal)Math.Sin (i * 0.1) * 5);
             var klines = BuildKlines (closes);
 
-            var result = strategy.AnalyzeAsync ("BNBUSDC", klines).Result;
+            var result = await strategy.AnalyzeAsync ("BNBUSDC", klines);
 
             Assert.True (result.Indicators.ContainsKey ("price"));
             Assert.True (result.Indicators.ContainsKey ("rsi"));
@@ -1053,7 +1054,7 @@ namespace BinanceBotWpf.Tests
         }
 
         [Fact]
-        public void VolumeFilter_BlocksLowVolume_BuySignal()
+        public async Task VolumeFilter_BlocksLowVolume_BuySignal()
         {
             var strategy = CreateStrategy ();
             strategy.SetVolumeFilter (true, 0.8m);
@@ -1074,7 +1075,7 @@ namespace BinanceBotWpf.Tests
                 Volume = idx < count - 1 ? 1000m : 100m
             }).ToList ();
 
-            var result = strategy.AnalyzeAsync ("BTCUSDC", klines).Result;
+            var result = await strategy.AnalyzeAsync ("BTCUSDC", klines);
 
             if (result.Action == TradeAction.Buy && result.Reason.Contains ("SMA"))
             {
