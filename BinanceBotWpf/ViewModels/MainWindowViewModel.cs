@@ -819,11 +819,18 @@ namespace BinanceBotWpf.ViewModels
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
-                if (_plotModel.Series[0] is LineSeries series)
+                if (_plotModel?.Series.Count > 0 && _plotModel.Series[0] is LineSeries series)
                 {
-                    series.Points.Add (new DataPoint (DateTimeAxis.ToDouble (time), (double)balance));
-                    if (series.Points.Count > 200) series.Points.RemoveAt (0);
-                    _plotModel.InvalidatePlot (true);
+                    double x = DateTimeAxis.ToDouble (time);
+                    if (series.Points.Count == 0 ||
+                        series.Points.Last ().Y != (double)balance ||
+                        Math.Abs (series.Points.Last ().X - x) > 1.0)
+                    {
+                        series.Points.Add (new DataPoint (x, (double)balance));
+                        if (series.Points.Count > 200) series.Points.RemoveAt (0);
+                        _plotModel.InvalidatePlot (true);
+                    }
+                    EquityChartStatus = $"Обновлено: {time:HH:mm:ss}";
                 }
             });
         }
