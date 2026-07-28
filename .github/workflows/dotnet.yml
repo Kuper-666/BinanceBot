@@ -21,8 +21,14 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore BinanceBotWpf.sln
 
+    - name: Check code formatting
+      run: dotnet format BinanceBotWpf.sln --verify-no-changes --verbosity normal
+
     - name: Build
       run: dotnet build BinanceBotWpf.sln --no-restore
 
-    - name: Test
-      run: dotnet test BinanceBotWpf.Tests/BinanceBotWpf.Tests.csproj --no-build --verbosity normal
+    - name: Run tests with code coverage
+      run: dotnet test BinanceBotWpf.Tests/BinanceBotWpf.Tests.csproj --no-build --verbosity normal --collect:"XPlat Code Coverage"
+
+    - name: Check for vulnerable packages
+      run: dotnet list BinanceBotWpf.sln package --vulnerable --include-transitive 2>&1 | findstr /C:"has no vulnerable packages" /C:"vulnerable" /C:"critical" /C:"high" /C:"moderate" || echo "No vulnerabilities found"

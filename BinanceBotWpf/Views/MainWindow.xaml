@@ -359,7 +359,7 @@
                                 <TextBlock Text="{Binding WalletBalance}" Foreground="#2ecc71" FontWeight="Bold" FontSize="16"/>
                                 <TextBlock Text="{Binding EquityChartStatus}" Foreground="#2ecc71" FontSize="10"/>
                             </StackPanel>
-                            <oxy:PlotView Grid.Column="1" Model="{Binding PlotModel}" Background="#1e1e1e" Height="120"/>
+                            <oxy:PlotView Grid.Column="1" Model="{Binding MiniPlotModel}" Background="#1e1e1e" Height="120"/>
                         </Grid>
                     </Border>
                 </Grid>

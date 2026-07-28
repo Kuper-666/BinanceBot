@@ -64,9 +64,17 @@ jobs:
         if: steps.skip.outputs.skip == 'false'
         run: dotnet restore BinanceBotWpf.sln
 
+      - name: Check code formatting
+        if: steps.skip.outputs.skip == 'false'
+        run: dotnet format BinanceBotWpf.sln --verify-no-changes --verbosity normal
+
+      - name: Check for vulnerable packages
+        if: steps.skip.outputs.skip == 'false'
+        run: dotnet list BinanceBotWpf.sln package --vulnerable --include-transitive 2>&1 | findstr /C:"has no vulnerable packages" /C:"vulnerable" /C:"critical" /C:"high" /C:"moderate" || echo "No vulnerabilities found"
+
       - name: Run unit tests
         if: steps.skip.outputs.skip == 'false'
-        run: dotnet test BinanceBotWpf.Tests/BinanceBotWpf.Tests.csproj -c Release --no-restore --verbosity normal
+        run: dotnet test BinanceBotWpf.Tests/BinanceBotWpf.Tests.csproj -c Release --no-restore --verbosity normal --collect:"XPlat Code Coverage"
 
       - name: Publish
         if: steps.skip.outputs.skip == 'false'

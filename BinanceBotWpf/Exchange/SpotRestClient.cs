@@ -13,6 +13,7 @@ using System.Threading.Tasks;
 
 using BinanceBotWpf.Models;
 using BinanceBotWpf.Services;
+using Polly;
 
 namespace BinanceBotWpf.Exchange
 {
@@ -153,82 +154,50 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        // ИСПРАВЛЕНИЕ: SendWithRetryAsync - правильная retry логика с обработкой POST
+        // SendWithRetryAsync — retry с использованием Polly для transient errors
         private async Task<HttpResponseMessage> SendWithRetryAsync(HttpRequestMessage request, int maxRetries = 3)
         {
-            int retryCount = 0;
-            int delayMs = 1000;
             string originalBody = null;
-
             if (request.Content != null)
                 originalBody = await request.Content.ReadAsStringAsync ();
 
-            while (true)
-            {
-                try
+            var policy = Policy<HttpResponseMessage>
+                .Handle<HttpRequestException> ()
+                .Or<TaskCanceledException> ()
+                .OrResult (r => (int)r.StatusCode == 429 || (int)r.StatusCode == 418)
+                .WaitAndRetryAsync (
+                    maxRetries,
+                    retryAttempt => TimeSpan.FromMilliseconds (Math.Min (1000 * Math.Pow (2, retryAttempt - 1), 32000)),
+                    onRetry: (outcome, delay, retryAttempt, context) =>
+                    {
+                        string msg = outcome.Exception != null
+                            ? outcome.Exception.Message
+                            : $"Status {(int)outcome.Result.StatusCode}";
+                        Log ($"Повтор {retryAttempt}/{maxRetries} через {delay.TotalMilliseconds:F0}ms ({msg})");
+                    });
+
+            var context = new Context ();
+            return await policy.ExecuteAsync (async (ctx) =>
                 {
                     await ThrottleAsync ();
                     await EnsureTimeSyncedAsync ();
-                    var response = await _httpClient.SendAsync (request);
-                    if (response.IsSuccessStatusCode) return response;
+                    var attemptRequest = CloneRequest (request, originalBody);
+                    var response = await _httpClient.SendAsync (attemptRequest);
 
-                    if ((int)response.StatusCode == 418 || (int)response.StatusCode == 429)
+                    if (!response.IsSuccessStatusCode)
                     {
-                        retryCount++;
-                        if (retryCount > maxRetries)
+                        string body = await response.Content.ReadAsStringAsync ();
+                        if (body.Contains ("-1021"))
                         {
-                            Log ($"❌ Rate limit превышен после {maxRetries} попыток");
-                            throw new Exception ($"Rate limit exceeded after {maxRetries} retries");
+                            Log ($"⚠️ Timestamp -1021. Пересинхронизация и повтор");
+
+                            await ResyncAndRetryAsync ();
+                            throw new HttpRequestException ("Timestamp error -1021");
                         }
-                        Log ($"⚠️ Rate limit (статус {response.StatusCode}). Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
-                        await Task.Delay (delayMs);
-                        delayMs = Math.Min (delayMs * 2, 32000);
-
-                        request = CloneRequest (request, originalBody);
-                        continue;
-                    }
-
-                    string body = await response.Content.ReadAsStringAsync ();
-                    if (body.Contains ("-1021") && retryCount < maxRetries)
-                    {
-                        retryCount++;
-                        Log ($"⚠️ Timestamp -1021. Пересинхронизация и повтор ({retryCount}/{maxRetries})");
-                        await ResyncAndRetryAsync ();
-                        delayMs = Math.Min (delayMs * 2, 32000);
-
-                        request = CloneRequest (request, originalBody);
-                        continue;
                     }
 
                     return response;
-                }
-                catch (HttpRequestException ex)
-                {
-                    retryCount++;
-                    if (retryCount > maxRetries)
-                    {
-                        Log ($"❌ HTTP ошибка после {maxRetries} попыток: {ex.Message}");
-                        throw new Exception ($"HTTP request failed after {maxRetries} retries", ex);
-                    }
-                    Log ($"⚠️ HTTP ошибка (сетевая). Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
-                    await Task.Delay (delayMs);
-                    delayMs = Math.Min (delayMs * 2, 32000);
-                    request = CloneRequest (request, originalBody);
-                }
-                catch (TaskCanceledException ex)
-                {
-                    retryCount++;
-                    if (retryCount > maxRetries)
-                    {
-                        Log ($"❌ Timeout после {maxRetries} попыток");
-                        throw new Exception ($"Request timeout after {maxRetries} retries", ex);
-                    }
-                    Log ($"⚠️ Timeout запроса. Повтор через {delayMs}ms (попытка {retryCount}/{maxRetries})");
-                    await Task.Delay (delayMs);
-                    delayMs = Math.Min (delayMs * 2, 32000);
-                    request = CloneRequest (request, originalBody);
-                }
-            }
+                }, context);
         }
 
         private HttpRequestMessage CloneRequest (HttpRequestMessage original, string body)

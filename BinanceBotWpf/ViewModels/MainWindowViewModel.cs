@@ -148,6 +148,7 @@ namespace BinanceBotWpf.ViewModels
 
         // График
         private PlotModel _plotModel;
+        private PlotModel _miniPlotModel;
         private string _equityChartStatus = "";
         public string EquityChartStatus { get => _equityChartStatus; set { _equityChartStatus = value; OnPropertyChanged (); } }
 
@@ -229,6 +230,7 @@ namespace BinanceBotWpf.ViewModels
         public int CurrentPositionsCount { get => _currentPositionsCount; set { _currentPositionsCount = value; OnPropertyChanged (); } }
         public int MaxPositions { get => _maxPositions; set { _maxPositions = value; OnPropertyChanged (); } }
         public PlotModel PlotModel { get => _plotModel; set { _plotModel = value; OnPropertyChanged (); } }
+        public PlotModel MiniPlotModel { get => _miniPlotModel; set { _miniPlotModel = value; OnPropertyChanged (); } }
 
         public ObservableCollection<string> SystemLogs { get => _systemLogs; set { _systemLogs = value; OnPropertyChanged (); } }
         public List<string> LogLevels { get; } = new List<string> { "Все", "Ошибки", "Предупреждения", "Инфо", "Торговля" };
@@ -311,6 +313,11 @@ namespace BinanceBotWpf.ViewModels
             _plotModel.Axes.Add (new DateTimeAxis { Key = "DateAxis", Position = AxisPosition.Bottom, StringFormat = "dd.MM HH:mm", Title = "Время", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Axes.Add (new LinearAxis { Key = "ValueAxis", Position = AxisPosition.Left, Title = "USDC", TitleColor = OxyColors.White, AxislineColor = OxyColors.White, TicklineColor = OxyColors.White, TextColor = OxyColors.White });
             _plotModel.Series.Add (new LineSeries { XAxisKey = "DateAxis", YAxisKey = "ValueAxis", Color = OxyColors.LimeGreen, MarkerType = MarkerType.Circle, MarkerSize = 3 });
+
+            _miniPlotModel = new PlotModel { Background = OxyColors.Transparent };
+            _miniPlotModel.Axes.Add (new DateTimeAxis { Key = "DateAxis", Position = AxisPosition.Bottom, StringFormat = "HH:mm", AxislineColor = OxyColors.Gray, TicklineColor = OxyColors.Gray, TextColor = OxyColors.Gray, MajorStep = 60, MinorStep = 10 });
+            _miniPlotModel.Axes.Add (new LinearAxis { Key = "ValueAxis", Position = AxisPosition.Left, AxislineColor = OxyColors.Gray, TicklineColor = OxyColors.Gray, TextColor = OxyColors.Gray });
+            _miniPlotModel.Series.Add (new LineSeries { XAxisKey = "DateAxis", YAxisKey = "ValueAxis", Color = OxyColors.LimeGreen, StrokeThickness = 1.5 });
 
             _stockMonitor = new StockPriceMonitor (AddLog, _isTestnet);
             _ = Task.Run (StocksLoop);
@@ -819,9 +826,11 @@ namespace BinanceBotWpf.ViewModels
         {
             Application.Current.Dispatcher.Invoke (() =>
             {
+                double x = DateTimeAxis.ToDouble (time);
+                bool added = false;
+
                 if (_plotModel?.Series.Count > 0 && _plotModel.Series[0] is LineSeries series)
                 {
-                    double x = DateTimeAxis.ToDouble (time);
                     if (series.Points.Count == 0 ||
                         series.Points.Last ().Y != (double)balance ||
                         Math.Abs (series.Points.Last ().X - x) > 1.0)
@@ -829,9 +838,21 @@ namespace BinanceBotWpf.ViewModels
                         series.Points.Add (new DataPoint (x, (double)balance));
                         if (series.Points.Count > 200) series.Points.RemoveAt (0);
                         _plotModel.InvalidatePlot (true);
+                        added = true;
                     }
-                    EquityChartStatus = $"Обновлено: {time:HH:mm:ss}";
                 }
+
+                if (_miniPlotModel?.Series.Count > 0 && _miniPlotModel.Series[0] is LineSeries miniSeries)
+                {
+                    if (added)
+                    {
+                        miniSeries.Points.Add (new DataPoint (x, (double)balance));
+                        if (miniSeries.Points.Count > 200) miniSeries.Points.RemoveAt (0);
+                        _miniPlotModel.InvalidatePlot (true);
+                    }
+                }
+
+                EquityChartStatus = $"Обновлено: {time:HH:mm:ss}";
             });
         }
 
@@ -873,6 +894,21 @@ namespace BinanceBotWpf.ViewModels
                         }
                     }
                     _plotModel.InvalidatePlot (true);
+                }
+
+                if (_miniPlotModel?.Series.Count > 0 && _miniPlotModel.Series[0] is LineSeries miniSeries)
+                {
+                    miniSeries.Points.Clear ();
+                    foreach (var pt in points)
+                    {
+                        if (pt.TryGetValue ("time", out object timeObj) && pt.TryGetValue ("balance", out object balObj))
+                        {
+                            double time = timeObj is JsonElement je ? je.GetDouble () : Convert.ToDouble (timeObj);
+                            decimal balance = balObj is JsonElement jb ? (decimal)jb.GetDouble () : Convert.ToDecimal (balObj);
+                            miniSeries.Points.Add (new DataPoint (time, (double)balance));
+                        }
+                    }
+                    _miniPlotModel.InvalidatePlot (true);
                 }
             });
         }

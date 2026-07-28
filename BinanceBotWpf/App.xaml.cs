@@ -57,6 +57,10 @@ namespace BinanceBotWpf
                 return;
             }
 
+            HandleCommandLineArgs (e.Args);
+
+            CleanupOldLogs ();
+
             try
             {
                 await StartBotAsync ();
@@ -213,6 +217,44 @@ namespace BinanceBotWpf
                     viewModel.AddLog ($"❌ Ошибка загрузки пар: {ex.Message}");
                 }
             });
+        }
+
+        private static void HandleCommandLineArgs (string[] args)
+        {
+            for (int i = 0; i < args.Length; i++)
+            {
+                switch (args[i].ToLowerInvariant ())
+                {
+                    case "--autostart":
+                    case "/autostart":
+                        bool enable = i + 1 >= args.Length || (args[i + 1] != "off" && args[i + 1] != "0" && args[i + 1] != "disable");
+                        if (enable)
+                            AutoStartManager.Enable ();
+                        else
+                            AutoStartManager.Disable ();
+                        break;
+                }
+            }
+        }
+
+        private static void CleanupOldLogs ()
+        {
+            try
+            {
+                string logDir = LogDir;
+                if (!Directory.Exists (logDir)) return;
+                DateTime cutoff = DateTime.UtcNow.AddDays (-30);
+                foreach (string file in Directory.GetFiles (logDir, "*.log"))
+                {
+                    try
+                    {
+                        if (File.GetLastWriteTimeUtc (file) < cutoff)
+                            File.Delete (file);
+                    }
+                    catch { }
+                }
+            }
+            catch { }
         }
 
         private static void ConfigureServices (ServiceCollection services,
