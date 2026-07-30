@@ -146,7 +146,7 @@ namespace BinanceBotWpf.Services
                                               msg.Contains ("Graceful") ||
                                               ( ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely );
                     _logger?.Invoke (isNormalDisconnect
-                        ? $"ℹ️ WebSocket: {symbol} отключён{(isDisposed ? " (остановка)" : " (нормальное закрытие)")}"
+                        ? $"ℹ️ WebSocket: {symbol} отключён{( isDisposed ? " (остановка)" : " (нормальное закрытие)" )}"
                         : $"❌ WebSocket ошибка {symbol}: {msg}");
                 }
                 finally
