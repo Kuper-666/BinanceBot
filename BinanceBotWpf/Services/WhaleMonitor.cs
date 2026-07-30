@@ -79,7 +79,13 @@ namespace BinanceBotWpf.Services
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
                 {
-                    _logger?.Invoke ($"❌ Whale monitor ошибка: {ex.Message}");
+                    string msg = ex.Message;
+                    bool isNormalDisconnect = msg.Contains ("remote party closed") ||
+                                              msg.Contains ("Graceful") ||
+                                              ( ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely );
+                    _logger?.Invoke (isNormalDisconnect
+                        ? $"ℹ️ Whale monitor: нормальное закрытие соединения"
+                        : $"❌ Whale monitor ошибка: {msg}");
                 }
                 finally
                 {

@@ -68,7 +68,16 @@ namespace BinanceBotWpf.Services
 
             while (!cancellationToken.IsCancellationRequested && !_disposed)
             {
+                if (_disposed) break;
+
                 var ws = new ClientWebSocket ();
+
+                if (_disposed)
+                {
+                    try { ws.Dispose (); } catch { }
+                    break;
+                }
+
                 _sockets[symbol] = ws;
 
                 try
@@ -130,11 +139,14 @@ namespace BinanceBotWpf.Services
                 catch (Exception ex)
                 {
                     string msg = ex.Message;
-                    bool isNormalDisconnect = msg.Contains ("remote party closed") ||
+                    bool isDisposed = msg.Contains ("Cannot access a disposed object") ||
+                                      msg.Contains ("disposed");
+                    bool isNormalDisconnect = isDisposed ||
+                                              msg.Contains ("remote party closed") ||
                                               msg.Contains ("Graceful") ||
                                               ( ex is WebSocketException wsEx && wsEx.WebSocketErrorCode == WebSocketError.ConnectionClosedPrematurely );
                     _logger?.Invoke (isNormalDisconnect
-                        ? $"ℹ️ WebSocket: {symbol} отключён (нормальное закрытие)"
+                        ? $"ℹ️ WebSocket: {symbol} отключён{(isDisposed ? " (остановка)" : " (нормальное закрытие)")}"
                         : $"❌ WebSocket ошибка {symbol}: {msg}");
                 }
                 finally

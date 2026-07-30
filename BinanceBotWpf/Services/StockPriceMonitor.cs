@@ -14,10 +14,7 @@ namespace BinanceBotWpf.Services
         private DateTime _lastMarketClosedLog = DateTime.MinValue;
         private DateTime _lastTestnetLog = DateTime.MinValue;
 
-        private readonly List<string> _trackedSymbols = new ()
-        {
-            "AAPLUSDT", "MSFTUSDT", "GOOGLUSDT", "AMZNUSDT", "TSLAUSDT"
-        };
+        private readonly List<string> _trackedSymbols = new ();
         private const string FuturesApiBaseUrl = "https://fapi.binance.com";
 
         public StockPriceMonitor(Action<string> logger, bool isTestnet = false)
