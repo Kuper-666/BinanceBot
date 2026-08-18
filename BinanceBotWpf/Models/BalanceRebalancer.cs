@@ -19,6 +19,8 @@ namespace BinanceBotWpf.Models
         }
 
         private bool _isRebalancing = false;
+        private DateTime _lastFailureLogTime = DateTime.MinValue;
+        private static readonly TimeSpan FailureLogThrottle = TimeSpan.FromMinutes (30);
 
         public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, HashSet<string> openPositionSymbols, decimal targetUsdc = 15m)
         {
@@ -141,11 +143,11 @@ namespace BinanceBotWpf.Models
                 }
                 else if (convertedAnything)
                 {
-                    Log ($"⚠️ Конвертация выполнена, но USDC {currentUsdc:F2} < цели {targetUsdc:F2}");
+                    LogThrottled ($"⚠️ Конвертация выполнена, но USDC {currentUsdc:F2} < цели {targetUsdc:F2}");
                 }
                 else
                 {
-                    Log ($"❌ Нет ликвидных активов для конвертации в USDC (текущий: {currentUsdc:F2}, цель: {targetUsdc:F2})");
+                    LogThrottled ($"❌ Нет ликвидных активов для конвертации в USDC (текущий: {currentUsdc:F2}, цель: {targetUsdc:F2})");
                 }
             }
             catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
@@ -206,6 +208,13 @@ namespace BinanceBotWpf.Models
             var earnPositions = await client.GetFlexibleEarnBalanceAsync ();
             var earnPos = earnPositions?.FirstOrDefault (p => p["asset"]?.ToString () == asset);
             return earnPos != null ? decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture) : 0;
+        }
+
+        private void LogThrottled(string msg)
+        {
+            if (DateTime.UtcNow - _lastFailureLogTime < FailureLogThrottle) return;
+            _lastFailureLogTime = DateTime.UtcNow;
+            Log (msg);
         }
 
         private void Log(string msg) => OnLogGenerated?.Invoke (msg);

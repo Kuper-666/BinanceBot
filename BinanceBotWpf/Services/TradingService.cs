@@ -829,8 +829,15 @@ namespace BinanceBotWpf.Services
 
         private async Task LoadPositions()
         {
+            List<string> pairs = _pairManager.GetActivePairs ();
+            if (pairs.Count == 0)
+            {
+                string quote = _ui?.QuoteCurrency == "USDT" ? "USDT" : "USDC";
+                pairs = PairManager.GetWhitelistForBalance (_wallet.GetTotalBalance ("USDC"))
+                    .Select (asset => asset + quote).ToList ();
+            }
             await _positionManager.LoadAsync (_client, sym => Task.FromResult (GetCurrentPrice (sym)),
-                p => _ui?.StopLossPercent ?? 0.02m, p => _ui?.TakeProfitPercent ?? 0.04m);
+                p => _ui?.StopLossPercent ?? 0.02m, p => _ui?.TakeProfitPercent ?? 0.04m, pairs);
             _ui?.UpdatePositionsStatus (_positionManager.Count, _ui?.MaxConcurrentTrades ?? 3, _positionManager.GetSymbols ());
         }
 
@@ -1326,14 +1333,14 @@ namespace BinanceBotWpf.Services
                 {
                     decimal currentPrice = _webSocketManager?.GetCurrentPrice (kvp.Key) ?? 0;
                     decimal profit = currentPrice > 0 ? ( currentPrice - kvp.Value.EntryPrice ) / kvp.Value.EntryPrice * 100 : 0;
-                    posDetails += $"\n  • {kvp.Key}: Вход={kvp.Value.EntryPrice:F4}, PnL={profit:+F2;-F2}%";
+                    posDetails += $"\n  • {kvp.Key}: Вход={kvp.Value.EntryPrice:F4}, PnL={profit:+0.00;-0.00}%";
                 }
             }
 
             return $"🤖 *Статус:* {status}\n" +
                    $"💰 *USDC:* {balance:F2}\n" +
                    $"📊 *Позиций:* {posCount}{posDetails}\n" +
-                   $"📈 *PnL:* {pnl:+F2;-F2} USDC\n" +
+                   $"📈 *PnL:* {pnl:+0.00;-0.00} USDC\n" +
                    $"🎯 *Винрейт:* {winRate:F1}% ({totalTrades} сделок)" +
                    echelonStatus;
         }

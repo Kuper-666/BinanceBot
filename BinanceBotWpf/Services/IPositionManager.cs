@@ -14,7 +14,7 @@ namespace BinanceBotWpf.Services
         bool Remove(string symbol);
         Task<bool> RemoveAsync(string symbol);
         List<string> GetSymbols();
-        Task LoadAsync(IBinanceClient client, Func<string, Task<decimal>> getPrice, Func<decimal, decimal> getStopLossPercent, Func<decimal, decimal> getTakeProfitPercent);
+        Task LoadAsync(IBinanceClient client, Func<string, Task<decimal>> getPrice, Func<decimal, decimal> getStopLossPercent, Func<decimal, decimal> getTakeProfitPercent, IReadOnlyCollection<string> tradedPairs = null);
         Task SaveAsync();
     }
 }
