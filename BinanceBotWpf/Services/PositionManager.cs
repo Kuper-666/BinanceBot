@@ -99,7 +99,7 @@ namespace BinanceBotWpf.Services
                         decimal locked = decimal.Parse (b["locked"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                         decimal total = free + locked;
                         if (total > 0)
-                            balances[asset] = (balances.TryGetValue (asset, out decimal prev) ? prev : 0m) + total;
+                            balances[asset] = ( balances.TryGetValue (asset, out decimal prev) ? prev : 0m ) + total;
                     }
                 }
 
@@ -112,7 +112,7 @@ namespace BinanceBotWpf.Services
                         if (string.IsNullOrEmpty (asset)) continue;
                         decimal amount = decimal.Parse (item["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                         if (amount > 0)
-                            balances[asset] = (balances.TryGetValue (asset, out decimal prev) ? prev : 0m) + amount;
+                            balances[asset] = ( balances.TryGetValue (asset, out decimal prev) ? prev : 0m ) + amount;
                     }
                 }
 
