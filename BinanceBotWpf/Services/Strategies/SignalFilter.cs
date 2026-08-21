@@ -117,10 +117,11 @@ namespace BinanceBotWpf.Services.Strategies
             decimal macdHistogram,
             decimal prevMacdHistogram,
             DateTime openTime,
-            TimeSpan maxHoldTime)
+            TimeSpan maxHoldTime,
+            decimal stopLossPercent = 0.005m)
         {
             // 1. Стоп-лосс (защита)
-            decimal stopLoss = entryPrice * 0.98m; // -2%
+            decimal stopLoss = entryPrice * ( 1 - stopLossPercent );
             if (price <= stopLoss)
             {
                 _logger?.Invoke ($"🔴 {symbol}: стоп-лосс {price:F4} <= {stopLoss:F4}");
