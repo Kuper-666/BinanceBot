@@ -1352,7 +1352,7 @@ namespace BinanceBotWpf.Services
             var wins = _ui?.WinningTrades ?? 0;
             var losses = _ui?.LosingTrades ?? 0;
             var winRate = totalTrades > 0 ? wins * 100.0m / totalTrades : 0;
-            return $"📊 Статистика торговли\n📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {winRate:F1}% (✅{wins} / ❌{losses})";
+            return $"📊 Статистика торговли\n📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {winRate:F1}%\n📈 Сделок: {totalTrades} (✅{wins} / ❌{losses})";
         }
 
         public bool IsTelegramEnabled() => _telegram != null && _telegram.IsEnabled;
