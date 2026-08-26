@@ -1162,7 +1162,7 @@ namespace BinanceBotWpf.ViewModels
                     _currentLoseStreak = 0;
                     if (_currentWinStreak > MaxWinStreak) MaxWinStreak = _currentWinStreak;
                 }
-                else if (trade.PnL < 0)
+                else
                 {
                     LosingTrades++;
                     _totalLossSum += trade.PnL;

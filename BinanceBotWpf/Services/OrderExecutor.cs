@@ -261,7 +261,7 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        public async Task ExecuteSellAsync(string symbol)
+        public async Task ExecuteSellAsync(string symbol, string reason = "Сигнал Продажа")
         {
             if (!_positionManager.TryGet (symbol, out OpenPosition pos)) return;
 
@@ -394,7 +394,7 @@ namespace BinanceBotWpf.Services
                     PnLPercent = pnlPct,
                     OpenTime = pos.OpenTime,
                     CloseTime = DateTime.UtcNow,
-                    Reason = "Сигнал Продажа",
+                    Reason = reason,
                     Duration = DateTime.UtcNow - pos.OpenTime,
                     Action = "SELL_CLOSE"
                 };

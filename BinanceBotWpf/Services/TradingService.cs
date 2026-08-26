@@ -382,9 +382,9 @@ namespace BinanceBotWpf.Services
                                     return await _futuresClient.GetPriceAsync (sym);
                                 return await _client.GetPriceAsync (sym);
                             });
-                            foreach (var sym in toClose)
+                            foreach (var (sym, reason) in toClose)
                             {
-                                await _orderExecutor.ExecuteSellAsync (sym);
+                                await _orderExecutor.ExecuteSellAsync (sym, reason);
                             }
                         }
 
@@ -1208,7 +1208,7 @@ namespace BinanceBotWpf.Services
                         }
                         else if (analysis.Action == TradeAction.Sell && hasPosition && confirmed)
                         {
-                            await _orderExecutor.ExecuteSellAsync (sym);
+                            await _orderExecutor.ExecuteSellAsync (sym, analysis.Reason);
                             traded = true;
                         }
 
@@ -1341,7 +1341,7 @@ namespace BinanceBotWpf.Services
                    $"💰 *USDC:* {balance:F2}\n" +
                    $"📊 *Позиций:* {posCount}{posDetails}\n" +
                    $"📈 *PnL:* {pnl:+0.00;-0.00} USDC\n" +
-                   $"🎯 *Винрейт:* {winRate:F1}% ({totalTrades} сделок)" +
+                   $"🎯 *Винрейт:* {winRate:F1}% ({_ui?.WinningTrades ?? 0}/{totalTrades})" +
                    echelonStatus;
         }
 
@@ -1350,8 +1350,9 @@ namespace BinanceBotWpf.Services
             var totalTrades = _ui?.TotalTrades ?? 0;
             if (totalTrades == 0) return "Нет сделок для статистики.";
             var wins = _ui?.WinningTrades ?? 0;
+            var losses = _ui?.LosingTrades ?? 0;
             var winRate = totalTrades > 0 ? wins * 100.0m / totalTrades : 0;
-            return $"📊 Статистика торговли\n📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {winRate:F1}% ({wins}/{totalTrades})";
+            return $"📊 Статистика торговли\n📈 Общий PnL: {_ui?.TotalPnL ?? 0:F2} USDC\n🎯 Win Rate: {winRate:F1}% (✅{wins} / ❌{losses})";
         }
 
         public bool IsTelegramEnabled() => _telegram != null && _telegram.IsEnabled;

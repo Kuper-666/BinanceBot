@@ -53,9 +53,9 @@ namespace BinanceBotWpf.Services
         /// <summary>
         /// Проверка и обновление всех защит
         /// </summary>
-        public async Task<List<string>> CheckAndProtectAsync(Func<string, decimal> getCurrentPrice, Func<string, Task<decimal>> restPriceFetcher = null)
+        public async Task<List<(string Symbol, string Reason)>> CheckAndProtectAsync(Func<string, decimal> getCurrentPrice, Func<string, Task<decimal>> restPriceFetcher = null)
         {
-            var toClose = new List<string> ();
+            var toClose = new List<(string Symbol, string Reason)> ();
 
             foreach (var sym in _positionManager.GetSymbols ())
             {
@@ -102,10 +102,10 @@ namespace BinanceBotWpf.Services
                     await CheckPartialCloseAsync (sym, pos, price);
 
                 // Проверка условий закрытия
-                bool shouldClose = ShouldClosePosition (pos, price);
-                if (shouldClose)
+                string closeReason = GetCloseReason (pos, price);
+                if (closeReason != null)
                 {
-                    toClose.Add (sym);
+                    toClose.Add ((sym, closeReason));
                     _lastTrailingPrice.TryRemove (sym, out _);
                 }
             }
@@ -194,30 +194,27 @@ namespace BinanceBotWpf.Services
             }
         }
 
-        private bool ShouldClosePosition(OpenPosition pos, decimal currentPrice)
+        private string GetCloseReason(OpenPosition pos, decimal currentPrice)
         {
-            // Стоп-лосс
             if (currentPrice <= pos.StopLossPrice)
             {
                 _logger?.Invoke ($"🔴 Закрытие по стоп-лоссу: {pos.Symbol} {currentPrice:F4} <= {pos.StopLossPrice:F4}");
-                return true;
+                return "Stop Loss";
             }
 
-            // Тейк-профит
             if (currentPrice >= pos.TakeProfitPrice)
             {
                 _logger?.Invoke ($"🟢 Закрытие по тейк-профиту: {pos.Symbol} {currentPrice:F4} >= {pos.TakeProfitPrice:F4}");
-                return true;
+                return "Take Profit";
             }
 
-            // Максимальное время удержания
             if (DateTime.UtcNow - pos.OpenTime > MaxHoldTime)
             {
                 _logger?.Invoke ($"⏰ Закрытие по таймауту: {pos.Symbol} удержание {DateTime.UtcNow - pos.OpenTime}");
-                return true;
+                return "Max Hold Time";
             }
 
-            return false;
+            return null;
         }
 
         // ✅ Счётчики ошибок добавлены как поля класса:
