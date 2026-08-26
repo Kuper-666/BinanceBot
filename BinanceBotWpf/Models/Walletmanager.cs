@@ -51,9 +51,10 @@ namespace BinanceBotWpf.Models
                             string asset = b["asset"]?.ToString ();
                             if (string.IsNullOrEmpty (asset)) continue;
                             decimal free = decimal.Parse (b["free"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                            decimal locked = decimal.Parse (b["locked"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
                             if (!_balances.ContainsKey (asset))
                                 _balances[asset] = new AssetBalance ();
-                            _balances[asset].Spot = free;
+                            _balances[asset].Spot = free + locked;
                         }
                     }
                     if (earnData != null)
