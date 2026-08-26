@@ -25,6 +25,7 @@ namespace BinanceBotWpf.Services
         private WhaleMonitor _whaleMonitor;
         private TelegramNotifier _telegram;
         private PairManager _pairManager;
+        private StatePersistence _statePersistence;
 
         private volatile bool _isRunning;
         private CancellationTokenSource _shutdownCts;
@@ -42,7 +43,8 @@ namespace BinanceBotWpf.Services
         }
 
         public void Configure(MainWindowViewModel ui, bool isRunning, CancellationTokenSource shutdownCts,
-            TradingSettings tradingSettings, UpdateChecker updateChecker, TelegramNotifier telegram, PairManager pairManager)
+            TradingSettings tradingSettings, UpdateChecker updateChecker, TelegramNotifier telegram, PairManager pairManager,
+            StatePersistence statePersistence = null)
         {
             _ui = ui;
             _isRunning = isRunning;
@@ -51,6 +53,7 @@ namespace BinanceBotWpf.Services
             _updateChecker = updateChecker;
             _telegram = telegram;
             _pairManager = pairManager;
+            _statePersistence = statePersistence;
         }
 
         /// <summary>
@@ -143,6 +146,8 @@ namespace BinanceBotWpf.Services
                         await Task.Delay (delay, _shutdownCts?.Token ?? CancellationToken.None);
 
                     if (!_isRunning || _telegram == null) continue;
+
+                    _statePersistence?.Save ();
 
                     decimal totalPnL = _ui?.TotalPnL ?? 0;
                     decimal winRate = _ui?.WinRate ?? 0;

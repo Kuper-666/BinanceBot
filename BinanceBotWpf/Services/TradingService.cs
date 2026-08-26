@@ -334,7 +334,7 @@ namespace BinanceBotWpf.Services
             _orderExecutor.SetViewModel (_ui);
             _orderExecutor.BuyCooldownMinutes = _tradingSettings?.BuyCooldownMinutes ?? 15;
             _orderExecutor.MaxTradesPerHour = _tradingSettings?.MaxTradesPerHour ?? 3;
-            _backgroundLoopManager.Configure (_ui, _isRunning, _shutdownCts, _tradingSettings, _updateChecker, _telegram, _pairManager);
+            _backgroundLoopManager.Configure (_ui, _isRunning, _shutdownCts, _tradingSettings, _updateChecker, _telegram, _pairManager, _statePersistence);
 
             // Sync trailing stop from settings to protector
             if (_ui != null && _positionProtector is PositionProtector prot)
@@ -1215,27 +1215,57 @@ namespace BinanceBotWpf.Services
                         // 6. Volume Breakout стратегия (если включена)
                         if (_ui?.VolumeBreakoutEnabled == true && !hasPosition && _positionManager.Count < ( _ui?.MaxConcurrentTrades ?? 3 ))
                         {
-                            var symKlines = await GetKlinesCachedAsync (sym, candleInterval, 100);
-                            if (symKlines != null && _volumeBreakout.CheckVolumeBreakout (symKlines))
+                            if (!_strategy.CheckNewsBeforePosition (sym))
                             {
-                                _ui?.AddLog ($"🚀 {sym}: Прорыв объёма — сигнал!");
-                                await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, spotBalance);
-                                traded = true;
+                                _ui?.AddLog ($"🚫 {sym}: Volume Breakout заблокирован новостями");
+                            }
+                            else
+                            {
+                                var symKlines = await GetKlinesCachedAsync (sym, candleInterval, 100);
+                                if (symKlines != null && _volumeBreakout.CheckVolumeBreakout (symKlines))
+                                {
+                                    var entryKlines = await GetKlinesCachedAsync (sym, _strategy.EntryTimeframe, 100);
+                                    if (_strategy.CheckEntryConfirmation (entryKlines, TradeAction.Buy))
+                                    {
+                                        _ui?.AddLog ($"🚀 {sym}: Прорыв объёма — сигнал!");
+                                        await _orderExecutor.ExecuteBuyAsync (sym, analysis.Indicators, spotBalance);
+                                        traded = true;
+                                    }
+                                    else
+                                    {
+                                        _ui?.AddLog ($"🚀 {sym}: Прорыв объёма — заблокирован multi-TF");
+                                    }
+                                }
                             }
                         }
 
                         // 7. DCA стратегия (если включена)
                         if (_ui?.DcaEnabled == true && !hasPosition)
                         {
-                            var symKlines2 = await GetKlinesCachedAsync (sym, candleInterval, 100);
-                            if (symKlines2 != null && _dcaStrategy.ShouldBuy (sym, symKlines2, spotBalance))
+                            if (!_strategy.CheckNewsBeforePosition (sym))
                             {
-                                decimal buyAmount = _dcaStrategy.CalculateBuyAmount (spotBalance);
-                                _ui?.AddLog ($"📊 {sym}: DCA покупка на {buyAmount:F2} USDC");
-                                var indicators = new Dictionary<string, decimal> (analysis.Indicators);
-                                indicators["dcaBuyAmount"] = buyAmount;
-                                await _orderExecutor.ExecuteBuyAsync (sym, indicators, spotBalance);
-                                traded = true;
+                                _ui?.AddLog ($"🚫 {sym}: DCA заблокирован новостями");
+                            }
+                            else
+                            {
+                                var symKlines2 = await GetKlinesCachedAsync (sym, candleInterval, 100);
+                                if (symKlines2 != null && _dcaStrategy.ShouldBuy (sym, symKlines2, spotBalance))
+                                {
+                                    var entryKlines = await GetKlinesCachedAsync (sym, _strategy.EntryTimeframe, 100);
+                                    if (_strategy.CheckEntryConfirmation (entryKlines, TradeAction.Buy))
+                                    {
+                                        decimal buyAmount = _dcaStrategy.CalculateBuyAmount (spotBalance);
+                                        _ui?.AddLog ($"📊 {sym}: DCA покупка на {buyAmount:F2} USDC");
+                                        var indicators = new Dictionary<string, decimal> (analysis.Indicators);
+                                        indicators["dcaBuyAmount"] = buyAmount;
+                                        await _orderExecutor.ExecuteBuyAsync (sym, indicators, spotBalance);
+                                        traded = true;
+                                    }
+                                    else
+                                    {
+                                        _ui?.AddLog ($"📊 {sym}: DCA — заблокирован multi-TF");
+                                    }
+                                }
                             }
                         }
 

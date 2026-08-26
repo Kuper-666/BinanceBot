@@ -11,6 +11,9 @@ namespace BinanceBotWpf.Services.Strategies
         private readonly decimal _slMultiplier;
         private readonly decimal _periodMultiplier;
         private decimal _lastAdaptiveFactor = 1.0m;
+        private decimal _lastLsmaMultiplier = 1.0m;
+        private decimal _lastSlMultiplier = 1.0m;
+        private string _lastRegime = "Normal";
         private DateTime _lastCalculation = DateTime.MinValue;
         private readonly TimeSpan _cooldown = TimeSpan.FromMinutes (5);
 
@@ -38,9 +41,9 @@ namespace BinanceBotWpf.Services.Strategies
             if (DateTime.UtcNow - _lastCalculation < _cooldown)
             {
                 result.Factor = _lastAdaptiveFactor;
-                result.LsmaWindowMultiplier = 1.0m;
-                result.SlMultiplier = 1.0m;
-                result.Regime = "Cooldown";
+                result.LsmaWindowMultiplier = _lastLsmaMultiplier;
+                result.SlMultiplier = _lastSlMultiplier;
+                result.Regime = _lastRegime;
                 return result;
             }
 
@@ -92,6 +95,9 @@ namespace BinanceBotWpf.Services.Strategies
                 result.Regime = "Normal";
 
             _lastAdaptiveFactor = factor;
+            _lastLsmaMultiplier = result.LsmaWindowMultiplier;
+            _lastSlMultiplier = result.SlMultiplier;
+            _lastRegime = result.Regime;
             _lastCalculation = DateTime.UtcNow;
 
             _logger?.Invoke ($"🔧 AdaptiveAgent: factor={factor:F3} (ATR={atrRatio:F2}x, Vol={volumeChange:F2}x, σ={priceVolatility:F4}, ADX={adx:F1}) regime={result.Regime}");
