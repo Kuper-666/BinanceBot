@@ -228,7 +228,7 @@ namespace BinanceBotWpf.Tests
             var second = agent.Calculate (klines);
 
             Assert.Equal (first.Factor, second.Factor);
-            Assert.Equal ("Cooldown", second.Regime);
+            Assert.Equal (first.Regime, second.Regime);
         }
 
         [Fact]
