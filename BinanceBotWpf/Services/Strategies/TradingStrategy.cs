@@ -196,26 +196,25 @@ namespace BinanceBotWpf.Services.Strategies
                 // ═══════ Базовый сигнал от SMA ═══════
                 var baseSignal = _strategyEngine.AnalyzePairWithWallet (symbol, closes, adaptiveFastSma, adaptiveSlowSma, currentPrice);
 
-                // ═══════ Дополнительные сигналы ═══════
-
-                // RSI extremes + LSMA — приоритетный сигнал, работает даже при SMA trend
-                if (baseSignal.Action == TradeAction.Hold)
+                // ═══════ RSI extremes — приоритетный сигнал, работает даже при SMA trend ═══════
+                bool rsiSignalFired = false;
+                if (rsi < 30 && lsma > 0 && currentPrice > lsma)
                 {
-                    if (rsi < 30 && lsma > 0 && currentPrice > lsma)
-                    {
-                        baseSignal.Action = TradeAction.Buy;
-                        baseSignal.Reason = $"RSI перепродан ({rsi:F1}) + LSMA uptrend";
-                    }
-                    else if (rsi > 70 && lsma > 0 && currentPrice < lsma)
-                    {
-                        baseSignal.Action = TradeAction.Sell;
-                        baseSignal.Reason = $"RSI перекуплен ({rsi:F1}) + LSMA downtrend";
-                    }
+                    baseSignal.Action = TradeAction.Buy;
+                    baseSignal.Reason = $"RSI перепродан ({rsi:F1}) + LSMA uptrend";
+                    rsiSignalFired = true;
+                }
+                else if (rsi > 70 && lsma > 0 && currentPrice < lsma)
+                {
+                    baseSignal.Action = TradeAction.Sell;
+                    baseSignal.Reason = $"RSI перекуплен ({rsi:F1}) + LSMA downtrend";
+                    rsiSignalFired = true;
                 }
 
-                // MACD histogram reversal (порог относительно цены: 0.01%)
-                if (baseSignal.Action == TradeAction.Hold)
+                // ═══════ MACD / BB — если нет ни SMA, ни RSI сигнала ═══════
+                if (!rsiSignalFired && baseSignal.Action == TradeAction.Hold)
                 {
+                    // MACD histogram reversal (порог относительно цены: 0.01%)
                     decimal macdThreshold = currentPrice * 0.0001m;
                     if (macdHist > macdThreshold && prevMacdHist <= 0 && rsi < 45)
                     {
@@ -227,12 +226,8 @@ namespace BinanceBotWpf.Services.Strategies
                         baseSignal.Action = TradeAction.Sell;
                         baseSignal.Reason = $"MACD пересечение вниз (гист={macdHist:F4}) + RSI={rsi:F1}";
                     }
-                }
-
-                // BB bounce (ужесточённые пороги — ближе к полосе)
-                if (baseSignal.Action == TradeAction.Hold)
-                {
-                    if (currentPrice <= bbLower * 1.002m && rsi < 35)
+                    // BB bounce (ужесточённые пороги — ближе к полосе)
+                    else if (currentPrice <= bbLower * 1.002m && rsi < 35)
                     {
                         baseSignal.Action = TradeAction.Buy;
                         baseSignal.Reason = $"BB отскок от нижней + RSI={rsi:F1}";
@@ -242,12 +237,8 @@ namespace BinanceBotWpf.Services.Strategies
                         baseSignal.Action = TradeAction.Sell;
                         baseSignal.Reason = $"BB отскок от верхней + RSI={rsi:F1}";
                     }
-                }
-
-                // SMA trend direction (без сигнала — только для логов)
-                if (baseSignal.Action == TradeAction.Hold)
-                {
-                    if (fastSma > slowSma)
+                    // SMA trend direction (без сигнала — только для логов)
+                    else if (fastSma > slowSma)
                     {
                         baseSignal.Reason = $"Нет сигнала (SMA uptrend F:{fastSma:F2} > S:{slowSma:F2})";
                     }
