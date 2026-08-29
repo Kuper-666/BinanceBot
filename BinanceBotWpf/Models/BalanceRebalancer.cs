@@ -115,6 +115,17 @@ namespace BinanceBotWpf.Models
                         decimal needToRedeem = normalizedAmount - spotAmount;
                         if (needToRedeem > 0.0001m)
                         {
+                            decimal earnBalance = await GetEarnBalanceAsync (asset, client);
+                            if (earnBalance <= 0.0001m)
+                            {
+                                Log ($"⏭️ {asset}: нет средств в Earn для выкупа, пропускаем");
+                                continue;
+                            }
+                            if (needToRedeem > earnBalance)
+                            {
+                                Log ($"⚠️ {asset}: нужно {needToRedeem}, доступно в Earn {earnBalance} — выкупаем все");
+                                needToRedeem = earnBalance;
+                            }
                             bool redeemed = await client.RedeemFlexibleEarnWithWaitAsync (asset, needToRedeem);
                             if (!redeemed) continue;
                             await Task.Delay (3000);

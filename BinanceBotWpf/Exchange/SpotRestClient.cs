@@ -105,6 +105,8 @@ namespace BinanceBotWpf.Exchange
 
         private DateTime _lastSyncTime = DateTime.MinValue;
         private readonly SemaphoreSlim _syncLock = new (1, 1);
+        private DateTime _lastDustErrorTime = DateTime.MinValue;
+        private string _lastDustError = string.Empty;
 
         private async Task EnsureTimeSyncedAsync()
         {
@@ -354,7 +356,8 @@ namespace BinanceBotWpf.Exchange
                         foreach (var b in accountInfo["balances"])
                         {
                             string a = b["asset"]?.ToString ();
-                            if (!string.IsNullOrEmpty (a) && a != "USDC" && a != "USDT" && a != "FDUSD")
+                            decimal free = decimal.Parse (b["free"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
+                            if (!string.IsNullOrEmpty (a) && a != "USDC" && a != "USDT" && a != "FDUSD" && free > 0)
                                 assets.Add (a);
                         }
                     }
@@ -388,7 +391,12 @@ namespace BinanceBotWpf.Exchange
                     return _dustCache;
                 }
 
-                Log ($"GetDustAssets error: {TruncateLog (json)}");
+                if (DateTime.UtcNow - _lastDustErrorTime > TimeSpan.FromMinutes (30) || json != _lastDustError)
+                {
+                    Log ($"GetDustAssets error: {TruncateLog (json)}");
+                    _lastDustErrorTime = DateTime.UtcNow;
+                    _lastDustError = json;
+                }
             }
             catch (Exception ex) { Log ($"GetDustAssets exception: {ex.Message}"); }
             return new JArray ();
