@@ -933,11 +933,11 @@ namespace BinanceBotWpf.Tests
         {
             var strategy = CreateStrategy ();
             var closes = new List<decimal> ();
-            for (int i = 0; i < 80; i++)
-                closes.Add (200 - (decimal)i * 0.3m);
-            for (int i = 0; i < 15; i++)
-                closes.Add (closes.Last () + 0.5m);
-            for (int i = 0; i < 10; i++)
+            for (int i = 0; i < 40; i++)
+                closes.Add (200 - (decimal)i * 0.5m);
+            for (int i = 0; i < 30; i++)
+                closes.Add (closes.Last () + 0.8m);
+            for (int i = 0; i < 3; i++)
                 closes.Add (closes.Last () - 0.1m);
             var klines = BuildKlines (closes);
 

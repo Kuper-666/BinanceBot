@@ -198,16 +198,24 @@ namespace BinanceBotWpf.Services.Strategies
 
                 // ═══════ RSI extremes — приоритетный сигнал, работает даже при SMA trend ═══════
                 bool rsiSignalFired = false;
-                if (rsi < 30 && lsma > 0 && currentPrice > lsma)
+                bool lsmaAvailable = lsma > 0 && lsma != currentPrice;
+                bool lsmaUptrend = lsmaAvailable && currentPrice > lsma;
+                bool lsmaDowntrend = lsmaAvailable && currentPrice < lsma;
+
+                if (rsi < 30 && ( lsmaUptrend || !lsmaAvailable ))
                 {
                     baseSignal.Action = TradeAction.Buy;
-                    baseSignal.Reason = $"RSI перепродан ({rsi:F1}) + LSMA uptrend";
+                    baseSignal.Reason = lsmaUptrend
+                        ? $"RSI перепродан ({rsi:F1}) + LSMA uptrend"
+                        : $"RSI перепродан ({rsi:F1})";
                     rsiSignalFired = true;
                 }
-                else if (rsi > 70 && lsma > 0 && currentPrice < lsma)
+                else if (rsi > 70 && ( lsmaDowntrend || !lsmaAvailable ))
                 {
                     baseSignal.Action = TradeAction.Sell;
-                    baseSignal.Reason = $"RSI перекуплен ({rsi:F1}) + LSMA downtrend";
+                    baseSignal.Reason = lsmaDowntrend
+                        ? $"RSI перекуплен ({rsi:F1}) + LSMA downtrend"
+                        : $"RSI перекуплен ({rsi:F1})";
                     rsiSignalFired = true;
                 }
 
@@ -263,6 +271,12 @@ namespace BinanceBotWpf.Services.Strategies
                         result.Action = TradeAction.Hold;
                         result.Reason = $"SMA {baseSignal.Action} заблокирован: объём {volumeRatio:F1}x < {_minVolumeRatio}x";
                     }
+                }
+                // RSI priority signal — bypass secondary confirmation
+                else if (rsiSignalFired)
+                {
+                    result.Action = baseSignal.Action;
+                    result.Reason = baseSignal.Reason;
                 }
                 // Secondary signals (RSI, MACD, BB) — требуем 2/3 подтверждения
                 else if (baseSignal.Action != TradeAction.Hold)
