@@ -327,7 +327,8 @@ namespace BinanceBotWpf.Services
                 qtyToSell = Math.Floor (qtyToSell / stepSize) * stepSize;
                 if (qtyToSell <= 0)
                 {
-                    _ui?.AddLog ($"{symbol}: количество {pos.Quantity} меньше шага лота {stepSize}");
+                    _ui?.AddLog ($"{symbol}: на споте {spotBalance} {asset} (позиция {pos.Quantity}), недостаточно для продажи (шаг лота {stepSize}). Удаляю застрявшую позицию.");
+                    await _positionManager.RemoveAsync (symbol);
                     return;
                 }
             }

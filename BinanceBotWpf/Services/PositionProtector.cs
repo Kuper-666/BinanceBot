@@ -162,8 +162,18 @@ namespace BinanceBotWpf.Services
 
             if (profitPercent >= PartialClosePercent && pos.Quantity > 0)
             {
+                string asset = symbol.Replace ("USDC", "").Replace ("USDT", "");
+                decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
+                if (spotBalance < 0.000001m)
+                {
+                    _logger?.Invoke ($"⚠️ Частичная фиксация {symbol} пропущена: нет {asset} на споте ({spotBalance})");
+                    return;
+                }
+
                 decimal stepSize = await _client.GetStepSizeAsync (symbol);
                 decimal closeQty = Math.Floor (pos.Quantity * PartialCloseQtyPercent / stepSize) * stepSize;
+                closeQty = Math.Min (closeQty, spotBalance);
+                closeQty = Math.Floor (closeQty / stepSize) * stepSize;
 
                 if (closeQty > 0.000001m && closeQty < pos.Quantity)
                 {
@@ -341,9 +351,19 @@ namespace BinanceBotWpf.Services
             else if (priceIncrease < -TrailingStepPercent)
             {
                 // Цена упала на шаг трейлинга -> фиксируем часть прибыли
+                string asset = symbol.Replace ("USDC", "").Replace ("USDT", "");
+                decimal spotBalance = await _client.GetAccountBalanceAsync (asset);
+                if (spotBalance < 0.000001m)
+                {
+                    _logger?.Invoke ($"⚠️ Динамический трейлинг {symbol} пропущен: нет {asset} на споте ({spotBalance})");
+                    return false;
+                }
+
                 decimal partialQty = pos.Quantity * 0.25m;
                 decimal stepSize = await _client.GetStepSizeAsync (symbol);
                 decimal closeQty = Math.Floor (partialQty / stepSize) * stepSize;
+                closeQty = Math.Min (closeQty, spotBalance);
+                closeQty = Math.Floor (closeQty / stepSize) * stepSize;
 
                 if (closeQty > 0.000001m && closeQty < pos.Quantity)
                 {
