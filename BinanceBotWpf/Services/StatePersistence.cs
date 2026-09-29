@@ -75,7 +75,7 @@ namespace BinanceBotWpf.Services
 
                 // Limit history sizes
                 if (state.TradesHistory.Count > 500)
-                    state.TradesHistory = state.TradesHistory.GetRange (state.TradesHistory.Count - 500, 500);
+                    state.TradesHistory = state.TradesHistory.GetRange (0, 500);
                 if (state.EquityHistory.Count > 200)
                     state.EquityHistory = state.EquityHistory.GetRange (state.EquityHistory.Count - 200, 200);
                 if (state.PnlHistory.Count > 200)

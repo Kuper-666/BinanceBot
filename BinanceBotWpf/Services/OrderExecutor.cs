@@ -380,10 +380,11 @@ namespace BinanceBotWpf.Services
 
             if (sellOrder != null)
             {
-                decimal pnl = ( limitPrice - pos.EntryPrice ) * qtyToSell;
-                decimal pnlPct = ( limitPrice / pos.EntryPrice - 1 ) * 100;
+                decimal fee = TradeCosts.Fees (pos.EntryPrice, limitPrice, qtyToSell);
+                decimal pnl = TradeCosts.NetPnL (pos.EntryPrice, limitPrice, qtyToSell);
+                decimal pnlPct = TradeCosts.NetPnLPercent (pos.EntryPrice, limitPrice, qtyToSell);
 
-                _ui?.AddLog ($"Закрыта {symbol}: PnL {pnl:F2} ({pnlPct:F2}%)");
+                _ui?.AddLog ($"Закрыта {symbol}: PnL {pnl:F2} ({pnlPct:F2}%), комиссия {fee:F2}");
 
                 TradeLog trade = new TradeLog
                 {

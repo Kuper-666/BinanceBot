@@ -16,6 +16,7 @@ namespace BinanceBotWpf.Services
         private readonly PositionManager _positionManager;
         private readonly Action<string> _logger;
         private WebSocketPriceManager _wsManager;
+        private Action<TradeLog> _tradeRecorder;
 
         public bool EnableDynamicTrailingStop { get; set; } = true;
         public decimal ActivationProfitPercent { get; set; } = 0.02m; // Активация при +2%
@@ -41,6 +42,11 @@ namespace BinanceBotWpf.Services
         public void SetWebSocketManager(WebSocketPriceManager wsManager)
         {
             _wsManager = wsManager;
+        }
+
+        public void SetTradeRecorder(Action<TradeLog> recorder)
+        {
+            _tradeRecorder = recorder;
         }
 
         // Публичный метод для установки логгера
@@ -180,8 +186,26 @@ namespace BinanceBotWpf.Services
                     var order = await _client.PlaceOrder (symbol, "SELL", "MARKET", closeQty);
                     if (order != null)
                     {
-                        decimal pnl = ( currentPrice - pos.EntryPrice ) * closeQty;
-                        _logger?.Invoke ($"🎯 Частичная фиксация {symbol}: продано {closeQty} по {currentPrice:F4}, PnL {pnl:F2}");
+                        decimal fee = TradeCosts.Fees (pos.EntryPrice, currentPrice, closeQty);
+                        decimal pnl = TradeCosts.NetPnL (pos.EntryPrice, currentPrice, closeQty);
+                        decimal pnlPct = TradeCosts.NetPnLPercent (pos.EntryPrice, currentPrice, closeQty);
+                        _logger?.Invoke ($"🎯 Частичная фиксация {symbol}: продано {closeQty} по {currentPrice:F4}, PnL {pnl:F2} (комиссия {fee:F2})");
+
+                        _tradeRecorder?.Invoke (new TradeLog
+                        {
+                            Symbol = symbol,
+                            EntryPrice = pos.EntryPrice,
+                            ExitPrice = currentPrice,
+                            Quantity = closeQty,
+                            IsLong = true,
+                            PnL = pnl,
+                            PnLPercent = pnlPct,
+                            OpenTime = pos.OpenTime,
+                            CloseTime = DateTime.UtcNow,
+                            Reason = "Частичная фиксация",
+                            Duration = DateTime.UtcNow - pos.OpenTime,
+                            Action = "PARTIAL_CLOSE"
+                        });
 
                         pos.Quantity -= closeQty;
                         pos.PartialClosed = true;

@@ -17,7 +17,7 @@ namespace BinanceBotWpf.Services
         private readonly Action<string> _logger;
 
         // ─── Параметры, соответствующие реальной торговле ───
-        private const decimal FeePercent = 0.001m;           // 0.1% taker (стандарт Binance)
+        private const decimal FeePercent = TradeCosts.FeeRate; // 0.1% taker (стандарт Binance)
         private const decimal SlippagePercent = 0.002m;       // 0.2% проскальзывание
         private const decimal RiskPerTradePercent = 0.02m;    // 2% баланса на сделку (соответствует RiskCalculator.Clamp 0.5%-2%)
         private const decimal TrailingStopPercent = 0.02m;    // 2% трейлинг-стоп

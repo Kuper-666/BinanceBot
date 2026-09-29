@@ -106,6 +106,8 @@ namespace BinanceBotWpf.ViewModels
         private decimal _totalProfitSum = 0;
         private decimal _totalLossSum = 0;
         private string _avgProfitLossDisplay = "Ср. приб/убыток: 0 / 0";
+        private decimal _sessionStartBalance = 0;
+        private bool _sessionStartBalanceCaptured = false;
 
         // Расширенная статистика
         private decimal _profitFactor = 0;
@@ -215,6 +217,8 @@ namespace BinanceBotWpf.ViewModels
         public decimal WorstPnL { get => _worstPnL; set { _worstPnL = value; OnPropertyChanged (); } }
         public string MaxDrawdownDisplay { get => _maxDrawdownDisplay; set { _maxDrawdownDisplay = value; OnPropertyChanged (); } }
         public string AvgProfitLossDisplay { get => _avgProfitLossDisplay; set { _avgProfitLossDisplay = value; OnPropertyChanged (); } }
+        public decimal SessionStartBalance { get => _sessionStartBalance; set { _sessionStartBalance = value; OnPropertyChanged (); } }
+        public bool SessionStartBalanceCaptured { get => _sessionStartBalanceCaptured; set { _sessionStartBalanceCaptured = value; OnPropertyChanged (); } }
 
         // Расширенная статистика
         public decimal ProfitFactor { get => _profitFactor; set { _profitFactor = value; OnPropertyChanged (); } }
@@ -1137,6 +1141,38 @@ namespace BinanceBotWpf.ViewModels
                 _totalProfitSum = 0;
                 _totalLossSum = 0;
                 AvgProfitLossDisplay = "Ср. приб/убыток: 0.00 / 0.00";
+            });
+        }
+
+        public void RestoreStatistics(TradingState state)
+        {
+            if (state == null) return;
+
+            Application.Current.Dispatcher.Invoke (() =>
+            {
+                TotalPnL = state.TotalPnL;
+                TotalTrades = state.TotalTrades;
+                WinningTrades = state.WinningTrades;
+                LosingTrades = state.LosingTrades;
+                WinRate = state.WinRate;
+                BestPnL = state.BestPnL;
+                WorstPnL = state.WorstPnL;
+                _peakBalance = state.PeakBalance;
+                _maxDrawdown = state.MaxDrawdown;
+                _totalProfitSum = state.TotalProfitSum;
+                _totalLossSum = state.TotalLossSum;
+
+                if (state.SessionStartBalanceCaptured)
+                {
+                    SessionStartBalance = state.SessionStartBalance;
+                    SessionStartBalanceCaptured = true;
+                }
+
+                AverageWin = WinningTrades > 0 ? _totalProfitSum / WinningTrades : 0;
+                AverageLoss = LosingTrades > 0 ? Math.Abs (_totalLossSum / LosingTrades) : 0;
+                ProfitFactor = _totalLossSum != 0 ? _totalProfitSum / Math.Abs (_totalLossSum) : 0;
+                AvgProfitLossDisplay = $"Ср. приб/убыток: {AverageWin:F2} / {AverageLoss:F2}";
+                MaxDrawdownDisplay = $"Просадка: {_maxDrawdown:F1}%";
             });
         }
 

@@ -342,6 +342,7 @@ namespace BinanceBotWpf.Services
                 prot.TrailingStopPercent = _ui.TrailingStopPercent;
                 prot.MaxHoldTime = TimeSpan.FromHours (_tradingSettings?.MaxHoldTimeHours ?? 24);
                 prot.SetWebSocketManager (_webSocketManager);
+                prot.SetTradeRecorder (trade => _ui.AddTradeToHistory (trade));
             }
 
             // Restore trading state from file
@@ -521,6 +522,8 @@ namespace BinanceBotWpf.Services
                     MaxDrawdown = _ui?.MaxDrawdown ?? 0,
                     TotalProfitSum = _ui?.TotalProfitSum ?? 0,
                     TotalLossSum = _ui?.TotalLossSum ?? 0,
+                    SessionStartBalance = _ui?.SessionStartBalance ?? 0,
+                    SessionStartBalanceCaptured = _ui?.SessionStartBalanceCaptured ?? false,
                     EquityHistory = _ui?.GetBalanceHistory () ?? new List<Dictionary<string, object>> (),
                 };
             }
@@ -535,17 +538,16 @@ namespace BinanceBotWpf.Services
 
             _orderExecutor.RestoreCooldowns (state.LastBuyTime, state.RecentTradeTimes);
 
-            // Restore trade history and stats
-            if (_ui != null && state.TradesHistory.Count > 0)
+            if (_ui != null)
             {
                 _ui.ClearTradeHistory ();
-                foreach (var trade in state.TradesHistory)
+                foreach (TradeLog trade in state.TradesHistory)
                 {
                     _ui.AddTradeToHistory (trade, silent: true);
                 }
+                _ui.RestoreStatistics (state);
+                _ui.AddLog ($"📂 Состояние восстановлено: {state.TradesHistory.Count} сделок");
             }
-
-            _ui?.AddLog ($"📂 Состояние восстановлено: {state.TradesHistory.Count} сделок");
 
             if (state.EquityHistory.Count > 0)
             {
@@ -599,6 +601,12 @@ namespace BinanceBotWpf.Services
             _ui?.UpdateWalletDisplay (initBal.ToString ("F2"));
             _ui?.UpdateDrawdown (initBal);
             _ui?.AddBalancePoint (DateTime.Now, initBal);
+            if (_ui != null && !_ui.SessionStartBalanceCaptured && initBal > 0)
+            {
+                _ui.SessionStartBalance = initBal;
+                _ui.SessionStartBalanceCaptured = true;
+                _ui.AddLog ($"👛 Стартовый баланс зафиксирован: {initBal:F2} USDC");
+            }
             await _pairManager.UpdatePairsAsync ();
 
             // REST-запасной поллинг цен: если WS не получает данные, обновляем цены через REST API
@@ -1367,11 +1375,19 @@ namespace BinanceBotWpf.Services
                 }
             }
 
+            string walletStatus = "";
+            if (_ui != null && _ui.SessionStartBalanceCaptured && _ui.SessionStartBalance > 0)
+            {
+                decimal walletPnL = balance - _ui.SessionStartBalance;
+                walletStatus = $"\n👛 *Кошелёк:* {walletPnL:+0.00;-0.00} USDC (старт {_ui.SessionStartBalance:F2})";
+            }
+
             return $"🤖 *Статус:* {status}\n" +
                    $"💰 *USDC:* {balance:F2}\n" +
                    $"📊 *Позиций:* {posCount}{posDetails}\n" +
                    $"📈 *PnL:* {pnl:+0.00;-0.00} USDC\n" +
                    $"🎯 *Винрейт:* {winRate:F1}% ({_ui?.WinningTrades ?? 0}/{totalTrades})" +
+                   walletStatus +
                    echelonStatus;
         }
 
