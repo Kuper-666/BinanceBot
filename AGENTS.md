@@ -23,6 +23,9 @@ dotnet build BinanceBotWpf.sln
 # Run all tests
 dotnet test BinanceBotWpf.Tests/BinanceBotWpf.Tests.csproj
 
+# CI formatting gate — must pass before pushing
+dotnet format BinanceBotWpf.sln --verify-no-changes
+
 # Publish self-contained single-file exe (CI command)
 dotnet publish BinanceBotWpf/BinanceBotWpf.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
 ```
@@ -40,6 +43,7 @@ Tests **must** run on Windows — `SecureStringHelper` uses `System.Security.Cry
 - Interfaces prefixed with `I`
 - Space after keywords in control flow (`if (`, `for (`, etc.)
 - Spaces inside parentheses for expressions only
+- `insert_final_newline = false`, `end_of_line = crlf` — files end with `}` and **no** trailing newline; run `dotnet format` after adding files
 
 ## Configuration
 
