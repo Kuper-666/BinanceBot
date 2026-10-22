@@ -19,11 +19,18 @@ namespace BinanceBotWpf.Models
         }
 
         private bool _isRebalancing = false;
-        private DateTime _lastFailureLogTime = DateTime.MinValue;
-        private static readonly TimeSpan FailureLogThrottle = TimeSpan.FromMinutes (30);
+        // Backoff: после безрезультатного цикла повторяем через 30 мин, далее 1ч, 2ч, 4ч.
+        // Уведомление отправляем только один раз — при входе в состояние "конвертировать нечего".
+        private DateTime _nextAttemptUtc = DateTime.MinValue;
+        private int _consecutiveFailures = 0;
+        private static readonly TimeSpan MinBackoff = TimeSpan.FromMinutes (30);
+        private static readonly TimeSpan MaxBackoff = TimeSpan.FromHours (4);
 
         public async Task AutoConvertAssetsToUsdcAsync(BinanceClient client, bool isRunning, HashSet<string> openPositionSymbols, decimal targetUsdc = 15m)
         {
+            // Пока действует backoff — тихо выходим, не дергаем API и не пишем в лог/Telegram
+            if (DateTime.UtcNow < _nextAttemptUtc) return;
+
             if (_isRebalancing)
             {
                 Log ("⚠️ Ребаланс уже выполняется, пропускаем.");
@@ -34,7 +41,11 @@ namespace BinanceBotWpf.Models
             try
             {
                 decimal currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                if (currentUsdc >= targetUsdc) return;
+                if (currentUsdc >= targetUsdc)
+                {
+                    ResetBackoff ();
+                    return;
+                }
 
                 decimal need = targetUsdc - currentUsdc;
                 if (need >= 0.5m)
@@ -47,7 +58,11 @@ namespace BinanceBotWpf.Models
                         if (redeemed)
                         {
                             currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                            if (currentUsdc >= targetUsdc) return;
+                            if (currentUsdc >= targetUsdc)
+                            {
+                                ResetBackoff ();
+                                return;
+                            }
                             Log ($"✅ Выкуп USDC подтверждён. Новый спот баланс: {currentUsdc:F2}");
                             convertedAnything = true;
                         }
@@ -64,13 +79,20 @@ namespace BinanceBotWpf.Models
                         {
                             convertedAnything = true;
                             currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                            if (currentUsdc >= targetUsdc) return;
+                            if (currentUsdc >= targetUsdc)
+                            {
+                                ResetBackoff ();
+                                return;
+                            }
                         }
                     }
                 }
 
                 var allBalances = await GetAllBalancesAsync (client);
                 var sorted = allBalances.OrderByDescending (x => x.Value.TotalAmount).ToList ();
+
+                // Пыль конвертируем не больше одного раза за цикл
+                bool dustAttempted = false;
 
                 foreach (var assetEntry in sorted)
                 {
@@ -99,9 +121,22 @@ namespace BinanceBotWpf.Models
 
                     if (estimatedValue < 10.0m)
                     {
-                        Log ($"⏭️ {asset}: стоимость {estimatedValue:F2} USDC ниже 10, пробую пыль → USDC");
-                        bool dustConverted = await client.ConvertDustToUsdcAsync (null);
-                        if (dustConverted) convertedAnything = true;
+                        if (!dustAttempted)
+                        {
+                            dustAttempted = true;
+                            Log ($"⏭️ {asset}: стоимость {estimatedValue:F2} USDC ниже 10, пробую пыль → USDC");
+                            bool dustConverted = await client.ConvertDustToUsdcAsync (null);
+                            if (dustConverted)
+                            {
+                                convertedAnything = true;
+                                currentUsdc = await client.GetAccountBalanceAsync ("USDC");
+                                if (currentUsdc >= targetUsdc)
+                                {
+                                    ResetBackoff ();
+                                    return;
+                                }
+                            }
+                        }
                         continue;
                     }
 
@@ -139,7 +174,11 @@ namespace BinanceBotWpf.Models
                         convertedAnything = true;
                         Log ($"✅ Продано {normalizedAmount} {asset}");
                         currentUsdc = await client.GetAccountBalanceAsync ("USDC");
-                        if (currentUsdc >= targetUsdc) return;
+                        if (currentUsdc >= targetUsdc)
+                        {
+                            ResetBackoff ();
+                            return;
+                        }
                     }
                     else
                     {
@@ -150,15 +189,28 @@ namespace BinanceBotWpf.Models
                 currentUsdc = await client.GetAccountBalanceAsync ("USDC");
                 if (currentUsdc >= targetUsdc)
                 {
+                    ResetBackoff ();
                     Log ($"✅ USDC баланс достаточный: {currentUsdc:F2}");
-                }
-                else if (convertedAnything)
-                {
-                    LogThrottled ($"⚠️ Конвертация выполнена, но USDC {currentUsdc:F2} < цели {targetUsdc:F2}");
                 }
                 else
                 {
-                    LogThrottled ($"❌ Нет ликвидных активов для конвертации в USDC (текущий: {currentUsdc:F2}, цель: {targetUsdc:F2})");
+                    // Ничего не удалось конвертировать (или конвертировали, но цели не достигли):
+                    // уходим в тихий backoff, уведомление — только при входе в это состояние
+                    _consecutiveFailures++;
+                    TimeSpan delay = GetBackoffDelay (_consecutiveFailures);
+                    _nextAttemptUtc = DateTime.UtcNow + delay;
+
+                    if (_consecutiveFailures == 1)
+                    {
+                        if (convertedAnything)
+                        {
+                            Log ($"⚠️ Конвертация выполнена, но USDC {currentUsdc:F2} < цели {targetUsdc:F2}. Следующая попытка через {delay.TotalMinutes:F0} мин");
+                        }
+                        else
+                        {
+                            Log ($"❌ Нет ликвидных активов для конвертации в USDC (текущий: {currentUsdc:F2}, цель: {targetUsdc:F2}). Следующая попытка через {delay.TotalMinutes:F0} мин");
+                        }
+                    }
                 }
             }
             catch (Exception ex) { Log ($"❌ Ошибка ребалансировщика: {ex.Message}"); }
@@ -221,11 +273,17 @@ namespace BinanceBotWpf.Models
             return earnPos != null ? decimal.Parse (earnPos["totalAmount"]?.ToString () ?? "0", CultureInfo.InvariantCulture) : 0;
         }
 
-        private void LogThrottled(string msg)
+        /// <summary>Пауза перед следующей попыткой: 30 мин → 1 ч → 2 ч → 4 ч (максимум).</summary>
+        private static TimeSpan GetBackoffDelay(int failures)
         {
-            if (DateTime.UtcNow - _lastFailureLogTime < FailureLogThrottle) return;
-            _lastFailureLogTime = DateTime.UtcNow;
-            Log (msg);
+            double minutes = MinBackoff.TotalMinutes * Math.Pow (2, Math.Min (failures - 1, 8));
+            return TimeSpan.FromMinutes (Math.Min (minutes, MaxBackoff.TotalMinutes));
+        }
+
+        private void ResetBackoff()
+        {
+            _consecutiveFailures = 0;
+            _nextAttemptUtc = DateTime.MinValue;
         }
 
         private void Log(string msg) => OnLogGenerated?.Invoke (msg);

@@ -302,29 +302,32 @@ namespace BinanceBotWpf.Exchange
             {
                 if (assetIds == null || assetIds.Count == 0)
                 {
-                    var dust = await GetDustAssetsAsync ();
-                    if (dust == null || dust.Count == 0) return false;
-                    assetIds = dust.Select (item => item["assetId"]?.ToString ()).Where (id => !string.IsNullOrEmpty (id)).ToList ();
-                    if (assetIds.Count == 0) return false;
+                    var dustAssetIds = await GetDustAssetsAsync ();
+                    if (dustAssetIds == null) dustAssetIds = new List<string> ();
+                    assetIds = dustAssetIds;
                 }
-                bool dustConverted = await ConvertDustToBnbAsync (assetIds);
-                if (!dustConverted) return false;
+
+                // BNB→BNB конвертировать бессмысленно, и Binance может отклонить весь запрос.
+                // Освободившийся/имеющийся BNB всё равно продаём в USDC ниже.
+                assetIds = assetIds.Where (id => !string.Equals (id, "BNB", StringComparison.Ordinal)).ToList ();
+
+                bool dustConverted = assetIds.Count > 0 && await ConvertDustToBnbAsync (assetIds);
 
                 decimal bnbBalance = await GetAccountBalanceAsync ("BNB");
-                if (bnbBalance < 0.001m) return true;
+                if (bnbBalance < 0.001m) return dustConverted;
                 var klines = await GetKlinesAsync ("BNBUSDC", "5m", 1);
-                if (klines == null || klines.Count == 0) return false;
+                if (klines == null || klines.Count == 0) return dustConverted;
                 decimal price = klines.Last ().Close;
                 decimal step = await GetStepSizeAsync ("BNBUSDC");
                 decimal qty = Math.Floor (bnbBalance / step) * step;
-                if (qty <= 0) return false;
+                if (qty <= 0) return dustConverted;
                 var order = await PlaceOrder ("BNBUSDC", "SELL", "MARKET", qty);
                 if (order != null)
                 {
                     Log ($"✅ Sold {qty} BNB for USDC");
                     return true;
                 }
-                return false;
+                return dustConverted;
             }
             catch (Exception ex)
             {
@@ -333,7 +336,7 @@ namespace BinanceBotWpf.Exchange
             }
         }
 
-        public async Task<JArray> GetDustAssetsAsync(List<string> assets = null)
+        public async Task<List<string>> GetDustAssetsAsync(List<string> assets = null)
         {
             try
             {
@@ -342,38 +345,19 @@ namespace BinanceBotWpf.Exchange
                 try
                 {
                     if (_dustCache != null && DateTime.UtcNow - _dustCacheTime < TimeSpan.FromMinutes (5))
-                        return _dustCache;
+                        return _dustCache.ToObject<List<string>> ();
                 }
                 finally { _dustLock.Release (); }
 
-                // Binance требует параметр asset[] — получаем балансы, если активы не переданы
-                if (assets == null || assets.Count == 0)
-                {
-                    var accountInfo = await GetAccountInfoAsync ();
-                    if (accountInfo?["balances"] != null)
-                    {
-                        assets = new List<string> ();
-                        foreach (var b in accountInfo["balances"])
-                        {
-                            string a = b["asset"]?.ToString ();
-                            decimal free = decimal.Parse (b["free"]?.ToString () ?? "0", CultureInfo.InvariantCulture);
-                            if (!string.IsNullOrEmpty (a) && a != "USDC" && a != "USDT" && a != "FDUSD" && free > 0)
-                                assets.Add (a);
-                        }
-                    }
-                }
-
-                if (assets == null || assets.Count == 0)
-                    return new JArray ();
-
+                // Binance: POST /sapi/v1/asset/dust-btc — список активов, конвертируемых в BNB.
+                // Параметров, кроме timestamp/signature, не принимает; ответ:
+                // { "details": [{ "asset": "ADA", "amountFree": "...", ... }], ... }
                 long timestamp = GetTimestamp ();
                 string query = $"timestamp={timestamp}";
-                foreach (string asset in assets)
-                    query += $"&asset[]={asset}";
                 string signature = CreateSignature (query);
 
                 var content = new StringContent ($"{query}&signature={signature}", Encoding.UTF8, "application/x-www-form-urlencoded");
-                var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/asset/dust") { Content = content };
+                var request = new HttpRequestMessage (HttpMethod.Post, "/sapi/v1/asset/dust-btc") { Content = content };
                 request.Headers.Add ("X-MBX-APIKEY", _apiKey);
                 var response = await SendWithRetryAsync (request);
                 string json = await response.Content.ReadAsStringAsync ();
@@ -381,15 +365,36 @@ namespace BinanceBotWpf.Exchange
                 if (response.IsSuccessStatusCode)
                 {
                     var result = JObject.Parse (json);
+                    var details = result["details"] as JArray;
+                    var assetIds = new JArray ();
+                    if (details != null)
+                    {
+                        foreach (var d in details)
+                        {
+                            string asset = d["asset"]?.ToString ();
+                            if (!string.IsNullOrEmpty (asset))
+                                assetIds.Add (asset);
+                        }
+                    }
+
                     await _dustLock.WaitAsync ();
                     try
                     {
-                        _dustCache = result["details"] as JArray ?? new JArray ();
+                        _dustCache = assetIds;
                         _dustCacheTime = DateTime.UtcNow;
                     }
                     finally { _dustLock.Release (); }
-                    return _dustCache;
+                    return assetIds.ToObject<List<string>> ();
                 }
+
+                // Ошибку кэшируем на 5 мин, лог — не чаще раза в 30 мин
+                await _dustLock.WaitAsync ();
+                try
+                {
+                    _dustCache = new JArray ();
+                    _dustCacheTime = DateTime.UtcNow;
+                }
+                finally { _dustLock.Release (); }
 
                 if (DateTime.UtcNow - _lastDustErrorTime > TimeSpan.FromMinutes (30) || json != _lastDustError)
                 {
@@ -399,7 +404,7 @@ namespace BinanceBotWpf.Exchange
                 }
             }
             catch (Exception ex) { Log ($"GetDustAssets exception: {ex.Message}"); }
-            return new JArray ();
+            return new List<string> ();
         }
 
         public async Task<bool> RedeemFlexibleEarnWithWaitAsync(string asset, decimal amount, int maxWaitSeconds = 60)
